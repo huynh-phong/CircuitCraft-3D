@@ -273,7 +273,40 @@ export async function sendOtpEmail(params: {
   let sent = false;
   let statusMessage = '';
 
-  // 1. First, check direct SMTP / Gmail credentials from .env
+  // 0. HTTPS email API (Brevo) — works on hosts that block outbound SMTP ports (e.g. Render free tier)
+  const brevoApiKey = process.env.BREVO_API_KEY?.trim();
+  const brevoSenderEmail = (process.env.BREVO_SENDER_EMAIL || smtpUser)?.trim();
+  if (brevoApiKey && brevoSenderEmail) {
+    try {
+      const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': brevoApiKey,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: 'CircuitCraft 3D', email: brevoSenderEmail },
+          to: [{ email }],
+          subject,
+          htmlContent: html,
+          textContent: text,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (resp.ok) {
+        sent = true;
+        statusMessage = 'Đã gửi mã OTP vào email của bạn';
+        console.log(`[CircuitCraft Mailer] Live email dispatched to ${email} via Brevo API.`);
+      } else {
+        console.warn(`[CircuitCraft Mailer] Brevo API error (${resp.status}):`, await resp.text());
+      }
+    } catch (err: any) {
+      console.warn('[CircuitCraft Mailer] Brevo API request failed:', err?.message || err);
+    }
+  }
+
+  // 1. Direct SMTP / Gmail credentials from .env
   const isPlaceholder =
     !smtpUser ||
     !smtpPass ||
@@ -282,7 +315,7 @@ export async function sendOtpEmail(params: {
     smtpPass.includes('your-app-password') ||
     smtpPass.includes('placeholder');
 
-  if (smtpHost && smtpUser && smtpPass && !isPlaceholder) {
+  if (!sent && smtpHost && smtpUser && smtpPass && !isPlaceholder) {
     try {
       const transporter = nodemailer.createTransport({
         host: smtpHost,
@@ -292,6 +325,10 @@ export async function sendOtpEmail(params: {
           user: smtpUser,
           pass: smtpPass.replace(/\s+/g, ''),
         },
+        // Fail fast when the host blocks SMTP ports instead of hanging ~2 minutes
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
       });
 
       await transporter.sendMail({
