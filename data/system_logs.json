@@ -1,0 +1,110 @@
+[
+  {
+    "id": "log_1791009527333_mdzn",
+    "timestamp": "2026-10-03T06:38:47.333Z",
+    "level": "info",
+    "category": "payment",
+    "action": "ORDER_CREATED",
+    "actorId": "guest",
+    "actorEmail": "guest@circuitcraft.io",
+    "targetId": "CC3D_TERMINAL_6156",
+    "details": "Tạo đơn hàng CC3D_TERMINAL_6156 cho \"Module chia nguồn Terminal Block 2 cổng\" (49.000 VND)"
+  },
+  {
+    "id": "log_1791009102844_9mqx",
+    "timestamp": "2026-10-03T06:31:42.844Z",
+    "level": "info",
+    "category": "payment",
+    "action": "ORDER_CREATED",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "targetId": "CC3D_STUDENT_4920",
+    "details": "Tạo đơn hàng CC3D_STUDENT_4920 cho \"Gói Học Viên STEM (Student Pro)\" (99.000 VND)"
+  },
+  {
+    "id": "log_1791009037873_8i7c",
+    "timestamp": "2026-10-03T06:30:37.874Z",
+    "level": "info",
+    "category": "project",
+    "action": "PROJECT_SAVED",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "targetId": "proj-mus0j7uz-9uziq",
+    "details": "Lưu dự án \"Dự án: Nguồn Ổn Áp LM7805 5V & LED 7 Đoạn\" (Revision #1, 6 linh kiện)"
+  },
+  {
+    "id": "log_1791009029781_nj00",
+    "timestamp": "2026-10-03T06:30:29.781Z",
+    "level": "info",
+    "category": "project",
+    "action": "PROJECT_SAVED",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "targetId": "proj-mus0j7uz-9uziq",
+    "details": "Lưu dự án \"Dự án: Nguồn Ổn Áp LM7805 5V & LED 7 Đoạn\" (Revision #1, 6 linh kiện)"
+  },
+  {
+    "id": "log_1791008983655_q1q8",
+    "timestamp": "2026-10-03T06:29:43.655Z",
+    "level": "info",
+    "category": "project",
+    "action": "PROJECT_SAVED",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "targetId": "proj-mus0i567-cd3w3",
+    "details": "Lưu dự án \"Dự án: Đèn kép công tắc chọn kênh\" (Revision #1, 4 linh kiện)"
+  },
+  {
+    "id": "log_1791008979642_qyug",
+    "timestamp": "2026-10-03T06:29:39.642Z",
+    "level": "info",
+    "category": "project",
+    "action": "PROJECT_SAVED",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "targetId": "proj-mus0i567-cd3w3",
+    "details": "Lưu dự án \"Dự án: Đèn kép công tắc chọn kênh\" (Revision #1, 4 linh kiện)"
+  },
+  {
+    "id": "log_1791008966711_cjhi",
+    "timestamp": "2026-10-03T06:29:26.711Z",
+    "level": "info",
+    "category": "project",
+    "action": "PROJECT_SAVED",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "targetId": "proj-mus0hv6w-su0gg",
+    "details": "Lưu dự án \"Dự án: Dimmer LED với Biến trở\" (Revision #1, 4 linh kiện)"
+  },
+  {
+    "id": "log_1791008960415_fw1g",
+    "timestamp": "2026-10-03T06:29:20.415Z",
+    "level": "info",
+    "category": "course",
+    "action": "COURSE_PROGRESS_SYNC",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "targetId": "course-intro-stem-3d",
+    "details": "Cập nhật tiến độ khóa học \"Nhập Môn Mạch Điện Tử & Mô Phỏng Thực Tế 3D\" (0%)"
+  },
+  {
+    "id": "log_1791008951314_6pgh",
+    "timestamp": "2026-10-03T06:29:11.314Z",
+    "level": "success",
+    "category": "auth",
+    "action": "USER_LOGIN_VERIFIED",
+    "actorId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "actorEmail": "huynhphongff2@gmail.com",
+    "details": "Xác thực OTP thành công cho huynhphongff2@gmail.com (Vai trò: user)"
+  },
+  {
+    "id": "log_1791008672706_4byd",
+    "timestamp": "2026-10-03T06:24:32.706Z",
+    "level": "success",
+    "category": "auth",
+    "action": "USER_LOGIN_VERIFIED",
+    "actorId": "3c6c5edd-3780-4451-9525-f9e7f2250035",
+    "actorEmail": "huynhphongff1@gmail.com",
+    "details": "Xác thực OTP thành công cho huynhphongff1@gmail.com (Vai trò: admin)"
+  }
+]

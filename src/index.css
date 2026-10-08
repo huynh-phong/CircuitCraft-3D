@@ -1,0 +1,522 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f4f8fb;
+  --background-secondary: #eaf2f7;
+  --surface: #ffffff;
+  --surface-hover: #f1f7fa;
+  --surface-active: #e3edf3;
+  --border: #d7e7f0;
+  --border-strong: #bfd8e6;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --accent: #06b6d4;
+  --accent-hover: #0891b2;
+  --editor-background: #eef5f9;
+  --editor-grid: #d2e4ee;
+  --editor-panel: #ffffff;
+  --selection: #06b6d4;
+  --hover: #f1f7fa;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #06b6d4;
+}
+
+.dark {
+  --background: #090e17;
+  --background-secondary: #0d1522;
+  --surface: #111a28;
+  --surface-hover: #172336;
+  --surface-active: #1f3049;
+  --border: #18263a;
+  --border-strong: #243854;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --accent: #06b6d4;
+  --accent-hover: #22d3ee;
+  --editor-background: #080d14;
+  --editor-grid: #131e2d;
+  --editor-panel: #0d1522;
+  --selection: #38bdf8;
+  --hover: #152030;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --info: #38bdf8;
+}
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--background);
+    color: var(--text-primary);
+  }
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* ========================================================================= */
+/* CIRCUIT & LAB BACKGROUND TEXTURES (Level 0)                               */
+/* ========================================================================= */
+.circuit-bg {
+  background-color: #f0f6fa;
+  background-image: 
+    /* Top laboratory ambient lighting behind floating navbar */
+    radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.22) 0%, transparent 65%),
+    radial-gradient(circle at 85% 25%, rgba(14, 165, 233, 0.14) 0%, transparent 50%),
+    radial-gradient(circle at 15% 40%, rgba(20, 184, 166, 0.12) 0%, transparent 55%),
+    /* High-tech perspective floor grid */
+    linear-gradient(to right, rgba(6, 182, 212, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(6, 182, 212, 0.08) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+}
+
+.dark .circuit-bg {
+  background-color: #020b18;
+  background-image: 
+    /* Top laboratory ambient lighting behind floating navbar */
+    radial-gradient(circle at 50% 0%, rgba(6, 182, 212, 0.32) 0%, transparent 70%),
+    radial-gradient(circle at 85% 25%, rgba(14, 165, 233, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 15% 40%, rgba(20, 184, 166, 0.16) 0%, transparent 55%),
+    radial-gradient(circle at 75% 75%, rgba(7, 28, 49, 0.7) 0%, transparent 60%),
+    /* High-tech perspective floor grid */
+    linear-gradient(to right, rgba(6, 182, 212, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(6, 182, 212, 0.1) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+}
+
+/* Subtle circuit lines pattern overlay */
+.circuit-traces-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 60h40l20-20h60M40 60l20 20h60M10 0v30l20 20M110 120v-30l-20-20' stroke='rgba(6,182,212,0.06)' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='60' r='2' fill='rgba(6,182,212,0.12)'/%3E%3Ccircle cx='60' cy='40' r='2' fill='rgba(6,182,212,0.12)'/%3E%3Ccircle cx='60' cy='80' r='2' fill='rgba(6,182,212,0.12)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+.dark .circuit-traces-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 60h40l20-20h60M40 60l20 20h60M10 0v30l20 20M110 120v-30l-20-20' stroke='rgba(6,182,212,0.08)' stroke-width='1.2' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='40' cy='60' r='2' fill='rgba(6,182,212,0.16)'/%3E%3Ccircle cx='60' cy='40' r='2' fill='rgba(6,182,212,0.16)'/%3E%3Ccircle cx='60' cy='80' r='2' fill='rgba(6,182,212,0.16)'/%3E%3C/svg%3E");
+}
+
+/* ========================================================================= */
+/* LAYERED NEUMORPHIC SYSTEM                                                 */
+/* ========================================================================= */
+
+/* Level 2: Large Panel */
+.tech-panel {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid #d7e7f0;
+  border-radius: 1.5rem;
+  box-shadow: 
+    0 20px 45px -10px rgba(6, 182, 212, 0.08),
+    0 8px 20px -5px rgba(15, 23, 42, 0.04),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+}
+
+.dark .tech-panel {
+  background: rgba(13, 21, 34, 0.85);
+  border: 1px solid rgba(34, 211, 238, 0.15);
+  box-shadow: 
+    0 20px 50px -10px rgba(0, 0, 0, 0.5),
+    0 0 35px -5px rgba(6, 182, 212, 0.08),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Level 3: Card */
+.tech-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+  border: 1px solid #d7e7f0;
+  border-radius: 1.25rem;
+  box-shadow: 
+    0 10px 25px -4px rgba(6, 182, 212, 0.06),
+    0 4px 10px -2px rgba(15, 23, 42, 0.04),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 1);
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tech-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(6, 182, 212, 0.45);
+  box-shadow: 
+    0 18px 36px -6px rgba(6, 182, 212, 0.16),
+    0 6px 14px -3px rgba(15, 23, 42, 0.06),
+    inset 0 1px 2px 0 rgba(255, 255, 255, 1);
+}
+
+.dark .tech-card {
+  background: linear-gradient(180deg, #111a28 0%, #0d1522 100%);
+  border: 1px solid rgba(36, 56, 84, 0.9);
+  box-shadow: 
+    0 10px 30px -5px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.dark .tech-card:hover {
+  border-color: rgba(34, 211, 238, 0.4);
+  box-shadow: 
+    0 18px 40px -6px rgba(0, 0, 0, 0.6),
+    0 0 25px rgba(6, 182, 212, 0.15),
+    inset 0 1px 2px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Subtle Nested Card on a Panel */
+.tech-card-nested {
+  background: rgba(241, 247, 250, 0.75);
+  border: 1px solid #dcebf2;
+  border-radius: 0.875rem;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8);
+}
+
+.dark .tech-card-nested {
+  background: rgba(9, 14, 23, 0.65);
+  border: 1px solid rgba(24, 38, 58, 0.8);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/* ========================================================================= */
+/* BUTTONS (Level 4 - Embossed, Tactile, 3D Feel)                            */
+/* ========================================================================= */
+
+/* Primary Button: 3D embossed Cyan-Blue gradient with top highlight & bottom 3D bevel depth */
+.tech-btn-primary,
+.tech-btn-3d,
+.tech-btn-3d-cyan {
+  background: linear-gradient(180deg, #38bdf8 0%, #06b6d4 45%, #0284c7 100%);
+  color: #ffffff !important;
+  font-weight: 800;
+  border-radius: 1rem;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.85);
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  border-right: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 3.5px solid #0369a1;
+  box-shadow: 
+    0 8px 22px -2px rgba(6, 182, 212, 0.45),
+    0 3px 6px rgba(15, 23, 42, 0.12),
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tech-btn-primary:hover,
+.tech-btn-3d:hover,
+.tech-btn-3d-cyan:hover {
+  background: linear-gradient(180deg, #60a5fa 0%, #38bdf8 35%, #06b6d4 100%);
+  transform: translateY(-2px);
+  border-bottom-width: 4px;
+  box-shadow: 
+    0 12px 28px -2px rgba(6, 182, 212, 0.55),
+    0 4px 8px rgba(15, 23, 42, 0.15),
+    inset 0 1px 2px rgba(255, 255, 255, 0.95);
+}
+
+.tech-btn-primary:active,
+.tech-btn-3d:active,
+.tech-btn-3d-cyan:active {
+  transform: translateY(2px);
+  border-bottom-width: 1.5px;
+  box-shadow: 
+    0 3px 8px rgba(6, 182, 212, 0.35),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Light Green 3D Button (Xanh lá nhạt): 3D embossed Mint-Emerald gradient matching Login button structure */
+.tech-btn-3d-green {
+  background: linear-gradient(180deg, #6ee7b7 0%, #34d399 42%, #10b981 100%);
+  color: #ffffff !important;
+  font-weight: 800;
+  border-radius: 1rem;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.9);
+  border-left: 1px solid rgba(255, 255, 255, 0.4);
+  border-right: 1px solid rgba(255, 255, 255, 0.4);
+  border-bottom: 3.5px solid #047857;
+  box-shadow: 
+    0 8px 22px -2px rgba(16, 185, 129, 0.45),
+    0 3px 6px rgba(15, 23, 42, 0.12),
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tech-btn-3d-green:hover {
+  background: linear-gradient(180deg, #a7f3d0 0%, #6ee7b7 35%, #34d399 100%);
+  transform: translateY(-2px);
+  border-bottom-width: 4px;
+  box-shadow: 
+    0 12px 28px -2px rgba(16, 185, 129, 0.55),
+    0 4px 8px rgba(15, 23, 42, 0.15),
+    inset 0 1px 2px rgba(255, 255, 255, 0.95);
+}
+
+.tech-btn-3d-green:active {
+  transform: translateY(2px);
+  border-bottom-width: 1.5px;
+  box-shadow: 
+    0 3px 8px rgba(16, 185, 129, 0.35),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Rose / Red 3D Button: 3D embossed Rose-Red gradient with bevel */
+.tech-btn-3d-rose {
+  background: linear-gradient(180deg, #fb7185 0%, #f43f5e 45%, #e11d48 100%);
+  color: #ffffff !important;
+  font-weight: 800;
+  border-radius: 1rem;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.9);
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  border-right: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 3.5px solid #9f1239;
+  box-shadow: 
+    0 8px 22px -2px rgba(244, 63, 94, 0.45),
+    0 3px 6px rgba(15, 23, 42, 0.12),
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: all 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tech-btn-3d-rose:hover {
+  background: linear-gradient(180deg, #fda4af 0%, #fb7185 35%, #f43f5e 100%);
+  transform: translateY(-2px);
+  border-bottom-width: 4px;
+  box-shadow: 
+    0 12px 28px -2px rgba(244, 63, 94, 0.55),
+    0 4px 8px rgba(15, 23, 42, 0.15),
+    inset 0 1px 2px rgba(255, 255, 255, 0.95);
+}
+
+.tech-btn-3d-rose:active {
+  transform: translateY(2px);
+  border-bottom-width: 1.5px;
+  box-shadow: 
+    0 3px 8px rgba(244, 63, 94, 0.35),
+    inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Secondary Button: Raised white/ice-blue with soft border and shadow */
+.tech-btn-secondary {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8fb 100%);
+  color: #1e293b;
+  font-weight: 600;
+  border-radius: 0.875rem;
+  border: 1px solid #d7e7f0;
+  border-top-color: #e5f1f7;
+  border-bottom-color: #cadfe9;
+  box-shadow: 
+    0 3px 8px -1px rgba(15, 23, 42, 0.05),
+    0 1px 2px rgba(6, 182, 212, 0.04),
+    inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tech-btn-secondary:hover {
+  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.45);
+  color: #0891b2;
+  box-shadow: 
+    0 6px 16px -2px rgba(6, 182, 212, 0.16),
+    0 2px 4px rgba(15, 23, 42, 0.05),
+    inset 0 1px 1px rgba(255, 255, 255, 1);
+}
+
+.tech-btn-secondary:active {
+  transform: translateY(1px);
+  box-shadow: 
+    0 1px 4px rgba(15, 23, 42, 0.08),
+    inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.dark .tech-btn-secondary {
+  background: linear-gradient(180deg, #172336 0%, #0f1827 100%);
+  color: #e2e8f0;
+  border: 1px solid #243854;
+  border-top-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 3px 10px rgba(0, 0, 0, 0.35),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+.dark .tech-btn-secondary:hover {
+  border-color: rgba(34, 211, 238, 0.4);
+  color: #38bdf8;
+  box-shadow: 
+    0 6px 18px rgba(0, 0, 0, 0.5),
+    0 0 15px rgba(6, 182, 212, 0.12),
+    inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+/* Control / Unselected Tab Button with subtle border, neumorphic shadow, and hover glow */
+.tech-btn-control {
+  background: #ffffff;
+  color: #334155;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  border: 1px solid #cbe6f7;
+  box-shadow: 
+    0 2px 5px rgba(6, 182, 212, 0.06),
+    0 1px 2px rgba(15, 23, 42, 0.03),
+    inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tech-btn-control:hover {
+  background: #f0f8fd;
+  color: #0284c7;
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+  box-shadow: 
+    0 4px 10px rgba(6, 182, 212, 0.15),
+    0 2px 4px rgba(15, 23, 42, 0.04);
+}
+
+.tech-btn-control:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.dark .tech-btn-control {
+  background: #091526;
+  color: #cbd5e1;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  box-shadow: 
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+.dark .tech-btn-control:hover {
+  background: #0d1e35;
+  color: #38bdf8;
+  border-color: rgba(6, 182, 212, 0.55);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.55),
+    0 0 12px rgba(6, 182, 212, 0.18);
+}
+
+.dark .tech-btn-control:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* ========================================================================= */
+/* ICONS & CONTROLS (Level 5 - Tactile Tiles)                                */
+/* ========================================================================= */
+
+.tech-icon-tile {
+  background: linear-gradient(180deg, #ffffff 0%, #edf6fb 100%);
+  border: 1px solid #d4e5ee;
+  border-radius: 0.75rem;
+  box-shadow: 
+    0 2px 6px rgba(6, 182, 212, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.95);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0891b2;
+  transition: all 0.18s ease;
+}
+
+.tech-icon-tile:hover {
+  border-color: rgba(6, 182, 212, 0.5);
+  box-shadow: 
+    0 4px 10px rgba(6, 182, 212, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 1);
+  transform: translateY(-1px);
+}
+
+.dark .tech-icon-tile {
+  background: linear-gradient(180deg, #18263a 0%, #101a29 100%);
+  border: 1px solid #243854;
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    inset 0 1px 1px rgba(255, 255, 255, 0.06);
+  color: #22d3ee;
+}
+
+.dark .tech-icon-tile:hover {
+  border-color: rgba(34, 211, 238, 0.5);
+  box-shadow: 
+    0 4px 12px rgba(6, 182, 212, 0.2),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+}
+
+/* Level 4 Input / Search / Dropdown */
+.tech-input {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #d7e7f0;
+  border-radius: 0.875rem;
+  box-shadow: 
+    inset 0 1.5px 3px rgba(15, 23, 42, 0.04),
+    0 1px 2px rgba(255, 255, 255, 0.8);
+  transition: all 0.18s ease;
+}
+
+.tech-input:focus {
+  border-color: #06b6d4;
+  box-shadow: 
+    0 0 0 3px rgba(6, 182, 212, 0.18),
+    inset 0 1.5px 2px rgba(15, 23, 42, 0.02);
+  outline: none;
+}
+
+.dark .tech-input {
+  background: rgba(13, 21, 34, 0.9);
+  border: 1px solid #243854;
+  box-shadow: 
+    inset 0 1.5px 3px rgba(0, 0, 0, 0.35);
+  color: #f1f5f9;
+}
+
+.dark .tech-input:focus {
+  border-color: #22d3ee;
+  box-shadow: 
+    0 0 0 3px rgba(34, 211, 238, 0.2),
+    inset 0 1.5px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Custom minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.45);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

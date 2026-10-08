@@ -1,0 +1,57 @@
+[
+  {
+    "orderId": "ord-1791009102838-4920",
+    "orderCode": "CC3D_STUDENT_4920",
+    "productId": "plan-student",
+    "productTitle": "Gói Học Viên STEM (Student Pro)",
+    "author": "Huỳnh Phong",
+    "amount": 99000,
+    "currency": "VND",
+    "status": "pending",
+    "paymentMethod": "VietQR",
+    "userId": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
+    "userEmail": "huynhphongff2@gmail.com",
+    "orderType": "membership",
+    "bankDetails": {
+      "bankName": "MB Bank",
+      "bankId": "970422",
+      "accountNumber": "0988888888",
+      "accountNumberMasked": "098****888",
+      "accountName": "Huỳnh Phong",
+      "orderCode": "CC3D_STUDENT_4920",
+      "transferContent": "CC3D CC3D_STUDENT_4920",
+      "amount": 99000,
+      "currency": "VND",
+      "qrUrl": "https://api.vietqr.io/image/970422-0988888888-compact.jpg?accountName=Hu%E1%BB%B3nh%20Phong&amount=99000&addInfo=CC3D%20CC3D_STUDENT_4920"
+    },
+    "createdAt": "2026-10-03T06:31:42.838Z"
+  },
+  {
+    "orderId": "ord-1791009527333-6156",
+    "orderCode": "CC3D_TERMINAL_6156",
+    "productId": "prod-terminal-splitter",
+    "productTitle": "Module chia nguồn Terminal Block 2 cổng",
+    "author": "Huỳnh Phong",
+    "amount": 49000,
+    "currency": "VND",
+    "status": "pending",
+    "paymentMethod": "VietQR",
+    "userId": "guest",
+    "userEmail": "guest@circuitcraft.io",
+    "creatorId": "3c6c5edd-3780-4451-9525-f9e7f2250035",
+    "orderType": "project",
+    "bankDetails": {
+      "bankName": "MB Bank",
+      "bankId": "970422",
+      "accountNumber": "0988888888",
+      "accountNumberMasked": "098****888",
+      "accountName": "Huỳnh Phong",
+      "orderCode": "CC3D_TERMINAL_6156",
+      "transferContent": "CC3D CC3D_TERMINAL_6156",
+      "amount": 49000,
+      "currency": "VND",
+      "qrUrl": "https://api.vietqr.io/image/970422-0988888888-compact.jpg?accountName=Hu%E1%BB%B3nh%20Phong&amount=49000&addInfo=CC3D%20CC3D_TERMINAL_6156"
+    },
+    "createdAt": "2026-10-03T06:38:47.333Z"
+  }
+]

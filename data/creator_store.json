@@ -1,0 +1,172 @@
+{
+  "profiles": {
+    "3c6c5edd-3780-4451-9525-f9e7f2250035": {
+      "userId": "3c6c5edd-3780-4451-9525-f9e7f2250035",
+      "displayName": "Huỳnh Phong",
+      "bio": "Kỹ sư Vi mạch & Nhúng IoT, Giảng viên mô phỏng 3D tại CircuitCraft",
+      "specialty": "Thiết kế PCB 3D, IoT ESP32, Tự động hóa",
+      "isVerified": true,
+      "socialLinks": {
+        "github": "https://github.com/huynhphong-circuitcraft",
+        "youtube": "https://youtube.com/@CircuitCraft3D",
+        "website": "https://circuitcraft3d.io"
+      },
+      "tier": "creator",
+      "createdAt": "2026-09-01T00:00:00.000Z",
+      "updatedAt": "2026-09-01T00:00:00.000Z"
+    },
+    "creator-demo": {
+      "userId": "creator-demo",
+      "displayName": "Huỳnh Phong",
+      "bio": "Kỹ sư Vi mạch & Nhúng IoT, Giảng viên mô phỏng 3D tại CircuitCraft",
+      "specialty": "Thiết kế PCB 3D, IoT ESP32, Tự động hóa",
+      "isVerified": true,
+      "socialLinks": {
+        "github": "https://github.com/huynhphong-circuitcraft",
+        "youtube": "https://youtube.com/@CircuitCraft3D",
+        "website": "https://circuitcraft3d.io"
+      },
+      "tier": "creator",
+      "createdAt": "2026-09-01T00:00:00.000Z",
+      "updatedAt": "2026-09-01T00:00:00.000Z"
+    },
+    "huynhphongff1@gmail.com": {
+      "userId": "huynhphongff1@gmail.com",
+      "displayName": "Huỳnh Phong",
+      "bio": "Kỹ sư Vi mạch & Nhúng IoT, Giảng viên mô phỏng 3D tại CircuitCraft",
+      "specialty": "Thiết kế PCB 3D, IoT ESP32, Tự động hóa",
+      "isVerified": true,
+      "socialLinks": {
+        "github": "https://github.com/huynhphong-circuitcraft",
+        "youtube": "https://youtube.com/@CircuitCraft3D",
+        "website": "https://circuitcraft3d.io"
+      },
+      "tier": "creator",
+      "createdAt": "2026-09-01T00:00:00.000Z",
+      "updatedAt": "2026-09-01T00:00:00.000Z"
+    }
+  },
+  "products": {
+    "prod-terminal-splitter": {
+      "id": "prod-terminal-splitter",
+      "creatorId": "3c6c5edd-3780-4451-9525-f9e7f2250035",
+      "creatorName": "Huỳnh Phong",
+      "type": "project",
+      "title": "Module chia nguồn Terminal Block 2 cổng",
+      "tagline": "Mạch phân phối nguồn ổn định với cọc đấu dây vặn vít công nghiệp",
+      "description": "Thiết kế chuẩn công nghiệp sử dụng Terminal Block chịu dòng cao, phân phối nguồn từ bộ cấp chính đến các nhánh tải phụ.",
+      "price": 49000,
+      "currency": "VND",
+      "status": "PUBLISHED",
+      "difficulty": "Trung bình",
+      "category": "Mô-đun nguồn",
+      "tags": [
+        "Terminal",
+        "Power Rail",
+        "Phân phối nguồn",
+        "Pro"
+      ],
+      "componentsSummary": [
+        "1x Cọc đấu dây",
+        "2x Điện trở công suất",
+        "2x LED Báo nguồn"
+      ],
+      "prerequisites": [
+        "Kiến thức an toàn nguồn điện DC"
+      ],
+      "deliverables": [
+        "Bo mạch 3D hoàn chỉnh",
+        "Mô phỏng sụt áp",
+        "Danh mục linh kiện BOM"
+      ],
+      "rating": 5,
+      "reviewsCount": 0,
+      "salesCount": 0,
+      "currentVersionNumber": "2.0.0",
+      "createdAt": "2026-09-05T00:00:00.000Z",
+      "updatedAt": "2026-09-10T00:00:00.000Z"
+    }
+  },
+  "versions": {},
+  "courses": {
+    "course-uno-r3-basic": {
+      "id": "course-uno-r3-basic",
+      "creatorId": "3c6c5edd-3780-4451-9525-f9e7f2250035",
+      "creatorName": "Huỳnh Phong",
+      "title": "Khóa học UNO R3 - Mạch điện tử cơ bản",
+      "tagline": "Làm chủ bo mạch Arduino UNO R3, cảm biến và servo qua thực hành 3D trực quan",
+      "description": "Chương trình chuẩn kỹ thuật dành cho học viên và kỹ sư mới bắt đầu. Bao gồm sơ đồ đấu nối 3D, mô phỏng vi điều khiển Atmega328P, điều khiển PWM cho servo và đọc tín hiệu cảm biến môi trường.",
+      "price": 799000,
+      "currency": "VND",
+      "difficulty": "Cơ bản",
+      "language": "vi",
+      "category": "Arduino & Vi điều khiển",
+      "tags": [
+        "UNO R3",
+        "Arduino",
+        "Servo",
+        "Sensor",
+        "STEM"
+      ],
+      "prerequisites": [
+        "Kiến thức vật lý cơ bản về dòng điện và điện áp"
+      ],
+      "learningOutcomes": [
+        "Thao tác tự tin trên bo mạch Arduino UNO R3",
+        "Đọc hiểu chân digital, analog và chân cấp nguồn",
+        "Điều khiển động cơ servo góc 0-180 độ",
+        "Tích hợp cảm biến môi trường và thiết lập cảnh báo"
+      ],
+      "estimatedHours": 12,
+      "status": "PUBLISHED",
+      "studentsCount": 0,
+      "salesCount": 0,
+      "rating": 5,
+      "createdAt": "2026-09-01T00:00:00.000Z",
+      "updatedAt": "2026-09-15T00:00:00.000Z",
+      "chapters": [
+        {
+          "id": "chap-1",
+          "courseId": "course-uno-r3-basic",
+          "title": "Chương 1: Khám phá kiến trúc bo mạch Arduino UNO R3",
+          "position": 1,
+          "lessons": [
+            {
+              "id": "les-1-1",
+              "chapterId": "chap-1",
+              "title": "Bài 1: Cấu trúc phần cứng vi điều khiển ATmega328P",
+              "content": "Tìm hiểu sơ đồ chân pinout của bo mạch Arduino UNO R3, các chân nguồn 5V, 3.3V, GND, 14 chân Digital I/O và 6 chân Analog Inputs A0-A5.",
+              "position": 1,
+              "hints": [
+                "Luôn kiểm tra kỹ nguồn 5V và GND trước khi cấp điện"
+              ]
+            },
+            {
+              "id": "les-1-2",
+              "chapterId": "chap-1",
+              "title": "Bài 2: Mạch nhấp nháy LED đầu tiên (Blinky 3D)",
+              "content": "Đấu nối LED và điện trở hạn dòng 220Ω vào chân Pin 13 của UNO R3. Quan sát dòng điện và xung nhịp điều khiển.",
+              "position": 2
+            }
+          ]
+        },
+        {
+          "id": "chap-2",
+          "courseId": "course-uno-r3-basic",
+          "title": "Chương 2: Tương tác với Động cơ Servo và Cảm biến",
+          "position": 2,
+          "lessons": [
+            {
+              "id": "les-2-1",
+              "chapterId": "chap-2",
+              "title": "Bài 3: Điều khiển góc quay Servo qua xung PWM chân Pin 9",
+              "content": "Nguyên lý tạo xung điều chế độ rộng (PWM) 50Hz để quay servo chính xác từ 0 đến 180 độ.",
+              "position": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "sales": []
+}

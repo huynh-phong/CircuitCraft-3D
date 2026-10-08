@@ -1,0 +1,6 @@
+{
+  "name": "CircuitCraft 3D",
+  "description": "Nền tảng học tập, thiết kế và mô phỏng mạch điện 3D trực quan với AI Assistant và Minibot tương tác",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
