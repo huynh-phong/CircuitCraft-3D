@@ -1,653 +1,421 @@
 import { Course } from './types';
-import { createDefaultProjectDocument } from '../project/document';
 import { ProjectDocument } from '../project/types';
+import { CURRENT_SCHEMA_VERSION, createDefaultProjectDocument } from '../project/document';
+import { buildDeterministicPracticeStages } from './pptxAndPracticeParser';
 
-export const COURSES: Course[] = [
-  {
-    id: 'course-uno-r3-basic',
-    title: 'Khóa học UNO R3 - Mạch điện tử cơ bản',
-    slug: 'uno-r3-mach-dien-tu-co-ban',
-    tagline: 'Lộ trình 8 chương bài bản từ thắp sáng LED, nút bấm, cảm biến quang, âm thanh đến IC NE555 và vi điều khiển.',
-    description:
-      'Khóa học thực hành cốt lõi dành cho sinh viên, kỹ sư và người yêu thích điện tử. Đi từ nguyên lý mạch phân cực cơ bản đến thiết kế các hệ thống cảm biến thông minh, điều khiển tải cách ly an toàn và tạo nhịp dao động xung trên nền tảng 3D tương tác.',
-    author: {
-      id: 'author-huynh-phong',
-      name: 'Huỳnh Phong',
-      role: 'Kỹ sư Vi mạch & Giảng viên STEM',
-      bio: 'Chuyên gia Thiết kế Vi mạch và Giảng viên Hệ thống Nhúng & Mạch 3D',
-    },
-    instructor: {
-      name: 'Huỳnh Phong',
-      role: 'Kỹ sư Vi mạch & Giảng viên STEM',
-    },
-    price: 799000,
-    originalPrice: 1200000,
-    isFree: false,
-    currency: 'VND',
-    level: 'Cơ bản',
-    category: 'stem',
-    duration: '8.0 giờ',
-    lessonCount: 8,
-    rating: 5.0,
-    reviewsCount: 2840,
-    studentsCount: 6120,
-    thumbnailGradient: 'from-cyan-600 via-blue-600 to-indigo-700',
-    badge: 'Khóa học Đề xuất',
-    highlights: [
-      'Chương 1: Thắp sáng LED đỏ an toàn với điện trở hạn dòng 220Ω',
-      'Chương 2: Mạch đóng ngắt điều khiển qua công tắc cơ khí',
-      'Chương 3: Cầu phân áp biến thiên với Biến trở 10kΩ',
-      'Chương 4: Cảm biến quang trở LDR tự động bật đèn khi trời tối',
-      'Chương 5: Còi báo động Buzzer 5V & Mạch phát tín hiệu khẩn cấp',
-      'Chương 6: Giám sát môi trường với cảm biến nhiệt độ LM35 (10mV/°C)',
-      'Chương 7: Rơ-le điều khiển cách ly tải công suất cao an toàn',
-      'Chương 8: Tạo nhịp dao động đa hài với IC định thời NE555',
-    ],
-    syllabus: [
-      {
-        id: 'syl-uno-1',
-        title: 'Chương 1: Thắp sáng đèn LED đỏ đầu tiên với Điện trở hạn dòng',
-        duration: '35 phút',
-        isPracticalLab: true,
-        labGoal: 'Đặt Nguồn 5V, Điện trở 220Ω và LED đỏ lên bo mạch, nối dây khép kín và bật mô phỏng.',
-        labLessonId: 'lesson-1-basic-led',
-      },
-      {
-        id: 'syl-uno-2',
-        title: 'Chương 2: Điều khiển bật/tắt bằng Công tắc SPST',
-        duration: '40 phút',
-        isPracticalLab: true,
-        labGoal: 'Thêm công tắc gạt SPST vào chuỗi dẫn nguồn để đóng ngắt bóng LED.',
-        labLessonId: 'lesson-2-switch-control',
-      },
-      {
-        id: 'syl-uno-3',
-        title: 'Chương 3: Điều chỉnh độ sáng mượt mà với Biến trở (Potentiometer)',
-        duration: '45 phút',
-        isPracticalLab: true,
-        labGoal: 'Nối cầu phân áp biến trở 10kΩ để chia điện áp cấp cho LED.',
-        labLessonId: 'lesson-3-pot-control',
-      },
-      {
-        id: 'syl-uno-4',
-        title: 'Chương 4: Cảm biến quang trở LDR - Đèn thông minh tự động trời tối',
-        duration: '50 phút',
-        isPracticalLab: true,
-        labGoal: 'Ghép LDR với điện trở kéo để kích hoạt đèn LED khi ánh sáng yếu.',
-        labLessonId: 'lesson-4-ldr-dark-sensor',
-      },
-      {
-        id: 'syl-uno-5',
-        title: 'Chương 5: Còi báo động Buzzer & Mạch cảnh báo âm thanh 85dB',
-        duration: '45 phút',
-        isPracticalLab: true,
-        labGoal: 'Kết nối còi chíp Buzzer 5V và nút nhấn khẩn cấp để phát âm thanh.',
-        labLessonId: 'lesson-5-buzzer-alarm',
-      },
-      {
-        id: 'syl-uno-6',
-        title: 'Chương 6: Cảm biến nhiệt độ LM35 & Giám sát nhiệt độ môi trường',
-        duration: '55 phút',
-        isPracticalLab: true,
-        labGoal: 'Cấp nguồn cho cảm biến LM35 và đo điện áp xuất ra 10mV/°C.',
-        labLessonId: 'lesson-6-temp-lm35',
-      },
-      {
-        id: 'syl-uno-7',
-        title: 'Chương 7: Rơ-le (Relay) đóng cắt thiết bị công suất cao cách ly',
-        duration: '60 phút',
-        isPracticalLab: true,
-        labGoal: 'Dùng tín hiệu điều khiển kích cuộn hút rơ-le để đóng ngắt tiếp điểm NO an toàn.',
-        labLessonId: 'lesson-7-relay-isolation',
-      },
-      {
-        id: 'syl-uno-8',
-        title: 'Chương 8: IC định thời NE555 & Mạch dao động đa hài tạo xung nhịp',
-        duration: '75 phút',
-        isPracticalLab: true,
-        labGoal: 'Mắc IC NE555 cùng tụ điện 100µF và điện trở để tạo xung vuông tự động chớp LED.',
-        labLessonId: 'lesson-8-ne555-oscillator',
-      },
-    ],
-    createLabProject: (labId) => {
-      const doc = createDefaultProjectDocument('Thực hành: UNO R3 - Mạch điện tử cơ bản');
-      doc.components = [
-        {
-          instanceId: 'pwr-1',
-          definitionId: 'dc-source',
-          name: 'Nguồn 5V',
-          position: { x: -45, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { voltage: 5.0 },
-        },
-        {
-          instanceId: 'res-1',
-          definitionId: 'resistor',
-          name: 'R1 (220Ω)',
-          position: { x: -5, y: 0, z: -15 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { resistance: 220 },
-        },
-        {
-          instanceId: 'led-1',
-          definitionId: 'led',
-          name: 'LED Đỏ',
-          position: { x: 35, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { color: 'red' },
-        },
-      ];
-      return doc;
-    },
+// Dự án thực hành chuẩn 1 của Nhà sáng tạo: Mạch Đèn LED Cơ bản với Điện trở bảo vệ 220Ω
+export const PRACTICE_PROJECT_1_BASIC_LED: ProjectDocument = {
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  projectId: 'proj-course-basic-led-lab1',
+  name: 'Mạch Đèn LED Cơ Bản & Điện Trở Hạn Dòng 220Ω',
+  description:
+    'Mạch thực hành căn bản sử dụng Nguồn DC 5V cấp điện qua Điện trở bảo vệ 220Ω làm sáng Đèn LED Đỏ an toàn.',
+  revision: 1,
+  units: 'mm',
+  createdAt: '2026-10-18T00:00:00.000Z',
+  updatedAt: '2026-10-18T00:00:00.000Z',
+  wireRoutes: [],
+  board: {
+    width: 60,
+    depth: 50,
+    thickness: 1.6,
+    solderMaskColor: '#0f5132',
+    copperLayerCount: 2,
+    gridSpacing: 2.54,
+    shape: 'rectangle',
   },
-  {
-    id: 'course-intro-stem-3d',
-    title: 'Nhập Môn Mạch Điện Tử & Mô Phỏng Thực Tế 3D',
-    slug: 'nhap-mon-mach-dien-tu-3d',
-    tagline: 'Làm quen trực quan với nguồn DC, điện trở, LED và luật Ohm trên không gian 3D tương tác.',
-    description:
-      'Khóa học nền tảng dành cho người mới bắt đầu hoặc học sinh, sinh viên ngành kỹ thuật. Tiếp cận các khái niệm điện áp, dòng điện, công suất thông qua thực hành lắp ráp linh kiện 3D trực quan, chống cháy nổ và quan sát dòng chảy điện áp thực tế.',
-    author: {
-      id: 'author-nguyen-thanh-luan',
-      name: 'KS. Nguyễn Thành Luân',
-      role: 'Kỹ sư Phần cứng & Giảng viên STEM Robotics',
+  components: [
+    {
+      instanceId: 'comp-dc-1',
+      definitionId: 'dc-source',
+      name: 'Nguồn DC 5V',
+      position: { x: -18, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      parameters: { voltage: 5.0 },
     },
-    instructor: {
-      name: 'KS. Nguyễn Thành Luân',
-      role: 'Kỹ sư Phần cứng & Giảng viên STEM Robotics',
+    {
+      instanceId: 'comp-res-1',
+      definitionId: 'resistor',
+      name: 'Điện trở R1 220Ω',
+      position: { x: 0, y: 0, z: -8 },
+      rotation: { x: 0, y: 0, z: 0 },
+      parameters: { resistance: 220 },
     },
-    price: 0,
-    currency: 'VND',
-    isFree: true,
-    level: 'Cơ bản',
-    category: 'stem',
-    duration: '3.5 giờ',
-    lessonCount: 4,
-    rating: 4.9,
-    reviewsCount: 1420,
-    studentsCount: 3850,
-    thumbnailGradient: 'from-cyan-600 via-teal-600 to-emerald-700',
-    badge: 'Miễn phí 100%',
-    highlights: [
-      'Hiểu rõ bản chất điện áp (V), dòng điện (I) và điện trở (R)',
-      'Nắm vững cách tính điện trở hạn dòng bảo vệ linh kiện LED',
-      'Thực hành nối dây mạch kín trực tiếp trên không gian 3D',
-      'Mô phỏng tức thì phát hiện lỗi nối tắt (Short circuit)',
-    ],
-    syllabus: [
-      {
-        id: 'syl-1-1',
-        title: 'Bài 1: Khái niệm Nguồn DC, Cực tính VCC & GND',
-        duration: '20 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-1-2',
-        title: 'Bài 2: Thực hành 3D - Thắp sáng đèn LED đỏ đầu tiên',
-        duration: '35 phút',
-        isPracticalLab: true,
-        labGoal: 'Đặt Nguồn 5V, Điện trở 220Ω và LED đỏ lên bo mạch, nối dây khép kín và bật mô phỏng.',
-        labLessonId: 'lesson-1-basic-led',
-      },
-      {
-        id: 'syl-1-3',
-        title: 'Bài 3: Định luật Ohm & Phép tính sụt áp trên tải',
-        duration: '25 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-1-4',
-        title: 'Bài 4: Thực hành 3D - Điều khiển đèn với Công tắc cơ học',
-        duration: '40 phút',
-        isPracticalLab: true,
-        labGoal: 'Thêm công tắc gạt SPST vào chuỗi dẫn nguồn để bật/tắt bóng LED.',
-        labLessonId: 'lesson-2-switch-led',
-      },
-    ],
-    createLabProject: (labId) => {
-      const doc = createDefaultProjectDocument('Thực hành: Khóa học Nhập môn 3D');
-      doc.components = [
-        {
-          instanceId: 'pwr-1',
-          definitionId: 'dc-source',
-          name: 'Nguồn 5V',
-          position: { x: -45, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { voltage: 5.0 },
-        },
-        {
-          instanceId: 'res-1',
-          definitionId: 'resistor',
-          name: 'R1 (220Ω)',
-          position: { x: -5, y: 0, z: -15 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { resistance: 220 },
-        },
-        {
-          instanceId: 'led-1',
-          definitionId: 'led',
-          name: 'LED Đỏ',
-          position: { x: 35, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { color: 'red' },
-        },
-      ];
-      return doc;
+    {
+      instanceId: 'comp-led-1',
+      definitionId: 'led',
+      name: 'Đèn LED Đỏ',
+      position: { x: 18, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      parameters: { color: 'red', forwardVoltage: 2.0 },
     },
+  ],
+  connections: [
+    {
+      id: 'wire-1-vcc-r1',
+      fromComponentId: 'comp-dc-1',
+      fromPinId: 'vcc',
+      toComponentId: 'comp-res-1',
+      toPinId: 'pin1',
+      wireColor: '#ef4444',
+      wireStyle: 'curved',
+    },
+    {
+      id: 'wire-2-r1-anode',
+      fromComponentId: 'comp-res-1',
+      fromPinId: 'pin2',
+      toComponentId: 'comp-led-1',
+      toPinId: 'anode',
+      wireColor: '#f59e0b',
+      wireStyle: 'curved',
+    },
+    {
+      id: 'wire-3-cathode-gnd',
+      fromComponentId: 'comp-led-1',
+      fromPinId: 'cathode',
+      toComponentId: 'comp-dc-1',
+      toPinId: 'gnd',
+      wireColor: '#3b82f6',
+      wireStyle: 'curved',
+    },
+  ],
+};
+
+// Dự án thực hành chuẩn 2 của Nhà sáng tạo: Mạch Công tắc Điều khiển Đèn LED
+export const PRACTICE_PROJECT_2_SWITCH_LED: ProjectDocument = {
+  schemaVersion: CURRENT_SCHEMA_VERSION,
+  projectId: 'proj-course-basic-switch-lab2',
+  name: 'Mạch Công Tắc Điều Khiển Đóng Ngắt Đèn LED 3D',
+  description:
+    'Mạch điều khiển đóng/ngắt dòng điện trực tiếp bằng Công tắc cơ khí SPST kết hợp Điện trở bảo vệ 220Ω và Đèn LED Xanh lục.',
+  revision: 1,
+  units: 'mm',
+  createdAt: '2026-10-18T00:00:00.000Z',
+  updatedAt: '2026-10-18T00:00:00.000Z',
+  wireRoutes: [],
+  board: {
+    width: 70,
+    depth: 50,
+    thickness: 1.6,
+    solderMaskColor: '#0f5132',
+    copperLayerCount: 2,
+    gridSpacing: 2.54,
+    shape: 'rectangle',
   },
-  {
-    id: 'course-switch-relays',
-    title: 'Mạch Đóng Cắt Tự Động: Công Tắc, Relay & Bảo Vệ Mạch',
-    slug: 'mach-dong-cat-cong-tac-relay',
-    tagline: 'Làm chủ các mạch điều khiển cách ly, rơle đóng cắt công suất và chuyển mạch đa kênh.',
-    description:
-      'Tìm hiểu các phương pháp đóng cắt mạch điện an toàn. Phân biệt công tắc cơ khí đơn cực, công tắc hai chiều cầu thang, và relay điện từ đóng ngắt dòng lớn được cách ly quang và diode dập xung ngược.',
-    author: {
-      id: 'author-tran-hoang-nam',
-      name: 'ThS. Trần Hoàng Nam',
-      role: 'Chuyên gia Tự động hóa & Kỹ thuật điện tử',
+  components: [
+    {
+      instanceId: 'comp-dc-2',
+      definitionId: 'dc-source',
+      name: 'Nguồn DC 5V',
+      position: { x: -22, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      parameters: { voltage: 5.0 },
     },
-    instructor: {
-      name: 'ThS. Trần Hoàng Nam',
-      role: 'Chuyên gia Tự động hóa & Kỹ thuật điện tử',
+    {
+      instanceId: 'comp-sw-2',
+      definitionId: 'switch',
+      name: 'Công tắc SW1',
+      position: { x: -7, y: 0, z: -10 },
+      rotation: { x: 0, y: 0, z: 0 },
+      parameters: {},
     },
-    price: 0,
-    currency: 'VND',
-    isFree: true,
-    level: 'Cơ bản',
-    category: 'analog',
-    duration: '4.0 giờ',
-    lessonCount: 5,
-    rating: 4.85,
-    reviewsCount: 890,
-    studentsCount: 2200,
-    thumbnailGradient: 'from-amber-600 via-orange-600 to-rose-700',
-    badge: 'Miễn phí 100%',
-    highlights: [
-      'Nguyên lý tiếp điểm NO (Normally Open) và NC (Normally Closed)',
-      'Thiết kế mạch đèn cầu thang 2 công tắc gạt đảo chiều',
-      'Ứng dụng Relay đóng cắt tải công suất cao cách ly an toàn',
-      'Diode Flyback chống xung điện áp cảm ứng cuộn hút',
-    ],
-    syllabus: [
-      {
-        id: 'syl-2-1',
-        title: 'Bài 1: Tổng quan cơ cấu tiếp điểm cơ khí và hồ quang',
-        duration: '25 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-2-2',
-        title: 'Bài 2: Thực hành 3D - Mạch công tắc đảo chiều kép',
-        duration: '45 phút',
-        isPracticalLab: true,
-        labGoal: 'Lắp ráp hệ thống 2 công tắc điều khiển 1 đèn LED từ 2 vị trí độc lập.',
-      },
-      {
-        id: 'syl-2-3',
-        title: 'Bài 3: Cấu tạo & Cuộn hút điện từ của Relay',
-        duration: '30 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-2-4',
-        title: 'Bài 4: Thực hành 3D - Mạch rơle tự giữ (Latching Circuit)',
-        duration: '50 phút',
-        isPracticalLab: true,
-        labGoal: 'Thiết kế mạch đóng ngắt nút nhấn Start/Stop với rơle tự duy trì trạng thái.',
-      },
-    ],
-    createLabProject: () => {
-      const doc = createDefaultProjectDocument('Thực hành: Mạch chuyển mạch công tắc');
-      doc.components = [
-        {
-          instanceId: 'pwr-1',
-          definitionId: 'dc-source',
-          name: 'Nguồn 9V',
-          position: { x: -50, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { voltage: 9.0 },
-        },
-        {
-          instanceId: 'sw-1',
-          definitionId: 'switch',
-          name: 'Công tắc SW1',
-          position: { x: -15, y: 0, z: -15 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { type: 'slide' },
-        },
-        {
-          instanceId: 'res-1',
-          definitionId: 'resistor',
-          name: 'R 470Ω',
-          position: { x: 20, y: 0, z: -15 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { resistance: 470 },
-        },
-        {
-          instanceId: 'led-1',
-          definitionId: 'led',
-          name: 'LED Xanh',
-          position: { x: 45, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { color: 'green' },
-        },
-      ];
-      return doc;
+    {
+      instanceId: 'comp-res-2',
+      definitionId: 'resistor',
+      name: 'Điện trở R1 220Ω',
+      position: { x: 8, y: 0, z: -10 },
+      rotation: { x: 0, y: 0, z: 0 },
+      parameters: { resistance: 220 },
     },
+    {
+      instanceId: 'comp-led-2',
+      definitionId: 'led',
+      name: 'Đèn LED Xanh lục',
+      position: { x: 22, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      parameters: { color: 'green', forwardVoltage: 2.1 },
+    },
+  ],
+  connections: [
+    {
+      id: 'wire-sw-1',
+      fromComponentId: 'comp-dc-2',
+      fromPinId: 'vcc',
+      toComponentId: 'comp-sw-2',
+      toPinId: 'pin1',
+      wireColor: '#ef4444',
+      wireStyle: 'curved',
+    },
+    {
+      id: 'wire-sw-2',
+      fromComponentId: 'comp-sw-2',
+      fromPinId: 'pin2',
+      toComponentId: 'comp-res-2',
+      toPinId: 'pin1',
+      wireColor: '#f59e0b',
+      wireStyle: 'curved',
+    },
+    {
+      id: 'wire-sw-3',
+      fromComponentId: 'comp-res-2',
+      fromPinId: 'pin2',
+      toComponentId: 'comp-led-2',
+      toPinId: 'anode',
+      wireColor: '#10b981',
+      wireStyle: 'curved',
+    },
+    {
+      id: 'wire-sw-4',
+      fromComponentId: 'comp-led-2',
+      fromPinId: 'cathode',
+      toComponentId: 'comp-dc-2',
+      toPinId: 'gnd',
+      wireColor: '#3b82f6',
+      wireStyle: 'curved',
+    },
+  ],
+};
+
+const lab1Summary =
+  'Thực hành từ bàn làm việc 3D trống: Thêm Nguồn DC 5V, Điện trở 220Ω và Đèn LED Đỏ; thực hiện nối dây khép kín và chạy mô phỏng phát sáng an toàn.';
+const lab1Decomposition = buildDeterministicPracticeStages(
+  PRACTICE_PROJECT_1_BASIC_LED,
+  'Thực hành Lab 1: Lắp ráp & Mô phỏng Mạch Đèn LED Cơ bản',
+  lab1Summary
+);
+
+const lab2Summary =
+  'Thực hành lắp ráp mạch điều khiển có Công tắc đóng/ngắt (Switch): Bố trí 4 thiết bị lên bo mạch 3D, đi 4 đường dây dẫn chuẩn xác và chạy mô phỏng bật/tắt đèn LED trực tiếp.';
+const lab2Decomposition = buildDeterministicPracticeStages(
+  PRACTICE_PROJECT_2_SWITCH_LED,
+  'Thực hành Lab 2: Mạch Công tắc Điều khiển Đèn LED 3D',
+  lab2Summary
+);
+
+export const FUNDAMENTAL_ELECTRONICS_COURSE: Course = {
+  id: 'course-hoc-tap-mach-dien-tu-can-ban',
+  title: 'Học tập mạch điện tử căn bản',
+  slug: 'hoc-tap-mach-dien-tu-can-ban',
+  tagline:
+    'Lộ trình toàn diện từ Lý thuyết Slide trực quan có Trợ giảng AI đến Thực hành lắp ráp mạch 3D theo 3 giai đoạn chuẩn kỹ thuật.',
+  description:
+    'Khóa học nền tảng dành cho người mới bắt đầu làm quen với kỹ thuật điện tử trên không gian 3D. Học viên được trang bị kiến thức cốt lõi qua hệ thống Slide bài giảng lý thuyết tương tác cùng Trợ giảng AI riêng biệt, sau đó trực tiếp bước vào Phòng Thực hành Lab 3D để tự tay đặt linh kiện, nối dây và chạy mô phỏng kiểm nghiệm.',
+  author: {
+    id: 'creator-1',
+    name: 'Huỳnh Phong',
+    role: 'Giảng viên & Nhà sáng tạo CircuitCraft 3D',
+    bio: 'Kỹ sư hệ thống nhúng & thiết kế mạch điện tử 3D tương tác.',
   },
-  {
-    id: 'course-digital-logic',
-    title: 'Thiết Kế Mạch Logic Số & Cổng Boolean Tương Tác 3D',
-    slug: 'mach-logic-so-cong-boolean-3d',
-    tagline: 'Xây dựng tư duy logic phần cứng với các cổng AND, OR, NOT, XOR và mạch tổ hợp.',
-    description:
-      'Khóa học cung cấp nền tảng toán học logic Boolean và cách hiện thực hóa các bảng chân trị (Truth Table) thành các khối mạch thực tế. Bạn sẽ học cách thiết kế bộ cộng nhị phân bán phần, bộ chọn kênh Multiplexer và khóa mã số bí mật.',
-    author: {
-      id: 'author-le-dang-khoa',
-      name: 'TS. Lê Đăng Khoa',
-      role: 'Trưởng bộ môn Kỹ thuật Máy tính & Vi mạch số',
-    },
-    instructor: {
-      name: 'TS. Lê Đăng Khoa',
-      role: 'Trưởng bộ môn Kỹ thuật Máy tính & Vi mạch số',
-    },
-    price: 199000,
-    currency: 'VND',
-    originalPrice: 350000,
-    isFree: false,
-    level: 'Trung cấp',
-    category: 'digital',
-    duration: '5.5 giờ',
-    lessonCount: 6,
-    rating: 4.95,
-    reviewsCount: 640,
-    studentsCount: 1450,
-    thumbnailGradient: 'from-blue-600 via-indigo-600 to-violet-800',
-    badge: 'Bán chạy nhất',
-    highlights: [
-      'Nguyên lý hoạt động các cổng cơ bản AND, OR, NOT, NAND, NOR, XOR',
-      'Chuyển đổi bảng chân trị thành sơ đồ nguyên lý mạch điện',
-      'Thực hành 3D thiết kế bộ cộng bán phần 2 bit (Half Adder)',
-      'Ứng dụng trong mạch mật mã mã pin bảo mật 3 cổng logic',
-    ],
-    syllabus: [
-      {
-        id: 'syl-3-1',
-        title: 'Bài 1: Đại số logic Boolean & Bảng trạng thái',
-        duration: '30 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-3-2',
-        title: 'Bài 2: Thực hành 3D - Cổng AND & OR dùng công tắc nối tiếp / song song',
-        duration: '45 phút',
-        isPracticalLab: true,
-        labGoal: 'Ghép 2 công tắc để minh họa logic AND (cùng đóng) và OR (1 trong 2 đóng).',
-      },
-      {
-        id: 'syl-3-3',
-        title: 'Bài 3: Cổng NAND vạn năng & Luật De Morgan',
-        duration: '35 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-3-4',
-        title: 'Bài 4: Thực hành 3D - Mạch bảo mật mã khóa số 2 tầng',
-        duration: '60 phút',
-        isPracticalLab: true,
-        labGoal: 'Xây dựng mạch khóa điện tử chỉ kích hoạt khi đúng tổ hợp các công tắc đầu vào.',
-      },
-    ],
-    createLabProject: () => {
-      const doc = createDefaultProjectDocument('Thực hành: Mạch Logic AND/OR');
-      doc.components = [
-        {
-          instanceId: 'pwr-1',
-          definitionId: 'dc-source',
-          name: 'Nguồn 5V',
-          position: { x: -60, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { voltage: 5.0 },
-        },
-        {
-          instanceId: 'sw-1',
-          definitionId: 'switch',
-          name: 'Công tắc Input A',
-          position: { x: -30, y: 0, z: -20 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { type: 'slide' },
-        },
-        {
-          instanceId: 'sw-2',
-          definitionId: 'switch',
-          name: 'Công tắc Input B',
-          position: { x: 0, y: 0, z: -20 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { type: 'slide' },
-        },
-        {
-          instanceId: 'res-1',
-          definitionId: 'resistor',
-          name: 'R 330Ω',
-          position: { x: 30, y: 0, z: -20 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { resistance: 330 },
-        },
-        {
-          instanceId: 'led-1',
-          definitionId: 'led',
-          name: 'LED Ngõ Ra',
-          position: { x: 55, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { color: 'blue' },
-        },
-      ];
-      return doc;
-    },
+  instructor: {
+    name: 'Huỳnh Phong',
+    role: 'Giảng viên & Nhà sáng tạo CircuitCraft 3D',
   },
-  {
-    id: 'course-timer-555',
-    title: 'Mastering IC Định Thời 555 & Dao Động Xung Đồng Hồ',
-    slug: 'mastering-ic-timer-555-mach-dao-dong',
-    tagline: 'Khám phá trái tim tạo nhịp của mọi mạch điện tử: IC 555 chế độ Đa hài và Đơn ổn.',
-    description:
-      'IC 555 là linh kiện kinh điển được bán ra hàng tỷ chiếc. Khóa học hướng dẫn bạn từ nguyên lý so sánh điện áp bên trong (Voltage Comparators) đến việc ghép tụ điện nạp/xả để tạo xung vuông điều khiển đèn nhấp nháy, còi báo cảnh sát và điều chế độ rộng xung PWM.',
-    author: {
-      id: 'author-vu-minh-quan',
-      name: 'Kỹ Sư Vũ Minh Quân',
-      role: 'Chuyên gia Thiết kế Bo mạch Nhúng IoT',
+  price: 0,
+  currency: 'VND',
+  isFree: true,
+  level: 'Cơ bản',
+  category: 'stem',
+  duration: '4 bài học (2 Lý thuyết • 2 Thực hành)',
+  lessonCount: 4,
+  rating: 5.0,
+  reviewsCount: 128,
+  studentsCount: 450,
+  thumbnailGradient: 'from-cyan-600 via-sky-600 to-indigo-700',
+  badge: 'Khóa học Nền tảng',
+  highlights: [
+    'Lý thuyết trực quan qua Slide bài giảng tích hợp Trợ giảng AI theo dõi từng trang slide',
+    'Hiểu rõ bản chất Nguồn DC, Định luật Ohm, Điện trở hạn dòng và phân cực Đèn LED',
+    'Thực hành lắp ráp mạch từ bàn làm việc 3D trống qua 3 giai đoạn: Thêm thiết bị → Nối dây → Chạy mô phỏng',
+    'Hệ thống DRC tự động kiểm tra lỗi đoản mạch và đánh giá tiến độ thực hành theo thời gian thực',
+  ],
+  syllabus: [
+    // PHẦN 1: LÝ THUYẾT (2 bài giảng có Slide PPTX chi tiết)
+    {
+      id: 'syl-theory-1',
+      title: 'Bài 1 (Lý thuyết): Nguyên lý dòng điện DC, Định luật Ohm & Bảo vệ Đèn LED',
+      duration: '30 phút',
+      summary:
+        'Nắm vững bản chất dòng điện một chiều (DC), định luật Ohm (I = U / R), cách tính điện trở hạn dòng và phân biệt chân Anode (+), Cathode (-) của đèn LED.',
+      shortDescription:
+        'Nắm vững bản chất dòng điện một chiều (DC), định luật Ohm (I = U / R), cách tính điện trở hạn dòng và phân biệt chân Anode (+), Cathode (-) của đèn LED.',
+      sectionType: 'theory',
+      isPracticalLab: false,
+      pptxFileName: 'Bai_1_Nguyen_Ly_Mach_Dien_DC_Ohm_LED.pptx',
+      slides: [
+        {
+          id: 't1-slide-1',
+          slideNumber: 1,
+          title: '1. Tổng quan về Mạch Điện Tử Căn Bản & Mạch Kín',
+          bullets: [
+            'Mạch điện tử là một vòng khép kín cho phép các hạt điện tích dịch chuyển có hướng từ cực dương (VCC) qua tải tiêu thụ và trở về cực âm (GND).',
+            'Ba thành phần cốt lõi của một mạch điện cơ bản: Nguồn cung cấp năng lượng (DC Source), Linh kiện bảo vệ/điều khiển (Điện trở, Công tắc) và Tải tiêu thụ (Đèn LED, Còi chip).',
+            'Điều kiện tiên quyết để mạch hoạt động: Mạch phải KHÉP KÍN (Closed Loop) và không bị nối tắt trực tiếp từ VCC sang GND (Đoản mạch / Short Circuit).',
+          ],
+          contentText:
+            '1. Tổng quan về Mạch Điện Tử Căn Bản & Mạch Kín\n- Mạch điện tử là một vòng khép kín cho phép dòng điện chạy từ cực dương (VCC) qua tải tiêu thụ về cực âm (GND).\n- Ba thành phần cốt lõi: Nguồn DC, Linh kiện hạn dòng/điều khiển (Điện trở, Công tắc) và Tải (Đèn LED).\n- Điều kiện mạch hoạt động: Mạch khép kín và không bị đoản mạch.',
+          notes:
+            'Hãy quan sát sơ đồ vòng lặp khép kín. Nếu bất kỳ một nhánh dây nào bị hở, dòng điện bằng 0 và đèn LED sẽ không thể sáng.',
+        },
+        {
+          id: 't1-slide-2',
+          slideNumber: 2,
+          title: '2. Nguồn Điện Một Chiều (DC Source) — VCC (+) và GND (-)',
+          bullets: [
+            'Nguồn điện một chiều (DC) duy trì hiệu điện thế ổn định giữa hai cực: Cực dương ký hiệu là VCC (+) và cực âm/mass ký hiệu là GND (-).',
+            'Trong các mạch điện tử thực hành STEM và vi điều khiển chuẩn, mức điện áp thông dụng nhất là 5.0V (hoặc 3.3V, 9.0V).',
+            'Quy ước màu dây tiêu chuẩn kỹ thuật: Dây nối từ cực dương VCC (+) luôn ưu tiên màu ĐỎ; dây nối về cực âm GND (-) ưu tiên màu XANH DƯƠNG hoặc ĐEN.',
+          ],
+          contentText:
+            '2. Nguồn Điện Một Chiều (DC Source) — VCC (+) và GND (-)\n- Nguồn DC duy trì hiệu điện thế ổn định giữa cực dương VCC (+) và cực âm GND (-).\n- Mức điện áp thực hành tiêu chuẩn: 5.0V DC.\n- Quy ước màu dây: Đỏ cho VCC (+), Xanh dương/Đen cho GND (-).',
+          notes:
+            'Trong không gian 3D của CircuitCraft, khối Nguồn DC có 2 chân cắm rõ ràng là VCC (+) và GND (-).',
+        },
+        {
+          id: 't1-slide-3',
+          slideNumber: 3,
+          title: '3. Điện Trở (Resistor) & Định Luật Ohm (I = U / R)',
+          bullets: [
+            'Điện trở (Resistor) là linh kiện thụ động có tác dụng cản trở và giới hạn cường độ dòng điện chạy trong nhánh mạch, đơn vị đo là Ohm (Ω).',
+            'Định luật Ohm: Cường độ dòng điện I (Ampe) tỷ lệ thuận với hiệu điện thế U (Volt) và tỷ lệ nghịch với điện trở R (Ohm): I = U / R.',
+            'Điện trở không phân biệt chiều âm dương (linh kiện không phân cực): Bạn có thể nối dây vào Chân 1 (pin1) hay Chân 2 (pin2) theo chiều nào cũng hoạt động đúng.',
+          ],
+          contentText:
+            '3. Điện Trở (Resistor) & Định Luật Ohm (I = U / R)\n- Điện trở giới hạn cường độ dòng điện trong mạch, đơn vị là Ohm (Ω).\n- Công thức định luật Ohm: I = U / R.\n- Điện trở là linh kiện không phân cực (2 chân pin1 và pin2 tương đương nhau).',
+          notes:
+            'Nhớ công thức I = U / R. Khi tăng giá trị R thì dòng điện I giảm xuống, giúp bảo vệ các linh kiện bán dẫn nhạy cảm như đèn LED.',
+        },
+        {
+          id: 't1-slide-4',
+          slideNumber: 4,
+          title: '4. Đi-ốt Phát Quang (Đèn LED) & Quy tắc Phân Cực Thuận',
+          bullets: [
+            'LED (Light Emitting Diode) là đi-ốt bán dẫn phát sáng khi có dòng điện chạy qua theo chiều phân cực thuận.',
+            'Khác với điện trở, đèn LED BẮT BUỘC PHẢI ĐẤU ĐÚNG CỰC: Chân dương gọi là Anode (+) (chân dài hơn), chân âm gọi là Cathode (-) (chân ngắn hơn, bên cạnh vát phẳng).',
+            'Mỗi màu LED có điện áp rơi thuận (Vf) đặc trưng: LED Đỏ khoảng 2.0V, LED Xanh lục khoảng 2.1V - 2.2V. Dòng điện làm việc an toàn là 10mA – 20mA.',
+          ],
+          contentText:
+            '4. Đi-ốt Phát Quang (Đèn LED) & Quy tắc Phân Cực Thuận\n- LED chỉ phát sáng khi dòng điện đi vào chân Anode (+) và đi ra ở chân Cathode (-).\n- Nếu đấu ngược cực (VCC vào Cathode), LED bị phân cực ngược và sẽ KHÔNG SÁNG.\n- Dòng định mức an toàn của LED 5mm thông thường là 10mA - 20mA.',
+          notes:
+            'Nếu người học hỏi tại sao LED không sáng dù mạch kín, nguyên nhân phổ biến nhất là đấu ngược chân Anode và Cathode.',
+        },
+        {
+          id: 't1-slide-5',
+          slideNumber: 5,
+          title: '5. Tính Toán Điện Trở Hạn Dòng Bảo Vệ LED Với Nguồn 5V',
+          bullets: [
+            'Tại sao không được nối trực tiếp LED vào nguồn 5V? Vì điện áp 5V lớn hơn nhiều so với ngưỡng 2.0V của LED, dòng điện tăng vọt gây cháy hỏng LED ngay lập tức.',
+            'Công thức tính điện trở hạn dòng nối tiếp: R = (U_nguồn - V_f) / I_led.',
+            'Với U_nguồn = 5V, V_f (LED Đỏ) = 2V và dòng mong muốn I = 13.6mA (0.0136A): R = (5 - 2) / 0.0136 ≈ 220 Ω. Do đó, điện trở 220Ω là giá trị chuẩn vàng khi dùng nguồn 5V.',
+          ],
+          contentText:
+            '5. Tính Toán Điện Trở Hạn Dòng Bảo Vệ LED Với Nguồn 5V\n- Nối trực tiếp LED vào nguồn 5V sẽ gây quá dòng làm hỏng LED.\n- Áp dụng công thức R = (U_nguồn - V_f) / I_led = (5V - 2V) / 0.0136A ≈ 220Ω.\n- Giá trị điện trở tiêu chuẩn trong thực hành 5V là 220Ω hoặc 330Ω.',
+          notes:
+            'Đây là câu hỏi kinh điển trong thiết kế mạch cơ bản: Tại sao luôn cần điện trở 220Ω đi kèm với LED trên nguồn 5V.',
+        },
+      ],
     },
-    instructor: {
-      name: 'Kỹ Sư Vũ Minh Quân',
-      role: 'Chuyên gia Thiết kế Bo mạch Nhúng IoT',
+    {
+      id: 'syl-theory-2',
+      title: 'Bài 2 (Lý thuyết): Mạch Đóng Cắt Với Công Tắc (Switch) & Kiểm Tra An Toàn Mạch (DRC)',
+      duration: '25 phút',
+      summary:
+        'Tìm hiểu cơ chế đóng/ngắt dòng điện bằng công tắc cơ khí SPST, phân biệt trạng thái Hở mạch / Kín mạch và quy trình kiểm tra lỗi thiết kế DRC.',
+      shortDescription:
+        'Tìm hiểu cơ chế đóng/ngắt dòng điện bằng công tắc cơ khí SPST, phân biệt trạng thái Hở mạch / Kín mạch và quy trình kiểm tra lỗi thiết kế DRC.',
+      sectionType: 'theory',
+      isPracticalLab: false,
+      pptxFileName: 'Bai_2_Cong_Tac_Dieu_Khien_Va_Kiem_Tra_DRC.pptx',
+      slides: [
+        {
+          id: 't2-slide-1',
+          slideNumber: 1,
+          title: '1. Nguyên Lý Hoạt Động Của Công Tắc Cơ Khí (SPST Switch)',
+          bullets: [
+            'Công tắc đơn (SPST - Single Pole Single Throw) gồm 2 chân tiếp điểm: Tiếp điểm 1 (pin1) và Tiếp điểm 2 (pin2).',
+            'Khi công tắc ở trạng thái MỞ (OFF / Open): Hai tiếp điểm tách rời nhau, tạo ra khoảng hở cách điện khiến dòng điện không thể đi qua (Hở mạch).',
+            'Khi công tắc ở trạng thái ĐÓNG (ON / Closed): Thanh kim loại nối liền pin1 và pin2, cho phép dòng điện chạy qua toàn mạch để thắp sáng tải LED.',
+          ],
+          contentText:
+            '1. Nguyên Lý Hoạt Động Của Công Tắc Cơ Khí (SPST Switch)\n- Công tắc SPST có 2 chân tiếp điểm là pin1 và pin2.\n- Trạng thái OFF: Hở mạch, dòng điện bằng 0.\n- Trạng thái ON: Kín mạch, dòng điện dẫn qua tiếp điểm cấp cho tải.',
+          notes:
+            'Trong chế độ Mô phỏng 3D, bạn có thể nhấp chuột trực tiếp vào thân Công tắc để bật/tắt và quan sát đèn LED phản hồi tức thì.',
+        },
+        {
+          id: 't2-slide-2',
+          slideNumber: 2,
+          title: '2. Sơ Đồ Đấu Nối Chuẩn Mạch Công Tắc Điều Khiển LED',
+          bullets: [
+            'Trình tự mắc nối tiếp chuẩn an toàn: Cực dương Nguồn DC (VCC) → Chân 1 Công tắc (pin1) → Chân 2 Công tắc (pin2) → Chân 1 Điện trở (pin1).',
+            'Tiếp tục từ Chân 2 Điện trở (pin2) → Chân dương Đèn LED (anode) → Chân âm Đèn LED (cathode) → Quay về cực âm Nguồn DC (GND).',
+            'Việc đặt công tắc ở phía cực dương (High-side switching) ngay sau nguồn VCC giúp ngắt hoàn toàn điện áp cấp vào mạch khi công tắc tắt.',
+          ],
+          contentText:
+            '2. Sơ Đồ Đấu Nối Chuẩn Mạch Công Tắc Điều Khiển LED\n- Tuyến dây 1: Nguồn DC (vcc) -> Công tắc (pin1).\n- Tuyến dây 2: Công tắc (pin2) -> Điện trở 220Ω (pin1).\n- Tuyến dây 3: Điện trở 220Ω (pin2) -> Đèn LED (anode).\n- Tuyến dây 4: Đèn LED (cathode) -> Nguồn DC (gnd).',
+          notes:
+            'Ghi nhớ 4 tuyến dây nối tiếp này để áp dụng ngay trong Bài Thực hành Lab 2.',
+        },
+        {
+          id: 't2-slide-3',
+          slideNumber: 3,
+          title: '3. Kiểm Tra Quy Tắc Thiết Kế Điện Tử (DRC Validation)',
+          bullets: [
+            'DRC (Design Rule Check) là công cụ tự động phân tích sơ đồ mạch trước khi cấp nguồn mô phỏng nhằm phát hiện sớm các nguy cơ hư hỏng.',
+            'Ba lỗi DRC nghiêm trọng cần tránh: (1) Nối tắt trực tiếp VCC vào GND gây ĐOẢN MẠCH; (2) Thiếu điện trở hạn dòng cho LED; (3) Để chân linh kiện lơ lửng chưa kết nối.',
+            'Trước khi chuyển sang Giai đoạn 3 (Chạy mô phỏng), hãy luôn kiểm tra thanh trạng thái dưới cùng đảm bảo mạch đạt chuẩn DRC xanh lá.',
+          ],
+          contentText:
+            '3. Kiểm Tra Quy Tắc Thiết Kế Điện Tử (DRC Validation)\n- DRC giúp phát hiện lỗi đoản mạch, thiếu điện trở bảo vệ hoặc chân linh kiện bị hở.\n- Luôn đảm bảo DRC báo hợp lệ trước khi nhấn Chạy Mô phỏng.',
+          notes:
+            'Sau khi hoàn thành slide cuối cùng này, bài học Lý thuyết sẽ tự động được đánh dấu Hoàn thành và bạn có thể chuyển sang Thực hành Lab.',
+        },
+      ],
     },
-    price: 299000,
-    currency: 'VND',
-    originalPrice: 480000,
-    isFree: false,
-    level: 'Trung cấp',
-    category: 'analog',
-    duration: '6.0 giờ',
-    lessonCount: 7,
-    rating: 4.98,
-    reviewsCount: 512,
-    studentsCount: 1180,
-    thumbnailGradient: 'from-purple-600 via-pink-600 to-rose-600',
-    badge: 'Khuyên dùng',
-    highlights: [
-      'Cấu trúc bên trong IC 555: 3 điện trở 5kΩ, 2 bộ so sánh và Flip-Flop SR',
-      'Công thức tính chu kỳ T, tần số f và Duty Cycle của chế độ Astable',
-      'Thực hành 3D: Mạch đèn LED cảnh báo giao thông nhấp nháy',
-      'Ứng dụng tạo xung PWM điều chỉnh độ sáng đèn mượt mà',
-    ],
-    syllabus: [
-      {
-        id: 'syl-4-1',
-        title: 'Bài 1: Sơ đồ chân và cấu trúc nội tại của IC 555',
-        duration: '35 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-4-2',
-        title: 'Bài 2: Tụ điện RC và đồ thị nạp xả hàm mũ',
-        duration: '30 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-4-3',
-        title: 'Bài 3: Thực hành 3D - Lắp ráp mạch đèn chớp tắt nhịp điệu',
-        duration: '60 phút',
-        isPracticalLab: true,
-        labGoal: 'Kết nối mạch dao động đa hài với IC 555 để quan sát LED nháy liên tục.',
-      },
-      {
-        id: 'syl-4-4',
-        title: 'Bài 4: Thực hành 3D - Điều chỉnh tần số bằng biến trở',
-        duration: '45 phút',
-        isPracticalLab: true,
-        labGoal: 'Thay đổi giá trị biến trở để tăng giảm tốc độ chớp từ 1Hz đến 20Hz.',
-      },
-    ],
-    createLabProject: () => {
-      const doc = createDefaultProjectDocument('Thực hành: Mạch Tạo Dao Động 555');
-      doc.components = [
-        {
-          instanceId: 'pwr-1',
-          definitionId: 'dc-source',
-          name: 'Nguồn 9V',
-          position: { x: -60, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { voltage: 9.0 },
-        },
-        {
-          instanceId: 'ic-1',
-          definitionId: 'ic-dip8',
-          name: 'NE555 Timer',
-          position: { x: 0, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: {},
-        },
-        {
-          instanceId: 'res-1',
-          definitionId: 'resistor',
-          name: 'R1 10kΩ',
-          position: { x: -30, y: 0, z: -25 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { resistance: 10000 },
-        },
-        {
-          instanceId: 'led-1',
-          definitionId: 'led',
-          name: 'LED Xung Ra',
-          position: { x: 50, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { color: 'red' },
-        },
-      ];
-      return doc;
+
+    // PHẦN 2: THỰC HÀNH LAB 3D (2 bài thực hành có Dự án chuẩn & Hướng dẫn 3 giai đoạn)
+    {
+      id: 'syl-practice-1',
+      title: 'Bài 3 (Thực hành Lab 1): Lắp ráp & Mô phỏng Mạch Đèn LED Cơ bản với Điện trở 220Ω',
+      duration: '40 phút',
+      summary: lab1Summary,
+      shortDescription: lab1Summary,
+      sectionType: 'practice',
+      isPracticalLab: true,
+      isLab: true,
+      practiceProjectId: PRACTICE_PROJECT_1_BASIC_LED.projectId,
+      practiceProjectName: PRACTICE_PROJECT_1_BASIC_LED.name,
+      practiceProjectSnapshot: PRACTICE_PROJECT_1_BASIC_LED,
+      practiceProject: PRACTICE_PROJECT_1_BASIC_LED,
+      practiceStages: lab1Decomposition.stages,
+      practiceGuideSummary: lab1Decomposition.summary,
+      practiceSummary: lab1Decomposition.summary,
+      labGoal: lab1Summary,
     },
+    {
+      id: 'syl-practice-2',
+      title: 'Bài 4 (Thực hành Lab 2): Mạch Công tắc Điều khiển Đèn LED & Kiểm nghiệm Đóng/Ngắt 3D',
+      duration: '45 phút',
+      summary: lab2Summary,
+      shortDescription: lab2Summary,
+      sectionType: 'practice',
+      isPracticalLab: true,
+      isLab: true,
+      practiceProjectId: PRACTICE_PROJECT_2_SWITCH_LED.projectId,
+      practiceProjectName: PRACTICE_PROJECT_2_SWITCH_LED.name,
+      practiceProjectSnapshot: PRACTICE_PROJECT_2_SWITCH_LED,
+      practiceProject: PRACTICE_PROJECT_2_SWITCH_LED,
+      practiceStages: lab2Decomposition.stages,
+      practiceGuideSummary: lab2Decomposition.summary,
+      practiceSummary: lab2Decomposition.summary,
+      labGoal: lab2Summary,
+    },
+  ],
+  createLabProject: (_labId?: string) => {
+    // Requirement 2.3: Không gian thực hành luôn bắt đầu hoàn toàn trống để học viên tự lắp theo 3 giai đoạn
+    const emptyDoc = createDefaultProjectDocument('Thực hành: Học tập mạch điện tử căn bản');
+    emptyDoc.components = [];
+    emptyDoc.connections = [];
+    return emptyDoc;
   },
-  {
-    id: 'course-pcb-design-gerber',
-    title: 'Thiết Kế Bo Mạch PCB Chuẩn Công Nghiệp & Xuất Gerber',
-    slug: 'thiet-ke-pcb-chuan-cong-nghiep-xuat-gerber',
-    tagline: 'Quy trình hoàn chỉnh từ sơ đồ nguyên lý đến sản xuất bo mạch thật tại nhà máy.',
-    description:
-      'Khóa học nâng cao dành cho kỹ sư và sinh viên muốn làm chủ thiết kế bo mạch in (PCB) đa lớp. Hướng dẫn chi tiết bố trí linh kiện giảm nhiễu EMI, phân tách mặt đất GND analog/digital, chạy quy tắc kiểm tra DRC và xuất bộ tệp Gerber RS-274X tiêu chuẩn quốc tế.',
-    author: {
-      id: 'author-do-gia-huy',
-      name: 'KS. Đỗ Gia Huy',
-      role: 'Trưởng nhóm Thiết kế Phần cứng tại FPT Semiconductor',
-    },
-    instructor: {
-      name: 'KS. Đỗ Gia Huy',
-      role: 'Trưởng nhóm Thiết kế Phần cứng tại FPT Semiconductor',
-    },
-    price: 590000,
-    currency: 'VND',
-    originalPrice: 950000,
-    isFree: false,
-    level: 'Chuyên sâu',
-    category: 'pcb',
-    duration: '8.5 giờ',
-    lessonCount: 9,
-    rating: 4.99,
-    reviewsCount: 420,
-    studentsCount: 890,
-    thumbnailGradient: 'from-emerald-600 via-teal-700 to-slate-900',
-    badge: 'Chuyên gia',
-    highlights: [
-      'Bố trí đường mạch tín hiệu cao tần & đổ đồng Ground Plane',
-      'Thiết lập khoảng cách cách điện Clearance & độ rộng Track Width',
-      'Kiểm định tự động DRC (Design Rule Check) chống ngắn mạch',
-      'Xuất Gerber RS-274X, Drill NC và đặt hàng gia công thực tế',
-    ],
-    syllabus: [
-      {
-        id: 'syl-5-1',
-        title: 'Bài 1: Kiến trúc xếp lớp (Stackup) bo mạch 2 lớp & 4 lớp',
-        duration: '40 phút',
-        isPracticalLab: false,
-      },
-      {
-        id: 'syl-5-2',
-        title: 'Bài 2: Thực hành 3D - Bố trí linh kiện tối ưu diện tích và tản nhiệt',
-        duration: '70 phút',
-        isPracticalLab: true,
-        labGoal: 'Sắp xếp nguồn, IC, tải trên bo mạch 3D và quan sát đường nối netlist.',
-      },
-      {
-        id: 'syl-5-3',
-        title: 'Bài 3: Thực hành 3D - Định tuyến vết đồng (Trace Routing) & Vias xuyên tầng',
-        duration: '90 phút',
-        isPracticalLab: true,
-        labGoal: 'Vẽ các đường mạch dây đồng đảm bảo góc bo 45 độ và không tạo antenna gây nhiễu.',
-      },
-      {
-        id: 'syl-5-4',
-        title: 'Bài 4: Xuất Gerber RS-274X & Kiểm tra tệp chế tạo với CAM Viewer',
-        duration: '50 phút',
-        isPracticalLab: false,
-      },
-    ],
-    createLabProject: () => {
-      const doc = createDefaultProjectDocument('Thực hành: Thiết Kế Bo Mạch PCB');
-      doc.board = {
-        width: 100,
-        depth: 70,
-        thickness: 1.6,
-        copperLayerCount: 2,
-        gridSpacing: 2.54,
-        solderMaskColor: '#0f4c3a',
-      };
-      doc.components = [
-        {
-          instanceId: 'pwr-1',
-          definitionId: 'dc-source',
-          name: 'Khối Nguồn 12V',
-          position: { x: -35, y: 0, z: -20 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { voltage: 12.0 },
-        },
-        {
-          instanceId: 'ic-1',
-          definitionId: 'ic-dip8',
-          name: 'IC Vi Điều Khiển',
-          position: { x: 0, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: {},
-        },
-        {
-          instanceId: 'led-1',
-          definitionId: 'led',
-          name: 'LED Báo Nguồn',
-          position: { x: 35, y: 0, z: 20 },
-          rotation: { x: 0, y: 0, z: 0 },
-          parameters: { color: 'green' },
-        },
-      ];
-      return doc;
-    },
-  },
-];
+};
+
+export const COURSES: Course[] = [FUNDAMENTAL_ELECTRONICS_COURSE];

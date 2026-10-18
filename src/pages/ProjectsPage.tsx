@@ -27,6 +27,7 @@ import {
   X,
   ArrowRight,
   Search,
+  GraduationCap,
 } from 'lucide-react';
 
 export interface ProjectsPageProps {
@@ -74,6 +75,17 @@ const BOARD_PRESETS: BoardPreset[] = [
   },
 ];
 
+export function isPracticeLabProject(p: ProjectDocument): boolean {
+  return (
+    p.projectType === 'practice_lab' ||
+    p.metadata?.projectType === 'practice_lab' ||
+    Boolean(p.metadata?.courseId) ||
+    p.name.startsWith('Thực hành:') ||
+    p.name.toLowerCase().includes('thực hành lab') ||
+    p.name.includes('(Học tập mạch')
+  );
+}
+
 export const ProjectsPage: React.FC<ProjectsPageProps> = ({
   onOpenProject,
   onProjectDeleted,
@@ -85,6 +97,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
   const [projects, setProjects] = useState<ProjectDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [projectFilterType, setProjectFilterType] = useState<'all' | 'personal' | 'lab'>('all');
 
   // New Blank Project State
   const [selectedBoardPreset, setSelectedBoardPreset] = useState<BoardPreset>(BOARD_PRESETS[0]);
@@ -159,6 +172,11 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
         depth: selectedBoardPreset.depth,
         description: blankProjectDesc.trim() || `Bo mạch ${selectedBoardPreset.name} (${selectedBoardPreset.tag})`,
       });
+      doc.projectType = 'personal';
+      doc.metadata = {
+        ...doc.metadata,
+        projectType: 'personal',
+      };
 
       if (currentUser) {
         doc.authorId = currentUser.id;
@@ -187,6 +205,12 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         revision: 1,
+        projectType: 'personal',
+        metadata: {
+          ...template.metadata,
+          projectType: 'personal',
+          isTemplate: false,
+        },
       };
 
       if (currentUser) {
@@ -299,8 +323,14 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
     onOpenProject(restoredDoc);
   };
 
-  // Filter projects by search query
+  const personalProjectsCount = projects.filter((p) => !isPracticeLabProject(p)).length;
+  const labProjectsCount = projects.filter((p) => isPracticeLabProject(p)).length;
+
+  // Filter projects by search query & category filter (All / Personal / Lab)
   const filteredProjects = projects.filter((p) => {
+    if (projectFilterType === 'personal' && isPracticeLabProject(p)) return false;
+    if (projectFilterType === 'lab' && !isPracticeLabProject(p)) return false;
+
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -406,6 +436,56 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
         {/* ============================================================ */}
         {activeTab === 'my-projects' && (
           <div className="space-y-6">
+            {/* Category Filter Bar: Phân biệt rõ Dự án cá nhân thật vs Thực hành Lab */}
+            <div className="flex flex-wrap items-center justify-between gap-3 p-2.5 rounded-2xl bg-white/80 dark:bg-[#071526]/80 border border-[#d7e7f0] dark:border-cyan-900/40 backdrop-blur-sm shadow-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 px-1.5">
+                  {language === 'vi' ? 'Phân loại:' : 'Filter:'}
+                </span>
+
+                <button
+                  onClick={() => setProjectFilterType('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    projectFilterType === 'all'
+                      ? 'bg-slate-800 text-white dark:bg-cyan-600 dark:text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span>{language === 'vi' ? `Tất cả (${projects.length})` : `All (${projects.length})`}</span>
+                </button>
+
+                <button
+                  onClick={() => setProjectFilterType('personal')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    projectFilterType === 'personal'
+                      ? 'bg-cyan-600 text-white shadow-xs'
+                      : 'bg-cyan-50/70 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60 hover:border-cyan-400'
+                  }`}
+                >
+                  <Cpu className="w-3.5 h-3.5 text-cyan-500" />
+                  <span>{language === 'vi' ? `Dự án cá nhân (${personalProjectsCount})` : `Personal Projects (${personalProjectsCount})`}</span>
+                </button>
+
+                <button
+                  onClick={() => setProjectFilterType('lab')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    projectFilterType === 'lab'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 hover:border-amber-400'
+                  }`}
+                >
+                  <GraduationCap className="w-3.5 h-3.5 text-amber-500" />
+                  <span>{language === 'vi' ? `Thực hành Lab (${labProjectsCount})` : `Practice Labs (${labProjectsCount})`}</span>
+                </button>
+              </div>
+
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 px-2 font-mono">
+                {language === 'vi'
+                  ? `Hiển thị ${filteredProjects.length}/${projects.length} dự án`
+                  : `Showing ${filteredProjects.length}/${projects.length}`}
+              </div>
+            </div>
+
             {loading ? (
               <div className="text-center py-20 text-slate-500 text-sm">
                 <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-cyan-400" />
@@ -438,16 +518,21 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                 </div>
               </div>
             ) : filteredProjects.length === 0 ? (
-              /* Search Empty State */
+              /* Search / Filter Empty State */
               <div className="tech-panel p-10 text-center space-y-3">
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  {language === 'vi' ? `Không tìm thấy dự án khớp với từ khóa "${searchQuery}"` : `No projects matching "${searchQuery}"`}
+                  {language === 'vi'
+                    ? `Không tìm thấy dự án nào trong mục này khớp với bộ lọc`
+                    : `No projects found matching the filter`}
                 </p>
                 <button
-                  onClick={() => setSearchQuery('')}
-                  className="text-xs text-cyan-600 dark:text-cyan-400 underline font-medium"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setProjectFilterType('all');
+                  }}
+                  className="text-xs text-cyan-600 dark:text-cyan-400 underline font-medium cursor-pointer"
                 >
-                  {language === 'vi' ? 'Xóa bộ lọc tìm kiếm' : 'Clear search query'}
+                  {language === 'vi' ? 'Đặt lại bộ lọc' : 'Reset filter'}
                 </button>
               </div>
             ) : (
@@ -460,6 +545,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                   const boardD = p.board?.depth || 60;
                   const copperLayers = p.board?.copperLayerCount || 2;
                   const isCurrentOpen = activeProjectId === p.projectId;
+                  const isLab = isPracticeLabProject(p);
 
                   return (
                     <div
@@ -467,29 +553,45 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                       className={`relative rounded-[24px] overflow-hidden flex flex-col justify-between transition-all duration-300 group ${
                         isCurrentOpen
                           ? 'border-2 border-cyan-400 dark:border-cyan-400 shadow-[0_0_28px_rgba(6,182,212,0.3),0_20px_50px_-10px_rgba(0,0,0,0.85),inset_0_1px_2px_rgba(34,211,238,0.35)] bg-gradient-to-b from-[#ffffff] via-[#f7fbfe] to-[#edf6fb] dark:from-[#0a1b2f] dark:via-[#071526] dark:to-[#040e1b]'
-                          : 'tech-card'
+                          : isLab
+                          ? 'tech-card hover:border-amber-400/60'
+                          : 'tech-card hover:border-cyan-400/60'
                       }`}
                     >
                       {/* Top Preview Canvas Header */}
-                      <div className="h-32 bg-slate-100/90 dark:bg-gradient-to-br dark:from-[#050f1d] dark:via-[#081527] dark:to-[#040b15] border-b border-[#d7e7f0] dark:border-cyan-950/70 relative p-4 flex flex-col justify-between overflow-hidden">
+                      <div
+                        className={`h-32 border-b relative p-4 flex flex-col justify-between overflow-hidden ${
+                          isLab
+                            ? 'bg-amber-950/20 dark:bg-gradient-to-br dark:from-[#1b1406] dark:via-[#18120b] dark:to-[#0a0703] border-amber-500/30'
+                            : 'bg-slate-100/90 dark:bg-gradient-to-br dark:from-[#050f1d] dark:via-[#081527] dark:to-[#040b15] border-[#d7e7f0] dark:border-cyan-950/70'
+                        }`}
+                      >
                         {/* Decorative PCB Grid Background */}
                         <div
                           className="absolute inset-0 opacity-20 pointer-events-none"
                           style={{
-                            backgroundImage: `radial-gradient(#06b6d4 1.2px, transparent 1.2px)`,
+                            backgroundImage: `radial-gradient(${isLab ? '#f59e0b' : '#06b6d4'} 1.2px, transparent 1.2px)`,
                             backgroundSize: '16px 16px',
                           }}
                         />
 
                         {/* Top Badges */}
-                        <div className="relative z-10 flex items-center justify-between">
-                          <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-white/90 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200/90 dark:border-cyan-500/40 shadow-xs">
-                            #rev {p.revision}
-                          </span>
+                        <div className="relative z-10 flex items-center justify-between gap-1.5 flex-wrap">
+                          {isLab ? (
+                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 shadow-xs flex items-center gap-1">
+                              <GraduationCap className="w-3 h-3 text-amber-500" />
+                              <span>Thực hành Lab</span>
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 shadow-xs flex items-center gap-1">
+                              <Cpu className="w-3 h-3 text-cyan-500" />
+                              <span>Dự án cá nhân</span>
+                            </span>
+                          )}
 
                           <div className="flex items-center gap-1.5">
                             {isCurrentOpen && (
-                              <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/90 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/40 shadow-xs flex items-center gap-1">
+                              <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/90 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/40 shadow-xs flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                 <span>{language === 'vi' ? 'Đang mở' : 'Active'}</span>
                               </span>
@@ -510,15 +612,21 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
                         {/* Center Icon & Dimensions */}
                         <div className="relative z-10 flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-white dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-500/30 flex items-center justify-center text-cyan-600 dark:text-cyan-400 shadow-md shadow-cyan-500/10 group-hover:scale-105 transition-transform">
-                            <Layers className="w-5 h-5" />
+                          <div
+                            className={`w-10 h-10 rounded-xl border flex items-center justify-center shadow-md transition-transform group-hover:scale-105 ${
+                              isLab
+                                ? 'bg-amber-500/15 border-amber-500/40 text-amber-500 shadow-amber-500/10'
+                                : 'bg-white dark:bg-cyan-950/60 border-cyan-200 dark:border-cyan-500/30 text-cyan-600 dark:text-cyan-400 shadow-cyan-500/10'
+                            }`}
+                          >
+                            {isLab ? <GraduationCap className="w-5 h-5" /> : <Layers className="w-5 h-5" />}
                           </div>
                           <div>
                             <div className="text-xs font-bold text-slate-900 dark:text-white tracking-wide">
                               {language === 'vi' ? 'Bo mạch:' : 'Board:'} {boardW} × {boardD} mm
                             </div>
                             <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                              PCB {copperLayers} {language === 'vi' ? 'lớp đồng • Pitch 2.54mm' : 'copper layers • Pitch 2.54mm'}
+                              {isLab ? 'Phòng Lab mô phỏng 3D' : `PCB ${copperLayers} lớp đồng • Pitch 2.54mm`}
                             </div>
                           </div>
                         </div>
@@ -530,7 +638,11 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                           <div className="flex items-start justify-between gap-2">
                             <h3
                               onClick={() => onOpenProject(p)}
-                              className="font-bold text-slate-900 dark:text-white text-base group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition cursor-pointer truncate"
+                              className={`font-bold text-base transition cursor-pointer truncate ${
+                                isLab
+                                  ? 'text-slate-900 dark:text-white group-hover:text-amber-500'
+                                  : 'text-slate-900 dark:text-white group-hover:text-cyan-600 dark:group-hover:text-cyan-400'
+                              }`}
                               title={p.name}
                             >
                               {p.name}
@@ -548,7 +660,10 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                           </div>
 
                           <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 min-h-[32px] leading-relaxed font-normal">
-                            {p.description || (language === 'vi' ? 'Dự án mạch điện 3D được thiết kế trên CircuitCraft 3D.' : 'CircuitCraft 3D board design project.')}
+                            {p.description ||
+                              (isLab
+                                ? 'Bài thực hành theo giáo trình khóa học.'
+                                : 'Dự án mạch 3D cá nhân tự do.')}
                           </p>
                         </div>
 
@@ -570,13 +685,23 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
                         {/* Footer Action Buttons with 3D button styling */}
                         <div className="pt-3 border-t border-[#e2eef5] dark:border-slate-800/80 flex items-center justify-between gap-2.5">
-                          <button
-                            onClick={() => onOpenProject(p)}
-                            className="tech-btn-3d flex-1 py-2.5 px-4 text-xs font-extrabold flex items-center justify-center gap-2"
-                          >
-                            <FolderOpen className="w-3.5 h-3.5" />
-                            <span>{language === 'vi' ? 'Mở thiết kế 3D' : 'Open 3D Design'}</span>
-                          </button>
+                          {isLab ? (
+                            <button
+                              onClick={() => onOpenProject(p)}
+                              className="tech-btn-3d flex-1 py-2.5 px-4 text-xs font-extrabold flex items-center justify-center gap-2 bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 text-white cursor-pointer"
+                            >
+                              <GraduationCap className="w-3.5 h-3.5" />
+                              <span>{language === 'vi' ? 'Mở thiết kế 3D' : 'Open 3D Design'}</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => onOpenProject(p)}
+                              className="tech-btn-3d flex-1 py-2.5 px-4 text-xs font-extrabold flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                              <FolderOpen className="w-3.5 h-3.5" />
+                              <span>{language === 'vi' ? 'Mở thiết kế 3D' : 'Open 3D Design'}</span>
+                            </button>
+                          )}
 
                           <div className="flex items-center gap-1.5">
                             <button
@@ -605,7 +730,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
                             <button
                               onClick={() => setProjectToDelete(p)}
-                              className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 transition"
+                              className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/50 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 transition cursor-pointer"
                               title={language === 'vi' ? 'Xóa dự án' : 'Delete project'}
                             >
                               <Trash2 className="w-3.5 h-3.5" />

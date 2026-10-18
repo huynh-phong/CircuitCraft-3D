@@ -92,6 +92,10 @@ export class Minibot3D {
     }
   }
 
+  private currentVisorColor = new THREE.Color(0x06b6d4);
+  private targetVisorColor = new THREE.Color(0x06b6d4);
+  private reactionTimer = 0;
+
   public setState(state: MinibotState): void {
     this.state = state;
     let colorHex = 0x06b6d4; // Default cyan
@@ -112,8 +116,13 @@ export class Minibot3D {
         break;
     }
 
-    this.visorMat.color.setHex(colorHex);
-    this.antennaLight.color.setHex(colorHex);
+    this.targetVisorColor.setHex(colorHex);
+  }
+
+  public triggerReaction(): void {
+    if (!this.isReducedMotion) {
+      this.reactionTimer = 0.55; // 550ms playful spin & hop
+    }
   }
 
   public getState(): MinibotState {
@@ -129,8 +138,13 @@ export class Minibot3D {
   public update(delta: number): void {
     this.timeOffset += delta * 2.5;
 
+    // Smooth visor & antenna color transition
+    this.currentVisorColor.lerp(this.targetVisorColor, Math.min(1, delta * 9));
+    this.visorMat.color.copy(this.currentVisorColor);
+    this.antennaLight.color.copy(this.currentVisorColor);
+
     // Smooth movement interpolation
-    const lerpSpeed = this.isReducedMotion ? 1.0 : 0.06;
+    const lerpSpeed = this.isReducedMotion ? 1.0 : Math.min(1, delta * 3.5);
     this.currentPosition.lerp(this.targetPosition, lerpSpeed);
 
     let hoverY = this.currentPosition.y;
@@ -139,6 +153,16 @@ export class Minibot3D {
       // Slight gentle tilt bobbing
       this.group.rotation.z = Math.sin(this.timeOffset * 0.7) * 0.08;
       this.group.rotation.x = Math.cos(this.timeOffset * 0.5) * 0.05;
+
+      // Playful interactive reaction hop & spin
+      if (this.reactionTimer > 0) {
+        this.reactionTimer -= delta;
+        const reactionProgress = (0.55 - this.reactionTimer) / 0.55;
+        this.group.rotation.y = reactionProgress * Math.PI * 2;
+        hoverY += Math.sin(reactionProgress * Math.PI) * 4.0;
+      } else {
+        this.group.rotation.y = THREE.MathUtils.lerp(this.group.rotation.y, 0, delta * 8);
+      }
     }
 
     this.group.position.set(this.currentPosition.x, hoverY, this.currentPosition.z);

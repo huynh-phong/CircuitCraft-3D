@@ -1,4 +1,130 @@
-import { ComponentDefinition } from '../project/types';
+import { ComponentDefinition, PinDefinition } from '../project/types';
+
+/**
+ * Returns the electrical internal bus identifier for a breadboard pin.
+ * All pins sharing the same busId on a breadboard are electrically tied together.
+ */
+export function getBreadboardBusId(pinId: string): string {
+  if (pinId.startsWith('rail_top_pos')) return 'rail_top_pos';
+  if (pinId.startsWith('rail_top_neg')) return 'rail_top_neg';
+  if (pinId.startsWith('rail_bot_pos')) return 'rail_bot_pos';
+  if (pinId.startsWith('rail_bot_neg')) return 'rail_bot_neg';
+
+  if (pinId.startsWith('tie_')) {
+    const parts = pinId.split('_');
+    const col = parts[1];
+    const row = parts[2]?.toLowerCase();
+    if (['a', 'b', 'c', 'd', 'e'].includes(row)) {
+      return `col_${col}_top`;
+    }
+    return `col_${col}_bot`;
+  }
+
+  if (pinId.startsWith('strip_')) {
+    const parts = pinId.split('_');
+    return `col_${parts[1]}_${parts[2]}`; // e.g. col_1_top
+  }
+
+  return pinId;
+}
+
+/**
+ * Generates all 60 columns (rows A-J) and power rails for a standard full-size breadboard (830 tie-points).
+ */
+export function generateBreadboardPins(): PinDefinition[] {
+  const pins: PinDefinition[] = [];
+  const colCount = 60;
+  const colPitch = 2.54;
+  const halfCols = (colCount - 1) / 2; // 29.5
+
+  const topRows = [
+    { row: 'E', z: -14.0 },
+    { row: 'D', z: -11.46 },
+    { row: 'C', z: -8.92 },
+    { row: 'B', z: -6.38 },
+    { row: 'A', z: -3.84 },
+  ];
+  const botRows = [
+    { row: 'F', z: 3.84 },
+    { row: 'G', z: 6.38 },
+    { row: 'H', z: 8.92 },
+    { row: 'I', z: 11.46 },
+    { row: 'J', z: 14.0 },
+  ];
+
+  for (let c = 1; c <= colCount; c++) {
+    const x = Number(((c - 1 - halfCols) * colPitch).toFixed(2));
+
+    // Top bank A-E
+    for (const r of topRows) {
+      pins.push({
+        id: `tie_${c}_${r.row.toLowerCase()}`,
+        name: `Cột ${c} (Hàng ${r.row})`,
+        type: 'passive',
+        localOffset: { x, y: 9.8, z: r.z },
+        designator: `${c}${r.row}`,
+        description: `Lỗ cắm cột ${c} hàng ${r.row} (Nối chung A-E cột ${c})`,
+      });
+    }
+
+    // Bottom bank F-J
+    for (const r of botRows) {
+      pins.push({
+        id: `tie_${c}_${r.row.toLowerCase()}`,
+        name: `Cột ${c} (Hàng ${r.row})`,
+        type: 'passive',
+        localOffset: { x, y: 9.8, z: r.z },
+        designator: `${c}${r.row}`,
+        description: `Lỗ cắm cột ${c} hàng ${r.row} (Nối chung F-J cột ${c})`,
+      });
+    }
+
+    // Power rails (+ and -) top and bottom
+    pins.push({
+      id: `rail_top_pos_${c}`,
+      name: `Thanh (+) Nguồn Trên - Lỗ ${c}`,
+      type: 'power',
+      localOffset: { x, y: 9.8, z: -23.5 },
+      designator: `+T${c}`,
+      description: `Thanh nguồn dương (+) phía trên (Nối chung toàn thanh)`,
+    });
+    pins.push({
+      id: `rail_top_neg_${c}`,
+      name: `Thanh (-) Mass Trên - Lỗ ${c}`,
+      type: 'ground',
+      localOffset: { x, y: 9.8, z: -25.8 },
+      designator: `-T${c}`,
+      description: `Thanh mass GND (-) phía trên (Nối chung toàn thanh)`,
+    });
+    pins.push({
+      id: `rail_bot_pos_${c}`,
+      name: `Thanh (+) Nguồn Dưới - Lỗ ${c}`,
+      type: 'power',
+      localOffset: { x, y: 9.8, z: 23.5 },
+      designator: `+B${c}`,
+      description: `Thanh nguồn dương (+) phía dưới (Nối chung toàn thanh)`,
+    });
+    pins.push({
+      id: `rail_bot_neg_${c}`,
+      name: `Thanh (-) Mass Dưới - Lỗ ${c}`,
+      type: 'ground',
+      localOffset: { x, y: 9.8, z: 25.8 },
+      designator: `-B${c}`,
+      description: `Thanh mass GND (-) phía dưới (Nối chung toàn thanh)`,
+    });
+  }
+
+  // Backward compatibility aliases for existing samples/lessons
+  for (let i = 1; i <= 10; i++) {
+    const colIdx = Math.round(1 + ((i - 1) / 9) * 59);
+    pins.push(
+      { id: `strip_${i}_top`, name: `Hàng cắm ${i} Trên (A-E)`, type: 'passive', localOffset: { x: Number(((colIdx - 1 - halfCols) * colPitch).toFixed(2)), y: 9.8, z: -8.92 }, designator: `${i}T` },
+      { id: `strip_${i}_bot`, name: `Hàng cắm ${i} Dưới (F-J)`, type: 'passive', localOffset: { x: Number(((colIdx - 1 - halfCols) * colPitch).toFixed(2)), y: 9.8, z: 8.92 }, designator: `${i}B` }
+    );
+  }
+
+  return pins;
+}
 
 export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
   {
@@ -59,7 +185,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin1',
         name: 'Chân 1',
         type: 'passive',
-        localOffset: { x: -7, y: 1, z: 0 },
+        localOffset: { x: -5.08, y: 0, z: 0 },
         description: 'Đầu chân kim loại 1',
         designator: '1',
       },
@@ -67,7 +193,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin2',
         name: 'Chân 2',
         type: 'passive',
-        localOffset: { x: 7, y: 1, z: 0 },
+        localOffset: { x: 5.08, y: 0, z: 0 },
         description: 'Đầu chân kim loại 2',
         designator: '2',
       },
@@ -108,7 +234,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'anode',
         name: 'Anode (+)',
         type: 'input',
-        localOffset: { x: -2.54, y: 1, z: 0 },
+        localOffset: { x: -2.54, y: 0, z: 0 },
         description: 'Chân dương (chân dài hơn)',
         designator: 'A',
       },
@@ -116,7 +242,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'cathode',
         name: 'Cathode (-)',
         type: 'output',
-        localOffset: { x: 2.54, y: 1, z: 0 },
+        localOffset: { x: 0, y: 0, z: 0 },
         description: 'Chân âm (chân vát cạnh)',
         designator: 'K',
       },
@@ -280,7 +406,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin_pos',
         name: 'Cực dương (+)',
         type: 'passive',
-        localOffset: { x: -2.5, y: 1, z: 0 },
+        localOffset: { x: -2.54, y: 1, z: 0 },
         description: 'Chân dài hơn (+)',
         designator: '+',
       },
@@ -288,7 +414,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin_neg',
         name: 'Cực âm (-)',
         type: 'passive',
-        localOffset: { x: 2.5, y: 1, z: 0 },
+        localOffset: { x: 2.54, y: 1, z: 0 },
         description: 'Chân ngắn hơn có vạch chỉ thị (-)',
         designator: '-',
       },
@@ -357,7 +483,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'anode',
         name: 'Anode (A)',
         type: 'input',
-        localOffset: { x: -6, y: 1, z: 0 },
+        localOffset: { x: -5.08, y: 1, z: 0 },
         description: 'Cực dương Anode',
         designator: 'A',
       },
@@ -365,7 +491,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'cathode',
         name: 'Cathode (K)',
         type: 'output',
-        localOffset: { x: 6, y: 1, z: 0 },
+        localOffset: { x: 5.08, y: 1, z: 0 },
         description: 'Cực âm Cathode có vạch bạc',
         designator: 'K',
       },
@@ -389,7 +515,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin_pos',
         name: 'VCC (+)',
         type: 'power',
-        localOffset: { x: -3, y: 1, z: 0 },
+        localOffset: { x: -2.54, y: 1, z: 0 },
         description: 'Cực dương còi chíp',
         designator: '+',
       },
@@ -397,7 +523,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin_neg',
         name: 'GND (-)',
         type: 'ground',
-        localOffset: { x: 3, y: 1, z: 0 },
+        localOffset: { x: 2.54, y: 1, z: 0 },
         description: 'Cực âm còi chíp',
         designator: '-',
       },
@@ -421,7 +547,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin1',
         name: 'Chân 1',
         type: 'passive',
-        localOffset: { x: -2.5, y: 1, z: 0 },
+        localOffset: { x: -2.54, y: 1, z: 0 },
         description: 'Đầu cảm biến 1',
         designator: '1',
       },
@@ -429,7 +555,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         id: 'pin2',
         name: 'Chân 2',
         type: 'passive',
-        localOffset: { x: 2.5, y: 1, z: 0 },
+        localOffset: { x: 2.54, y: 1, z: 0 },
         description: 'Đầu cảm biến 2',
         designator: '2',
       },
@@ -542,16 +668,53 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     description: 'Bo mạch vi điều khiển ATmega328P với nguồn 5V/3.3V, chân Digital D13 và chân Analog A0 tích hợp.',
     dimensions: { x: 68, y: 12, z: 53 },
     footprintType: 'modular',
+    imageUrl: '/picture/ArdruinoUNO.png',
+    modelUrl: '/3d-model/arduino_uno.glb',
     pins: [
-      { id: 'pin_5v', name: '5V (Nguồn cấp)', type: 'power', localOffset: { x: -24, y: 4, z: 22 }, designator: '5V' },
-      { id: 'pin_3v3', name: '3.3V', type: 'power', localOffset: { x: -21, y: 4, z: 22 }, designator: '3V3' },
-      { id: 'pin_gnd', name: 'GND (Đất)', type: 'ground', localOffset: { x: -18, y: 4, z: 22 }, designator: 'GND' },
-      { id: 'pin_d13', name: 'D13 (LED onboard)', type: 'output', localOffset: { x: 18, y: 4, z: -22 }, designator: 'D13' },
-      { id: 'pin_d12', name: 'D12 (GPIO)', type: 'bidirectional', localOffset: { x: 15, y: 4, z: -22 }, designator: 'D12' },
-      { id: 'pin_a0', name: 'A0 (Analog IN)', type: 'input', localOffset: { x: -8, y: 4, z: 22 }, designator: 'A0' },
+      // Top Header 1 (10-pin digital: SCL to D8)
+      { id: 'pin_scl', name: 'SCL (I2C Clock)', type: 'bidirectional', localOffset: { x: -12.29, y: 7.15, z: -21.47 }, designator: 'SCL' },
+      { id: 'pin_sda', name: 'SDA (I2C Data)', type: 'bidirectional', localOffset: { x: -9.75, y: 7.15, z: -21.47 }, designator: 'SDA' },
+      { id: 'pin_aref', name: 'AREF (Tham chiếu Analog)', type: 'input', localOffset: { x: -7.21, y: 7.15, z: -21.47 }, designator: 'AREF' },
+      { id: 'pin_gnd_top', name: 'GND (Đất số)', type: 'ground', localOffset: { x: -4.67, y: 7.15, z: -21.47 }, designator: 'GND' },
+      { id: 'pin_d13', name: 'D13 (SCK / LED onboard)', type: 'output', localOffset: { x: -2.13, y: 7.15, z: -21.47 }, designator: 'D13' },
+      { id: 'pin_d12', name: 'D12 (MISO / GPIO)', type: 'bidirectional', localOffset: { x: 0.41, y: 7.15, z: -21.47 }, designator: 'D12' },
+      { id: 'pin_d11', name: 'D11 (~PWM / MOSI)', type: 'bidirectional', localOffset: { x: 2.95, y: 7.15, z: -21.47 }, designator: '~D11' },
+      { id: 'pin_d10', name: 'D10 (~PWM / SS)', type: 'bidirectional', localOffset: { x: 5.49, y: 7.15, z: -21.47 }, designator: '~D10' },
+      { id: 'pin_d9', name: 'D9 (~PWM)', type: 'bidirectional', localOffset: { x: 8.03, y: 7.15, z: -21.47 }, designator: '~D9' },
+      { id: 'pin_d8', name: 'D8 (GPIO)', type: 'bidirectional', localOffset: { x: 10.57, y: 7.15, z: -21.47 }, designator: 'D8' },
+
+      // Top Header 2 (8-pin digital: D7 to D0)
+      { id: 'pin_d7', name: 'D7 (GPIO)', type: 'bidirectional', localOffset: { x: 12.19, y: 7.15, z: -21.76 }, designator: 'D7' },
+      { id: 'pin_d6', name: 'D6 (~PWM)', type: 'bidirectional', localOffset: { x: 14.73, y: 7.15, z: -21.76 }, designator: '~D6' },
+      { id: 'pin_d5', name: 'D5 (~PWM)', type: 'bidirectional', localOffset: { x: 17.27, y: 7.15, z: -21.76 }, designator: '~D5' },
+      { id: 'pin_d4', name: 'D4 (GPIO)', type: 'bidirectional', localOffset: { x: 19.81, y: 7.15, z: -21.76 }, designator: 'D4' },
+      { id: 'pin_d3', name: 'D3 (~PWM / INT1)', type: 'bidirectional', localOffset: { x: 22.35, y: 7.15, z: -21.76 }, designator: '~D3' },
+      { id: 'pin_d2', name: 'D2 (GPIO / INT0)', type: 'bidirectional', localOffset: { x: 24.89, y: 7.15, z: -21.76 }, designator: 'D2' },
+      { id: 'pin_d1', name: 'D1 (TX / Truyền UART)', type: 'output', localOffset: { x: 27.43, y: 7.15, z: -21.76 }, designator: 'TX' },
+      { id: 'pin_d0', name: 'D0 (RX / Nhận UART)', type: 'input', localOffset: { x: 29.97, y: 7.15, z: -21.76 }, designator: 'RX' },
+
+      // Bottom Power Header (NC to VIN)
+      { id: 'pin_nc', name: 'NC (Không kết nối)', type: 'passive', localOffset: { x: -3.74, y: 7.15, z: 21.31 }, designator: 'NC' },
+      { id: 'pin_ioref', name: 'IOREF (Điện áp tham chiếu 5V)', type: 'power', localOffset: { x: -1.20, y: 7.15, z: 21.31 }, designator: 'IOREF' },
+      { id: 'pin_reset', name: 'RESET (Khởi động lại MCU)', type: 'input', localOffset: { x: 1.34, y: 7.15, z: 21.31 }, designator: 'RST' },
+      { id: 'pin_3v3', name: '3.3V (Nguồn ra 3.3V)', type: 'power', localOffset: { x: 3.88, y: 7.15, z: 21.31 }, designator: '3V3' },
+      { id: 'pin_5v', name: '5V (Nguồn cấp chính 5V)', type: 'power', localOffset: { x: 6.42, y: 7.15, z: 21.31 }, designator: '5V' },
+      { id: 'pin_gnd', name: 'GND (Đất / Cực âm 1)', type: 'ground', localOffset: { x: 8.96, y: 7.15, z: 21.31 }, designator: 'GND' },
+      { id: 'pin_gnd2', name: 'GND 2 (Đất / Cực âm 2)', type: 'ground', localOffset: { x: 11.50, y: 7.15, z: 21.31 }, designator: 'GND' },
+      { id: 'pin_vin', name: 'VIN (Nguồn vào 7-12V)', type: 'power', localOffset: { x: 14.04, y: 7.15, z: 21.31 }, designator: 'VIN' },
+
+      // Bottom Analog Header (A0 to A5)
+      { id: 'pin_a0', name: 'A0 (Ngõ vào Analog 0)', type: 'input', localOffset: { x: 16.91, y: 7.15, z: 21.36 }, designator: 'A0' },
+      { id: 'pin_a1', name: 'A1 (Ngõ vào Analog 1)', type: 'input', localOffset: { x: 19.45, y: 7.15, z: 21.36 }, designator: 'A1' },
+      { id: 'pin_a2', name: 'A2 (Ngõ vào Analog 2)', type: 'input', localOffset: { x: 21.99, y: 7.15, z: 21.36 }, designator: 'A2' },
+      { id: 'pin_a3', name: 'A3 (Ngõ vào Analog 3)', type: 'input', localOffset: { x: 24.53, y: 7.15, z: 21.36 }, designator: 'A3' },
+      { id: 'pin_a4', name: 'A4 (Ngõ vào Analog 4 / SDA)', type: 'bidirectional', localOffset: { x: 27.07, y: 7.15, z: 21.36 }, designator: 'A4' },
+      { id: 'pin_a5', name: 'A5 (Ngõ vào Analog 5 / SCL)', type: 'bidirectional', localOffset: { x: 29.61, y: 7.15, z: 21.36 }, designator: 'A5' },
     ],
     defaultParameters: {
       codeProgram: 'blink_led',
+      clockFrequency: 16,
+      operatingVoltage: 5.0,
       d13State: true,
     },
     parameterSchema: [
@@ -560,11 +723,69 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         label: 'Chương trình nhúng',
         type: 'select',
         options: [
-          { label: 'Blink LED D13 (1Hz)', value: 'blink_led' },
-          { label: 'Đọc nút bấm D12', value: 'button_read' },
-          { label: 'Đọc Analog A0 biến trở', value: 'analog_read' },
+          { label: 'Blink LED D13 (1Hz chu kỳ chuẩn)', value: 'blink_led' },
+          { label: 'Đọc nút bấm chân D12 điều khiển LED', value: 'button_read' },
+          { label: 'Đọc biến trở Analog A0', value: 'analog_read' },
+          { label: 'Điều khiển góc Servo PWM D9', value: 'servo_control' },
         ],
         default: 'blink_led',
+      },
+      {
+        name: 'operatingVoltage',
+        label: 'Điện áp logic (V)',
+        type: 'select',
+        options: [
+          { label: '5.0V (Tiêu chuẩn UNO)', value: 5.0 },
+          { label: '3.3V (Chế độ tiết kiệm)', value: 3.3 },
+        ],
+        default: 5.0,
+      },
+    ],
+  },
+  {
+    definitionId: 'breadboard',
+    version: '1.0.0',
+    name: 'Bo mạch Breadboard (Bo test)',
+    category: 'connectors',
+    description: 'Bo mạch thử nghiệm cắm dây không cần hàn, gồm 2 hàng thanh nguồn (+/-) và các rãnh kết nối cắm linh kiện.',
+    dimensions: { x: 165, y: 10, z: 55 },
+    footprintType: 'modular',
+    modelUrl: '/3d-model/breadboard.glb',
+    pins: generateBreadboardPins(),
+    defaultParameters: {
+      tiePoints: 400,
+      railVoltage: 5.0,
+      boardType: 'half',
+      notes: 'Breadboard cắm IC và mạch mẫu',
+    },
+    parameterSchema: [
+      {
+        name: 'tiePoints',
+        label: 'Số điểm cắm (Tie-points)',
+        type: 'select',
+        options: [
+          { label: '400 Điểm (Chuẩn Half Size)', value: 400 },
+          { label: '830 Điểm (Chuẩn Full Size)', value: 830 },
+          { label: '170 Điểm (Chuẩn Mini Prototyping)', value: 170 },
+        ],
+        default: 400,
+      },
+      {
+        name: 'railVoltage',
+        label: 'Điện áp thanh Bus nguồn (V)',
+        type: 'select',
+        options: [
+          { label: '5.0V (Chuẩn USB / MCU)', value: 5.0 },
+          { label: '3.3V (Chuẩn Cảm biến / ESP)', value: 3.3 },
+          { label: '12.0V (Nguồn công suất)', value: 12.0 },
+        ],
+        default: 5.0,
+      },
+      {
+        name: 'notes',
+        label: 'Ghi chú bo mạch',
+        type: 'string',
+        default: 'Breadboard cắm IC và mạch mẫu',
       },
     ],
   },
@@ -917,8 +1138,8 @@ if (resistorDef) {
     ...resistorDef,
     definitionId: 'resistor_axial',
     pins: [
-      { id: 'pin_1', name: 'Chân 1', type: 'passive', localOffset: { x: -6, y: 1.5, z: 0 }, designator: '1' },
-      { id: 'pin_2', name: 'Chân 2', type: 'passive', localOffset: { x: 6, y: 1.5, z: 0 }, designator: '2' },
+      { id: 'pin_1', name: 'Chân 1', type: 'passive', localOffset: { x: -5.08, y: 0, z: 0 }, designator: '1' },
+      { id: 'pin_2', name: 'Chân 2', type: 'passive', localOffset: { x: 5.08, y: 0, z: 0 }, designator: '2' },
       ...resistorDef.pins,
     ],
   });
@@ -928,6 +1149,14 @@ if (ledDef) {
   COMPONENT_DEFINITION_MAP.set('led_basic', {
     ...ledDef,
     definitionId: 'led_basic',
+  });
+}
+
+const arduinoDef = COMPONENT_DEFINITION_MAP.get('arduino-uno');
+if (arduinoDef) {
+  COMPONENT_DEFINITION_MAP.set('arduino_uno', {
+    ...arduinoDef,
+    definitionId: 'arduino_uno',
   });
 }
 

@@ -20,16 +20,32 @@ export function validateProjectDocument(doc: ProjectDocument): ValidationIssue[]
   }
 
   // 1. Board Boundary Check
+  const breadboards = components.filter((c) => c.definitionId === 'breadboard');
+
   for (const comp of components) {
-    if (!isInsideBoard(comp.position, board.width, board.depth, 4)) {
-      issues.push({
-        id: `out-of-bounds-${comp.instanceId}`,
-        ruleId: 'OUT_OF_BOARD_BOUNDS',
-        severity: 'error',
-        message: `Linh kiện ${comp.name} nằm ngoài phạm vi giới hạn của bo mạch PCB (${board.width}x${board.depth} mm).`,
-        objectRefs: [comp.instanceId],
-        suggestion: 'Kéo linh kiện vào khu vực mặt đồng bên trong bo mạch.',
-      });
+    // If component is resting on or plugged into a breadboard, or is a large board entity, allow workspace placement
+    const isOnBreadboard = breadboards.some((bb) => {
+      const dx = Math.abs(comp.position.x - bb.position.x);
+      const dz = Math.abs(comp.position.z - bb.position.z);
+      return dx <= 165 / 2 && dz <= 55 / 2;
+    });
+
+    if (
+      !isOnBreadboard &&
+      comp.definitionId !== 'breadboard' &&
+      comp.definitionId !== 'arduino-uno' &&
+      comp.definitionId !== 'arduino_uno'
+    ) {
+      if (!isInsideBoard(comp.position, board.width, board.depth, 4)) {
+        issues.push({
+          id: `out-of-bounds-${comp.instanceId}`,
+          ruleId: 'OUT_OF_BOARD_BOUNDS',
+          severity: 'error',
+          message: `Linh kiện ${comp.name} nằm ngoài phạm vi giới hạn của bo mạch PCB (${board.width}x${board.depth} mm).`,
+          objectRefs: [comp.instanceId],
+          suggestion: 'Kéo linh kiện vào khu vực mặt đồng bên trong bo mạch hoặc cắm lên Breadboard.',
+        });
+      }
     }
   }
 
@@ -38,6 +54,9 @@ export function validateProjectDocument(doc: ProjectDocument): ValidationIssue[]
     for (let j = i + 1; j < components.length; j++) {
       const c1 = components[i];
       const c2 = components[j];
+      // Do not treat breadboard itself as colliding with components placed on top of it
+      if (c1.definitionId === 'breadboard' || c2.definitionId === 'breadboard') continue;
+
       const dx = c1.position.x - c2.position.x;
       const dz = c1.position.z - c2.position.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
@@ -56,7 +75,9 @@ export function validateProjectDocument(doc: ProjectDocument): ValidationIssue[]
   }
 
   // 3. Power Source Presence
-  const powerSources = components.filter((c) => c.definitionId === 'dc-source');
+  const powerSources = components.filter(
+    (c) => c.definitionId === 'dc-source' || c.definitionId === 'arduino-uno' || c.definitionId === 'arduino_uno'
+  );
   if (powerSources.length === 0) {
     issues.push({
       id: 'no-power-source',

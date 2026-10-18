@@ -13,7 +13,6 @@ import {
   Download,
   Info,
   ExternalLink,
-  BookmarkPlus,
   CheckCircle2,
 } from 'lucide-react';
 import { ThreeScene } from '../scene/ThreeScene';
@@ -21,6 +20,7 @@ import { ProjectDocument } from '../domain/project/types';
 import { useI18n } from '../i18n/context';
 import { paymentService } from '../billing/paymentService';
 import { projectRepositoryManager } from '../persistence/repositoryManager';
+import { Portal } from './ui/Portal';
 
 interface Product3DViewerModalProps {
   productId: string;
@@ -33,7 +33,6 @@ interface Product3DViewerModalProps {
   onClose: () => void;
   onBuy?: () => void;
   onOpenInEditor?: (doc: ProjectDocument) => void;
-  onSaveToMyProjects?: (doc: ProjectDocument) => void;
   currentUser?: any;
   onOpenAuthModal?: () => void;
 }
@@ -49,7 +48,6 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
   onClose,
   onBuy,
   onOpenInEditor,
-  onSaveToMyProjects,
   currentUser,
   onOpenAuthModal,
 }) => {
@@ -60,40 +58,6 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [versionText, setVersionText] = useState('1.0.0');
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  const handleSaveToMyProjects = async () => {
-    if (!currentUser && onOpenAuthModal) {
-      onOpenAuthModal();
-      return;
-    }
-    const docToSave = previewDoc || fallbackProject;
-    if (!docToSave) return;
-    setIsSaving(true);
-    try {
-      const repo = projectRepositoryManager.getActiveRepository();
-      const newDoc: ProjectDocument = {
-        ...docToSave,
-        projectId: `proj-${Date.now()}`,
-        name: docToSave.name.includes('Lưu từ Cửa hàng')
-          ? docToSave.name
-          : `${docToSave.name.replace(/^Bản xem trước:\s*/, '')} (Lưu từ Cửa hàng)`,
-        authorId: currentUser?.id || docToSave.authorId || 'guest',
-        updatedAt: new Date().toISOString(),
-      };
-      await repo.saveProject(newDoc, { force: true });
-      setSaveSuccess(true);
-      if (onSaveToMyProjects) {
-        onSaveToMyProjects(newDoc);
-      }
-      setTimeout(() => setSaveSuccess(false), 3500);
-    } catch (err) {
-      console.error('Failed to save to my projects:', err);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleSaveAndOpenInEditor = async () => {
     if (!currentUser && onOpenAuthModal) {
@@ -416,35 +380,6 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Direct Save to My Projects Button */}
-            <button
-              onClick={handleSaveToMyProjects}
-              disabled={isSaving}
-              className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all duration-200 border cursor-pointer ${
-                saveSuccess
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.3)]'
-                  : 'bg-slate-800/90 hover:bg-slate-700 text-cyan-300 hover:text-white border-cyan-500/30 hover:border-cyan-400/60 shadow-xs active:scale-[0.97]'
-              }`}
-              title={language === 'vi' ? 'Lưu bản sao mạch này vào danh sách Dự án của tôi' : 'Save a copy to My Projects'}
-            >
-              {saveSuccess ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>{language === 'vi' ? 'Đã lưu vào Dự án của tôi!' : 'Saved to My Projects!'}</span>
-                </>
-              ) : isSaving ? (
-                <>
-                  <RotateCw className="w-4 h-4 animate-spin text-cyan-400" />
-                  <span>{language === 'vi' ? 'Đang lưu...' : 'Saving...'}</span>
-                </>
-              ) : (
-                <>
-                  <BookmarkPlus className="w-4 h-4 text-cyan-400" />
-                  <span>{language === 'vi' ? 'Lưu vào dự án của tôi' : 'Save to My Projects'}</span>
-                </>
-              )}
-            </button>
-
             {isOwned ? (
               <button
                 onClick={handleSaveAndOpenInEditor}

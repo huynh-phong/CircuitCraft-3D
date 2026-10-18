@@ -134,6 +134,8 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
       projects: { vi: 'Dự án 3D', en: 'Projects' },
       editor: { vi: 'Không gian Thiết kế', en: '3D Studio' },
       courses: { vi: 'Khóa học', en: 'Courses' },
+      'my-courses': { vi: 'Khóa học của tôi', en: 'My Courses' },
+      'theory-learning': { vi: 'Phòng Học Lý thuyết', en: 'Theory Classroom' },
       lessons: { vi: 'Bài học STEM', en: 'STEM Lessons' },
       marketplace: { vi: 'Cửa hàng', en: 'Marketplace' },
       membership: { vi: 'Gói thành viên', en: 'Membership' },

@@ -9,17 +9,18 @@
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Three.js](https://img.shields.io/badge/Three.js-3D_Graphics-black?style=flat-square&logo=threedotjs&logoColor=white)](https://threejs.org/)
-[![Vite](https://img.shields.io/badge/Vite-Modern_Web-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.2-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![TailwindCSS](https://img.shields.io/badge/TailwindCSS-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Express](https://img.shields.io/badge/Express-4.21-000000?style=flat-square&logo=express&logoColor=white)](https://expressjs.com/)
 [![Gemini](https://img.shields.io/badge/Google_Gemini-AI_Engine-4285F4?style=flat-square&logo=google&logoColor=white)](https://ai.google.dev/)
-[![Supabase](https://img.shields.io/badge/Supabase-Backend-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com/)
+[![Supabase](https://img.shields.io/badge/Supabase-Backend_%26_Auth-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
 [Tổng quan](#-tổng-quan-dự-án) •
 [Bối cảnh & Sứ mệnh](#-bối-cảnh--sứ-mệnh) •
-[Tính năng cốt lõi](#-tính-năng-cốt-lõi) •
-[Hệ sinh thái công nghệ](#-hệ-sinh-thái-công-nghệ) •
-[Đối tượng sử dụng](#-đối-tượng-hướng-đến) •
+[Tính năng nâng cấp](#-tính-năng-nổi-bật-phiên-bản-mới) •
+[Hệ sinh thái AI](#-hệ-sinh-thái-trí-tuệ-nhân-tạo-đa-tầng) •
+[Kiến trúc hệ sinh thái](#-hệ-sinh-thái-công-nghệ) •
 [Lộ trình phát triển](#-lộ-trình-phát-triển)
 
 </div>
@@ -29,6 +30,8 @@
 ## 💡 Tổng quan dự án
 
 **CircuitCraft 3D** là nền tảng mô phỏng điện tử thực tế ảo đột phá, số hóa hoàn toàn trải nghiệm thực hành điện - điện tử trên nền web. Khác biệt với các phần mềm sơ đồ 2D truyền thống (vốn khô khan và khó tiếp cận với người mới bắt đầu), CircuitCraft 3D đưa linh kiện, breadboard và các vi điều khiển vào **không gian 3D tương tác chân thực**, kết hợp cùng trí tuệ nhân tạo **Google Gemini** để biến việc học mạch điện thành trải nghiệm trực quan, thú vị và an toàn.
+
+Ở phiên bản nâng cấp mới nhất, CircuitCraft 3D mang đến bước tiến vượt bậc về **đồ họa 3D thực tế**, **hệ sinh thái Trợ giảng AI đa tầng**, **bộ phân tích giáo trình PowerPoint tự động** và **hệ thống phòng học lý thuyết kết hợp phòng lab thực hành đồng bộ**.
 
 ---
 
@@ -41,45 +44,79 @@
 
 ### Giải pháp từ CircuitCraft 3D
 - **Thực hành 3D như ngoài đời thực**: Nhìn thấy tận mắt từng chân cắm, màu sắc điện trở, đèn LED phát sáng hay khói cảnh báo khi quá áp.
-- **AI trợ giảng 24/7**: Trí tuệ nhân tạo tích hợp sẵn giúp giải thích nguyên lý, tìm lỗi sai và gợi ý thiết kế tối ưu ngay lập tức.
+- **Hệ sinh thái AI trợ giảng 24/7**: Trí tuệ nhân tạo tích hợp sẵn giúp giải thích nguyên lý, tìm lỗi sai, bám sát slide bài giảng và gợi ý thiết kế tối ưu ngay lập tức.
 - **Mọi lúc, mọi nơi**: Hoạt động hoàn toàn trên trình duyệt hiện đại, không cần cài đặt phần mềm cồng kềnh.
 
 ---
 
-## 🌟 Tính năng cốt lõi
+## 🚀 Tính năng nổi bật (Phiên bản mới)
 
 ### 1. 🎛️ Không gian thiết kế 3D chân thực (3D Virtual Workbench)
-- **Procedural 3D Components**: Bộ sưu tập mô hình 3D chi tiết cao được render bằng Three.js: Breadboard tiêu chuẩn, Arduino Uno, Điện trở (vạch màu chuẩn quốc tế), Tụ điện, Transistor, Diode, LED đa màu, IC số, Nguồn cấp, Công tắc, Nút nhấn, Còi buzzer...
-- **Dây nối tự nhiên (Dynamic Bezier Wires)**: Hệ thống nối dây từ chân đến chân (Pin-to-Pin) với thuật toán tính toán độ cong vật lý mềm mại như dây điện ngoài đời.
-- **Góc nhìn tương tác 360°**: Hỗ trợ xoay, phóng to, thu nhỏ, chế độ quan sát chuyên sâu từng linh kiện và chế độ trình chiếu (Presentation View).
-- **Hệ thống Command Undo/Redo**: Quản lý lịch sử thao tác thông minh, cho phép hoàn tác/làm lại không giới hạn mà không làm mất trạng thái mạch.
+- **Tích hợp Mô hình 3D Chuẩn Thực tế (.GLB)**: Nạp trực tiếp các mô hình 3D thực tế chi tiết cao của **Arduino Uno R3** và **Breadboard 830 lỗ tiêu chuẩn**, tích hợp thuật toán tự động căn chỉnh tọa độ, tỷ lệ và chân cắm phẳng tuyệt đối tại mặt phẳng $Y=0$.
+- **Bộ sưu tập Procedural Components phong phú**: Tạo hình bằng toán học hình học cho hơn 15 linh kiện: Điện trở (vạch màu quốc tế), Tụ điện, Transistor, Diode, LED, IC số (DIP-8, DIP-14, NE555), Nguồn DC, Công tắc SPST, Biến trở, Cảm biến ánh sáng LDR, Cảm biến nhiệt LM35, Rơ-le, Còi Buzzer...
+- **Dây nối tự nhiên (Dynamic Bezier Wires)**: Hệ thống nối dây từ chân đến chân (Pin-to-Pin) với thuật toán tính toán độ cong vật lý mềm mại như dây điện ngoài đời thực cùng hiệu ứng phát sáng khi có dòng điện.
+- **Góc nhìn tương tác 360° & Hít chân cắm (Pin Snapping)**: Tự động hít chân linh kiện vào đúng hàng và cột trên Breadboard với độ chính xác cơ học cao.
+- **Hệ thống Command Undo/Redo**: Quản lý lịch sử thao tác thông minh theo mô hình Command Pattern, cho phép hoàn tác/làm lại không giới hạn mà không làm mất trạng thái mạch.
 
 ### 2. ⚡ Động cơ mô phỏng & Kiểm tra luật thiết kế (Simulation & DRC)
-- **Tính toán điện trường tức thời**: Đo lường dòng điện, điện thế, phân tích mạch kín và mạch hở trong thời gian thực.
-- **Bảo vệ & Cảnh báo an toàn**: Tự động phát hiện đoản mạch (short circuit), linh kiện ngược cực, quá dòng hoặc quá công suất định mức với hiệu ứng cảnh báo trực quan.
-- **Bảng đo lường & Đồng hồ kỹ thuật**: Tích hợp các công cụ đo đạc ảo trực quan giúp người học kiểm tra thông số tại bất kỳ điểm nào trên mạch.
+- **Tính toán điện trường tức thời**: Đo lường dòng điện, điện áp và phân tích mạch kín/mở theo thời gian thực dựa trên đồ thị nút mạch.
+- **Bảo vệ & Cảnh báo an toàn**: Tự động phát hiện đoản mạch (short circuit), linh kiện ngược cực, quá dòng hoặc quá công suất định mức với hiệu ứng cảnh báo trực quan trên mô hình 3D.
+- **Đồng hồ đo ảo**: Hỗ trợ đo đạc thông số điện áp và dòng điện tại bất kỳ vị trí chân cắm nào trên mạch.
 
-### 3. 🤖 AI Assistant & Chú Robot Minibot 3D đồng hành
-- **Trợ lý thiết kế Gemini AI**: Người dùng có thể mô tả ý tưởng bằng ngôn ngữ tự nhiên (VD: *"Hãy hướng dẫn tôi làm mạch đèn LED nhấp nháy dùng vi điều khiển"*), AI sẽ phân tích và đưa ra sơ đồ linh kiện chuẩn xác.
-- **Minibot 3D tương tác**: Một chú robot đại diện ảo hiện diện ngay trên bàn làm việc 3D, biểu cảm linh hoạt theo trạng thái của mạch (vui mừng khi mạch chạy đúng, hoảng hốt khi phát hiện chập mạch) và sẵn sàng giải đáp thắc mắc lý thuyết.
+### 3. 📚 Phòng Học Lý thuyết & Phòng Thí nghiệm Thực hành Kép
+- **Phòng học Lý thuyết Tương tác (Theory Classroom)**:
+  - Trình chiếu slide bài giảng chất lượng cao, hỗ trợ chuyển đổi linh hoạt giữa Slide giáo trình và Video hướng dẫn.
+  - Tích hợp **Trợ giảng AI (Theory Tutor)** bám sát theo từng Slide đang hiển thị để giải thích công thức, định luật và liên hệ thực tế.
+- **Phòng Thí nghiệm Thực hành (Practice Lab)**:
+  - Bàn thực hành 3D kết hợp bộ **Checklist nhiệm vụ tự động**.
+  - Động cơ chấm điểm tự động kiểm tra xem học viên đã cắm đúng dây, đúng chân và bật nguồn thành công hay chưa, kích hoạt hiệu ứng chúc mừng khi hoàn thành bài lab.
+- **Bộ đọc Giáo trình PowerPoint (.PPTX) Tự động**:
+  - Tự động giải nén và phân tích cấu trúc bài giảng PowerPoint `.pptx`, trích xuất slide, nội dung, ghi chú và hình ảnh.
+  - Tự động nhận diện ngữ nghĩa để sinh ra bộ checklist nhiệm vụ và khung dự án mạch thực hành tương ứng.
 
-### 4. 📚 Học viện thực hành tương tác (Interactive Learning Academy)
-- **Giáo trình phân cấp khoa học**: Lộ trình bài học từ cơ bản (Định luật Ohm, phân áp, điều khiển LED) đến chuyên sâu (giao tiếp vi điều khiển, mạch logic).
-- **Thử thách theo thời gian thực (Hands-on Labs)**: Hệ thống bài tập có cơ chế tự động chấm điểm và kiểm tra xem người học đã cắm đúng dây và đạt yêu cầu bài học hay chưa.
+### 4. 🛒 Sàn Giao dịch (Marketplace) & Bảng điều khiển Tác giả (Creator Studio)
+- **Marketplace Mạch 3D**: Khám phá, tải về và trải nghiệm các thiết kế mạch điện từ cộng đồng; hỗ trợ chế độ xem trước 3D xoay 360 độ trước khi tải.
+- **Creator Studio**: Dành cho giảng viên và kỹ sư thiết kế đăng tải giáo trình, xuất bản khóa học, quản lý các phiên bản (Version Control) và theo dõi doanh thu.
 
-### 5. 🛒 Sàn chia sẻ & Không gian sáng tạo (Marketplace & Creator Studio)
-- **Cộng đồng chia sẻ dự án**: Thư viện mạch điện phong phú do cộng đồng đóng góp; người dùng có thể mở và tương tác ngay lập tức với các mạch điện mẫu.
-- **Creator Dashboard**: Dành cho các tác giả, giảng viên đăng tải giáo án, bán hoặc chia sẻ các thiết kế mạch điện độc đáo.
+### 5. 🌐 Giao diện Landing Page Thế hệ mới
+- Thiết kế 12 phân khúc hiện đại: Hero Section, Interactive Simulation Mini, Workspace Showcase, Why CircuitCraft, AI Companion, Courses Showcase, Marketplace Showcase, Personas, How It Works, FAQ, Final CTA và Footer Section.
+- Tích hợp hiệu ứng chuyển trang mượt mà (Page Transitions) và chuẩn thẩm mỹ cao cấp.
 
-### 6. 🛡️ Nền tảng quản trị & Hệ sinh thái dịch vụ
-- **Phân quyền người dùng đa cấp**: Hệ thống tài khoản phân tách rõ ràng giữa Học viên (Student), Nhà sáng tạo (Creator) và Quản trị viên (Admin).
-- **Gói hội viên & Tiện ích mở rộng**: Nâng cấp tài khoản (Free / Pro / Enterprise) cùng tính năng quét mã thanh toán VietQR thông minh.
+### 6. 🧭 Hệ thống Điều hướng Hợp nhất (Unified Routing Engine)
+- Đồng bộ hai chiều giữa URL trình duyệt và trạng thái ứng dụng qua HTML5 History API.
+- Hỗ trợ đầy đủ Deep Linking, phím F5 làm mới trang, nút Back/Forward của trình duyệt và đường dẫn thân thiện (VD: `/courses`, `/editor?id=...`, `/my-courses`, `/theory-learning`).
+
+### 7. 🛡️ Bảo mật Đa kênh & Cổng Thanh toán VietQR
+- Đăng nhập linh hoạt: Email/Password, Mã xác thực OTP 6 số qua Email (tích hợp chuẩn **Brevo HTTPS API** và Nodemailer SMTP) hoặc SMS.
+- Phân quyền người dùng 3 cấp: Học viên (User), Giảng viên (Creator) và Quản trị viên (Admin).
+- Tích hợp tạo mã **VietQR (Napas 24/7)** động tự động kích hoạt các gói thành viên VIP (FREE, PRO, ENTERPRISE).
+
+---
+
+## 🤖 Hệ sinh thái Trí tuệ Nhân tạo Đa tầng
+
+Dự án tích hợp bộ ba trợ lý AI chuyên biệt được tối ưu hóa theo từng ngữ cảnh sử dụng:
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                              CIRCUIT_CRAFT 3D AI ECOSYSTEM                             │
+├──────────────────────────┬─────────────────────────────┬───────────────────────────────┤
+│   AI CIRCUIT ASSISTANT   │      MINIBOT COMPANION      │       THEORY TUTOR AI         │
+│  (Không gian thiết kế)   │     (Robot 3D đồng hành)    │    (Phòng học lý thuyết)      │
+├──────────────────────────┼─────────────────────────────┼───────────────────────────────┤
+│ • Đọc trạng thái mạch    │ • Phản ứng cảm xúc 3D       │ • Nhận biết số Slide hiện tại │
+│ • Tìm lỗi đoản mạch/cháy │ • Vui mừng khi mạch chạy    │ • Đọc toàn bộ nội dung PPTX   │
+│ • Sinh đề xuất lắp linh  │ • Hoảng hốt khi có chập     │ • Giảng giải lý thuyết, công  │
+│   kiện tự động vào bảng  │ • Trò chuyện giải trí Maker │   thức sư phạm chi tiết       │
+├──────────────────────────┴─────────────────────────────┴───────────────────────────────┤
+│                              SUPPORT HELPDESK AI CHATBOT                               │
+│  • Thường trực góc màn hình, tư vấn lộ trình học, giải đáp thanh toán, điều hướng URL  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 🏗️ Hệ sinh thái công nghệ
-
-Dự án được xây dựng dựa trên những công nghệ web và đồ họa hiện đại nhất hiện nay:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -89,10 +126,12 @@ Dự án được xây dựng dựa trên những công nghệ web và đồ h�
 │  • React 19 (Modern UI)           │  • Three.js Scene Engine           │
 │  • Tailwind CSS v4 (Glassmorphism)│  • Simulation & DRC Engine         │
 │  • Motion / Lucide Icons          │  • Google Gemini Generative AI SDK │
+│  • GLTF / GLB Real-World Loader   │  • JSZip PowerPoint PPTX Parser    │
 ├───────────────────────────────────┼────────────────────────────────────┤
 │          NỀN TẢNG SERVER          │       DỮ LIỆU & BẢO MẬT            │
-│  • Express API Gateway            │  • Supabase (PostgreSQL / RLS)     │
-│  • TypeScript End-to-End          │  • OTP Authentication Engine       │
+│  • Express API Gateway (Node.js)  │  • Supabase (PostgreSQL / RLS)     │
+│  • esbuild Production CJS Bundle  │  • Brevo HTTPS REST Mail API       │
+│  • Dynamic PORT Binding Engine    │  • VietQR Napas 24/7 Gateway       │
 └───────────────────────────────────┴────────────────────────────────────┘
 ```
 
@@ -111,7 +150,11 @@ Dự án được xây dựng dựa trên những công nghệ web và đồ h�
 - [x] Không gian thực hành 3D với Breadboard và bộ linh kiện cơ bản
 - [x] Động cơ mô phỏng điện học thời gian thực & kiểm tra đoản mạch
 - [x] Tích hợp AI Assistant với Google Gemini và Minibot 3D
-- [x] Chế độ học tập tương tác & Hệ thống bài tập tự chấm điểm
+- [x] Tích hợp mô hình 3D thực tế định dạng `.glb` (Arduino Uno, Breadboard)
+- [x] Phòng học lý thuyết đồng bộ slide và Trợ giảng AI riêng biệt
+- [x] Bộ phân tích tự động giáo án PowerPoint `.pptx` thành bài thực hành
+- [x] Hệ thống điều hướng hợp nhất Unified Routing Engine (deep links, history API)
+- [x] Hỗ trợ gửi mail OTP qua Brevo HTTPS API chuẩn cloud hosting
 - [x] Marketplace & Creator Dashboard chia sẻ dự án
 - [ ] Bổ sung mô phỏng nạp code C++ trực tiếp cho Arduino ảo và quan sát thực thi
 - [ ] Xuất sơ đồ mạch ra định dạng Gerber / PCB Layout và Schematic 2D tiêu chuẩn
@@ -122,7 +165,7 @@ Dự án được xây dựng dựa trên những công nghệ web và đồ h�
 
 ## 📄 Bản quyền (License)
 
-Dự án được phát hành dưới giấy phép mã nguồn mở **MIT License**. Mọi chi tiết vui lòng tham khảo file [LICENSE](LICENSE).
+Dự án được phát hành dưới giấy phép mã nguồn mở **MIT License**. Mọi chi tiết xem tại file [LICENSE](LICENSE).
 
 ---
 

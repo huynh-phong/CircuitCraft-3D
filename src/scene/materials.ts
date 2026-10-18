@@ -47,9 +47,13 @@ export class SceneMaterialRegistry {
     });
 
     this.pcbPadMaterial = new THREE.MeshStandardMaterial({
-      color: 0xdfb44a, // Gold immersion ENIG / tinned copper pad
-      roughness: 0.25,
-      metalness: 0.85,
+      color: 0xf6cf57, // Bright lustrous ENIG gold pad
+      roughness: 0.4,
+      metalness: 0.25,
+      polygonOffset: true,
+      polygonOffsetFactor: -2.0,
+      polygonOffsetUnits: -4.0,
+      side: THREE.DoubleSide,
     });
 
     this.pcbSilkscreenMaterial = new THREE.MeshBasicMaterial({

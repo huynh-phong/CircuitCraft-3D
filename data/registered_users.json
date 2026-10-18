@@ -1,5 +1,15 @@
 [
   {
+    "id": "usr_admin_01",
+    "email": "admin@circuitcraft3d.com",
+    "passwordHash": "58d3bce9f52c6c8cc4e28d02a5b087004e2bf579c5f88839ac67207fb749c67a",
+    "fullName": "Quản Trị Viên CircuitCraft",
+    "role": "admin",
+    "tier": "creator",
+    "createdAt": "2026-09-17T08:51:59.877Z",
+    "verifiedAt": "2026-09-17T08:51:59.877Z"
+  },
+  {
     "id": "usr_1789635138514_erilbv",
     "email": "engineer2026@gmail.com",
     "passwordHash": "1d852594d9af6d77a3e83276b79a9fa1ea5c7becaec19ef181d9f48aa88e3acd",
@@ -7,8 +17,7 @@
     "role": "user",
     "tier": "free",
     "createdAt": "2026-09-17T08:52:18.515Z",
-    "verifiedAt": "2026-09-17T08:52:18.515Z",
-    "status": "active"
+    "verifiedAt": "2026-09-17T08:52:18.515Z"
   },
   {
     "id": "29ac5345-809f-4ec6-8aba-fdaaf180a2b3",
@@ -18,8 +27,7 @@
     "role": "user",
     "tier": "free",
     "createdAt": "2026-09-16T07:58:47.724493Z",
-    "verifiedAt": "2026-09-16T07:58:47.724493Z",
-    "status": "active"
+    "verifiedAt": "2026-09-16T07:58:47.724493Z"
   },
   {
     "id": "b0820b3f-eec9-422c-834f-72d247f489b8",
@@ -29,8 +37,7 @@
     "role": "user",
     "tier": "free",
     "createdAt": "2026-09-16T07:51:31.862933Z",
-    "verifiedAt": "2026-09-16T07:51:31.862933Z",
-    "status": "active"
+    "verifiedAt": "2026-09-16T07:51:31.862933Z"
   },
   {
     "id": "83061fc4-4340-47a3-a3ba-fd8b822c96ab",
@@ -40,19 +47,17 @@
     "role": "user",
     "tier": "free",
     "createdAt": "2026-09-14T09:23:40.524557Z",
-    "verifiedAt": "2026-09-14T09:25:05.488664Z",
-    "status": "active"
+    "verifiedAt": "2026-09-14T09:25:05.488664Z"
   },
   {
     "id": "3c6c5edd-3780-4451-9525-f9e7f2250035",
     "email": "huynhphongff1@gmail.com",
     "passwordHash": "ebf880d5ea11b4c54c70786d97619a3c3d0f1781ef042713c575e526523ff760",
     "fullName": "Huỳnh Mai Phong",
-    "role": "admin",
+    "role": "user",
     "tier": "free",
     "createdAt": "2026-09-14T08:12:03.585415Z",
-    "verifiedAt": "2026-09-14T09:25:05.594075Z",
-    "status": "active"
+    "verifiedAt": "2026-09-14T09:25:05.594075Z"
   },
   {
     "id": "160b8622-2ac0-464f-b418-03ce6a58339e",
@@ -62,8 +67,7 @@
     "role": "user",
     "tier": "free",
     "createdAt": "2026-09-14T07:25:15.209136Z",
-    "verifiedAt": "2026-09-14T07:25:15.211836Z",
-    "status": "active"
+    "verifiedAt": "2026-09-14T07:25:15.211836Z"
   },
   {
     "id": "3cd79dea-bc82-492e-8a8e-a7aa8d205d93",
@@ -73,8 +77,7 @@
     "role": "user",
     "tier": "free",
     "createdAt": "2026-09-14T07:25:14.997995Z",
-    "verifiedAt": "2026-09-14T07:25:15.022839Z",
-    "status": "active"
+    "verifiedAt": "2026-09-14T07:25:15.022839Z"
   },
   {
     "id": "usr_1789896108696_bxe5ym",
@@ -85,31 +88,6 @@
     "role": "user",
     "tier": "free",
     "createdAt": "2026-09-20T09:21:48.697Z",
-    "verifiedAt": "2026-09-20T09:21:48.697Z",
-    "status": "active"
-  },
-  {
-    "id": "2ad7a218-3c06-40db-85d6-2f353ae07b2e",
-    "email": "tranvubangoc@gmail.com",
-    "passwordHash": "",
-    "fullName": "kkkk",
-    "role": "user",
-    "tier": "free",
-    "status": "active",
-    "createdAt": "2026-10-05T01:07:15.465839Z",
-    "verifiedAt": "2026-10-05T01:07:15.465839Z",
-    "lastActiveAt": "2026-10-05T01:07:15.465839Z"
-  },
-  {
-    "id": "0abb6c68-8287-45bb-9c2b-0fcf4d8e84bc",
-    "email": "huynhphongff2@gmail.com",
-    "passwordHash": "",
-    "fullName": "Huỳnh Phong Test 1",
-    "role": "user",
-    "tier": "free",
-    "status": "active",
-    "createdAt": "2026-10-02T08:49:37.594392Z",
-    "verifiedAt": "2026-10-02T08:49:37.594392Z",
-    "lastActiveAt": "2026-10-02T08:49:37.594392Z"
+    "verifiedAt": "2026-09-20T09:21:48.697Z"
   }
 ]

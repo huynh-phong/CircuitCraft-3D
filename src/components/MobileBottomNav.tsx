@@ -18,8 +18,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   const { language } = useI18n();
 
-  // If in 3D full-screen editor, hide bottom nav to give maximum canvas space
-  if (currentRoute === 'editor') {
+  // If in 3D full-screen editor or theory classroom, hide bottom nav to give maximum learning canvas space
+  if (currentRoute === 'editor' || currentRoute === 'theory-learning') {
     return null;
   }
 

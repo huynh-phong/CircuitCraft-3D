@@ -13,8 +13,8 @@ import {
   getBoardPerimeter,
   getClosestPointOnPerimeter,
   isPointInsideBoard,
-  areAllComponentsContained,
 } from '../domain/project/boardGeometry';
+import { PanelRightOpen, PanelRightClose, Eye, Maximize2, RotateCcw, Target, Compass } from 'lucide-react';
 
 export interface ThreeSceneProps {
   document: ProjectDocument;
@@ -42,6 +42,10 @@ export interface ThreeSceneProps {
   qualityPreset?: 'low' | 'balanced' | 'high';
   showGrid?: boolean;
   activeWireColor?: string;
+  isRightInspectorCollapsed?: boolean;
+  onToggleRightInspector?: () => void;
+  placingComponentId?: string | null;
+  onPlacedComponent?: () => void;
 }
 
 export const ThreeScene: React.FC<ThreeSceneProps> = ({
@@ -70,6 +74,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   qualityPreset = 'balanced',
   showGrid = true,
   activeWireColor = '#06b6d4',
+  isRightInspectorCollapsed = false,
+  onToggleRightInspector,
+  placingComponentId,
+  onPlacedComponent,
 }) => {
   const { effectiveTheme, language } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -110,10 +118,39 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   const isOrbitingRef = useRef(false);
   const isPanningRef = useRef(false);
   const mousePrevRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // Damped Camera State & Target Vectors
   const cameraTargetRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const targetLookAtRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
   const cameraRadiusRef = useRef<number>(140);
+  const targetRadiusRef = useRef<number>(140);
   const cameraThetaRef = useRef<number>(Math.PI / 4); // Horizontal angle
+  const targetThetaRef = useRef<number>(Math.PI / 4);
   const cameraPhiRef = useRef<number>(Math.PI / 3); // Vertical angle
+  const targetPhiRef = useRef<number>(Math.PI / 3);
+
+  // Inertia angular velocities (decayed with friction on release)
+  const orbitVelocityRef = useRef<{ theta: number; phi: number }>({ theta: 0, phi: 0 });
+
+  // Camera flight preset transition controller
+  const cameraTransitionRef = useRef<{
+    startTime: number;
+    duration: number;
+    fromTarget: THREE.Vector3;
+    toTarget: THREE.Vector3;
+    fromRadius: number;
+    toRadius: number;
+    fromTheta: number;
+    deltaTheta: number;
+    fromPhi: number;
+    toPhi: number;
+  } | null>(null);
+
+  // Active view preset state for UI feedback
+  const [activePreset, setActivePreset] = useState<'perspective' | 'top' | 'isometric' | 'reset' | 'fit'>('perspective');
+
+  // Settling components map: component instanceId -> settle start timestamp
+  const settlingComponentsRef = useRef<Map<string, { startTime: number }>>(new Map());
 
   // Raycaster & Plane
   const raycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
@@ -124,13 +161,20 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   const explodedProgressRef = useRef<number>(0);
 
   // Tooltip UI state
-  const [hoveredPinInfo, setHoveredPinInfo] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [hoveredPinInfo, setHoveredPinInfo] = useState<{
+    componentId: string;
+    pinId: string;
+    name: string;
+    designator?: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
-  // Update Camera from spherical coordinates
+  // Immediately apply Camera position from current spherical coordinates
   const updateCameraPosition = useCallback(() => {
     if (!cameraRef.current) return;
     const r = cameraRadiusRef.current;
-    const phi = Math.max(0.1, Math.min(Math.PI / 2 - 0.05, cameraPhiRef.current));
+    const phi = Math.max(0.08, Math.min(Math.PI / 2 - 0.04, cameraPhiRef.current));
     const theta = cameraThetaRef.current;
     const target = cameraTargetRef.current;
 
@@ -142,30 +186,105 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     cameraRef.current.lookAt(target);
   }, []);
 
-  // Set standard views
-  const setView = useCallback(
-    (mode: 'top' | 'perspective' | 'isometric' | 'reset') => {
-      cameraTargetRef.current.set(0, 0, 0);
-      if (mode === 'top') {
-        cameraRadiusRef.current = 150;
-        cameraThetaRef.current = 0;
-        cameraPhiRef.current = 0.08;
-      } else if (mode === 'perspective') {
-        cameraRadiusRef.current = 145;
-        cameraThetaRef.current = Math.PI / 4;
-        cameraPhiRef.current = Math.PI / 3.2;
-      } else if (mode === 'isometric') {
-        cameraRadiusRef.current = 160;
-        cameraThetaRef.current = Math.PI / 4;
-        cameraPhiRef.current = Math.atan(1 / Math.SQRT2); // 35.264°
-      } else if (mode === 'reset') {
-        cameraRadiusRef.current = 140;
-        cameraThetaRef.current = Math.PI / 4;
-        cameraPhiRef.current = Math.PI / 3;
-      }
-      updateCameraPosition();
+  // Smooth cinematic flyCameraTo controller with easeInOut trajectory
+  const flyCameraTo = useCallback(
+    (opts: {
+      target?: THREE.Vector3;
+      radius?: number;
+      theta?: number;
+      phi?: number;
+      duration?: number;
+    }) => {
+      const toTarget = opts.target || new THREE.Vector3(0, 0, 0);
+      const toRadius = opts.radius ?? 140;
+      const toPhi = opts.phi ?? Math.PI / 3;
+      const toTheta = opts.theta ?? Math.PI / 4;
+
+      // Calculate shortest angular path so theta never spins 360 unnecessarily
+      let deltaTheta = toTheta - cameraThetaRef.current;
+      while (deltaTheta > Math.PI) deltaTheta -= 2 * Math.PI;
+      while (deltaTheta < -Math.PI) deltaTheta += 2 * Math.PI;
+
+      cameraTransitionRef.current = {
+        startTime: performance.now(),
+        duration: (opts.duration ?? 650) / 1000,
+        fromTarget: cameraTargetRef.current.clone(),
+        toTarget: toTarget.clone(),
+        fromRadius: cameraRadiusRef.current,
+        toRadius,
+        fromTheta: cameraThetaRef.current,
+        deltaTheta,
+        fromPhi: cameraPhiRef.current,
+        toPhi,
+      };
+      orbitVelocityRef.current = { theta: 0, phi: 0 };
     },
-    [updateCameraPosition]
+    []
+  );
+
+  // Set standard view presets with smooth cinematic trajectory
+  const setView = useCallback(
+    (mode: 'top' | 'perspective' | 'isometric' | 'reset' | 'fit') => {
+      setActivePreset(mode);
+      if (mode === 'top') {
+        flyCameraTo({
+          target: new THREE.Vector3(0, 0, 0),
+          radius: 150,
+          theta: 0,
+          phi: 0.08,
+          duration: 650,
+        });
+      } else if (mode === 'perspective') {
+        flyCameraTo({
+          target: new THREE.Vector3(0, 0, 0),
+          radius: 145,
+          theta: Math.PI / 4,
+          phi: Math.PI / 3.2,
+          duration: 650,
+        });
+      } else if (mode === 'isometric') {
+        flyCameraTo({
+          target: new THREE.Vector3(0, 0, 0),
+          radius: 160,
+          theta: Math.PI / 4,
+          phi: Math.atan(1 / Math.SQRT2),
+          duration: 650,
+        });
+      } else if (mode === 'reset') {
+        flyCameraTo({
+          target: new THREE.Vector3(0, 0, 0),
+          radius: 140,
+          theta: Math.PI / 4,
+          phi: Math.PI / 3,
+          duration: 650,
+        });
+      } else if (mode === 'fit') {
+        // Compute bounding box encompassing board and all placed components
+        const box = new THREE.Box3();
+        const halfW = document.board.width / 2;
+        const halfD = document.board.depth / 2;
+        box.expandByPoint(new THREE.Vector3(-halfW, 0, -halfD));
+        box.expandByPoint(new THREE.Vector3(halfW, 10, halfD));
+        for (const comp of document.components) {
+          box.expandByPoint(new THREE.Vector3(comp.position.x - 10, comp.position.y, comp.position.z - 10));
+          box.expandByPoint(new THREE.Vector3(comp.position.x + 10, comp.position.y + 14, comp.position.z + 10));
+        }
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.z, 60);
+        const fitRadius = Math.max(90, Math.min(280, maxDim * 1.55));
+        flyCameraTo({
+          target: center,
+          radius: fitRadius,
+          theta: Math.PI / 4,
+          phi: Math.PI / 3.2,
+          duration: 700,
+        });
+      }
+    },
+    [flyCameraTo, document.board, document.components]
   );
 
   // Initialize Scene, Camera, Renderer, Lights, Board
@@ -194,6 +313,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       antialias: qualityPreset !== 'low',
       alpha: true,
       powerPreference: 'high-performance',
+      logarithmicDepthBuffer: true,
     });
     rendererRef.current = renderer;
     renderer.setSize(width, height);
@@ -268,13 +388,64 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       const delta = (time - lastTime) / 1000;
       lastTime = time;
 
-      // Presentation Mode Turntable auto-orbit
-      if (isPresentationMode && !isOrbitingRef.current && !isPanningRef.current && !isDraggingRef.current) {
-        cameraThetaRef.current += delta * 0.22;
-        updateCameraPosition();
+      // 1. Camera Auto-Flight Transition / Damping & Inertia
+      if (cameraTransitionRef.current) {
+        const tr = cameraTransitionRef.current;
+        const elapsed = (time - tr.startTime) / 1000;
+        const t = Math.min(1, Math.max(0, elapsed / tr.duration));
+        // Cinematic cubic ease-in-out curve
+        const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+        targetRadiusRef.current = THREE.MathUtils.lerp(tr.fromRadius, tr.toRadius, ease);
+        targetThetaRef.current = tr.fromTheta + tr.deltaTheta * ease;
+        targetPhiRef.current = THREE.MathUtils.lerp(tr.fromPhi, tr.toPhi, ease);
+        targetLookAtRef.current.lerpVectors(tr.fromTarget, tr.toTarget, ease);
+
+        cameraRadiusRef.current = targetRadiusRef.current;
+        cameraThetaRef.current = targetThetaRef.current;
+        cameraPhiRef.current = targetPhiRef.current;
+        cameraTargetRef.current.copy(targetLookAtRef.current);
+
+        if (t >= 1) {
+          cameraTransitionRef.current = null;
+        }
+      } else {
+        // Natural inertia when releasing pointer while orbiting
+        if (!isOrbitingRef.current && (Math.abs(orbitVelocityRef.current.theta) > 0.00004 || Math.abs(orbitVelocityRef.current.phi) > 0.00004)) {
+          targetThetaRef.current += orbitVelocityRef.current.theta;
+          targetPhiRef.current = Math.max(0.08, Math.min(Math.PI / 2 - 0.04, targetPhiRef.current + orbitVelocityRef.current.phi));
+          const friction = Math.exp(-6.8 * delta);
+          orbitVelocityRef.current.theta *= friction;
+          orbitVelocityRef.current.phi *= friction;
+        }
+
+        // Presentation Mode Turntable auto-orbit
+        if (isPresentationMode && !isOrbitingRef.current && !isPanningRef.current && !isDraggingRef.current) {
+          targetThetaRef.current += delta * 0.22;
+        }
+
+        // Smooth exponential damping towards user target (smooth CAD feel)
+        const dampFactor = Math.min(1, 1 - Math.exp(-14 * delta));
+        cameraRadiusRef.current = THREE.MathUtils.lerp(cameraRadiusRef.current, targetRadiusRef.current, dampFactor);
+        cameraThetaRef.current = THREE.MathUtils.lerp(cameraThetaRef.current, targetThetaRef.current, dampFactor);
+        cameraPhiRef.current = THREE.MathUtils.lerp(cameraPhiRef.current, targetPhiRef.current, dampFactor);
+        cameraTargetRef.current.lerp(targetLookAtRef.current, dampFactor);
       }
 
-      // Smooth Exploded View transition
+      // Synchronize Three.js camera position & orientation
+      const r = cameraRadiusRef.current;
+      const phi = Math.max(0.08, Math.min(Math.PI / 2 - 0.04, cameraPhiRef.current));
+      const theta = cameraThetaRef.current;
+      const camTarget = cameraTargetRef.current;
+
+      camera.position.set(
+        camTarget.x + r * Math.sin(phi) * Math.sin(theta),
+        camTarget.y + r * Math.cos(phi),
+        camTarget.z + r * Math.sin(phi) * Math.cos(theta)
+      );
+      camera.lookAt(camTarget);
+
+      // 2. Smooth Exploded View transition
       const targetExploded = isExplodedView ? 1 : 0;
       explodedProgressRef.current = THREE.MathUtils.lerp(explodedProgressRef.current, targetExploded, delta * 5);
 
@@ -289,12 +460,55 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         }
       });
 
-      // Update Minibot bobbing & hover
+      // 3. Tactile Settling Bounce Animation on newly dropped / placed components
+      if (settlingComponentsRef.current.size > 0) {
+        const nowMs = performance.now();
+        settlingComponentsRef.current.forEach((info, compId) => {
+          const child = componentsGroupRef.current.children.find((c) => c.name === `comp-${compId}`);
+          const comp = document.components.find((c) => c.instanceId === compId);
+          if (child && comp) {
+            const elapsed = (nowMs - info.startTime) / 1000;
+            if (elapsed < 0.28) {
+              const settleBounce = Math.sin(elapsed * 28) * Math.exp(-14 * elapsed) * 1.6;
+              child.position.y = comp.position.y + settleBounce;
+            } else {
+              child.position.y = comp.position.y;
+              settlingComponentsRef.current.delete(compId);
+            }
+          } else {
+            settlingComponentsRef.current.delete(compId);
+          }
+        });
+      }
+
+      // 4. Electrical Current Flow Pulse Animation along connected wires
+      const isCircuitActive = Boolean(simulationResult && simulationResult.status === 'running');
+      wiresGroupRef.current.children.forEach((wireGroup, wireIdx) => {
+        const pulseMesh = wireGroup.children.find((c) => c.name === 'electric-pulse') as THREE.Mesh | undefined;
+        if (pulseMesh && pulseMesh.userData?.curve) {
+          const curve = pulseMesh.userData.curve as THREE.Curve<THREE.Vector3>;
+          const mat = pulseMesh.material as THREE.MeshBasicMaterial;
+          if (isCircuitActive) {
+            pulseMesh.visible = true;
+            mat.opacity = THREE.MathUtils.lerp(mat.opacity, 0.9, delta * 6);
+            const progress = ((time / 1000) * 0.45 + wireIdx * 0.22) % 1.0;
+            const pt = curve.getPointAt(progress);
+            pulseMesh.position.copy(pt);
+          } else {
+            mat.opacity = THREE.MathUtils.lerp(mat.opacity, 0, delta * 8);
+            if (mat.opacity <= 0.04) {
+              pulseMesh.visible = false;
+            }
+          }
+        }
+      });
+
+      // 5. Update Minibot bobbing & hover
       if (minibotRef.current) {
         minibotRef.current.update(delta);
       }
 
-      // Update selection bounding box
+      // 6. Update selection bounding box
       if (selectionOutlineRef.current) {
         selectionOutlineRef.current.update();
       }
@@ -315,7 +529,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     };
   }, [isPresentationMode, qualityPreset]);
 
-  // Reactively update scene background without re-creating scene or resetting camera
+  // Reactively update scene background and workbench without re-creating scene or resetting camera
   useEffect(() => {
     if (!sceneRef.current) return;
     const bgHex = effectiveTheme === 'light'
@@ -427,8 +641,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     if (showGrid && shape !== 'circle' && shape !== 'triangle' && shape !== 'polygon') {
       const w = shape === 'square' ? Math.max(width, depth) : width;
       const d = shape === 'square' ? Math.max(width, depth) : depth;
-      const padGeom = new THREE.CircleGeometry(0.5, 8);
+      const padGeom = new THREE.CircleGeometry(0.48, 12);
       padGeom.rotateX(-Math.PI / 2);
+      padGeom.computeBoundingBox();
+      padGeom.computeBoundingSphere();
       const padMat = mats.pcbPadMaterial;
 
       const halfW = w / 2 - 4;
@@ -439,9 +655,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       const countZ = Math.floor((halfD * 2) / step);
       const totalPads = countX * countZ;
 
-      if (totalPads < 3000) {
+      if (totalPads < 4000) {
         const instancedPads = new THREE.InstancedMesh(padGeom, padMat, totalPads);
-        instancedPads.position.set(0, 0.04, 0);
+        instancedPads.position.set(0, 0.08, 0);
+        instancedPads.frustumCulled = false; // CRITICAL: Never cull pad dots when zooming in closely!
 
         const dummy = new THREE.Object3D();
         let idx = 0;
@@ -543,52 +760,57 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     };
   }, [isCutMode, cutPointsState]);
 
-  // Pin Halos in Wiring Mode
+  // Pin Highlights (Zero-clutter: only hovered pin or active wire start pin lights up)
   useEffect(() => {
     componentsGroupRef.current.traverse((child) => {
-      if (child.userData?.isPin) {
+      if (child.name?.startsWith('pin-') && (child as any).isGroup && child.userData?.isPin) {
         let beacon = child.getObjectByName('pin-beacon') as THREE.Mesh;
+        const pinY = child.userData.localOffset?.y ?? 1.0;
         if (!beacon) {
-          const ringGeom = new THREE.RingGeometry(1.6, 2.5, 16);
+          const ringGeom = new THREE.RingGeometry(0.35, 1.05, 20);
           ringGeom.rotateX(-Math.PI / 2);
           const ringMat = new THREE.MeshStandardMaterial({
-            color: 0x06b6d4,
-            emissive: 0x06b6d4,
-            emissiveIntensity: 0.8,
-            roughness: 0.2,
+            color: 0x38bdf8,
+            emissive: 0x38bdf8,
+            emissiveIntensity: 1.6,
+            roughness: 0.1,
             side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.95,
           });
           beacon = new THREE.Mesh(ringGeom, ringMat);
           beacon.name = 'pin-beacon';
-          beacon.position.set(0, 0.4, 0);
+          beacon.position.set(0, pinY + 0.15, 0);
           child.add(beacon);
         }
 
-        if (!isWiringMode) {
-          beacon.visible = false;
-        } else {
-          beacon.visible = true;
-          const { componentId, pinId } = child.userData;
-          const isStartPin = wiringStartPin && wiringStartPin.componentId === componentId && wiringStartPin.pinId === pinId;
-          const isHovered = hoveredPinInfo && hoveredPinInfo.name === child.userData.name;
+        const { componentId, pinId } = child.userData;
+        const isStartPin = Boolean(
+          wiringStartPin && wiringStartPin.componentId === componentId && wiringStartPin.pinId === pinId
+        );
+        const isHovered = Boolean(
+          hoveredPinInfo &&
+            hoveredPinInfo.componentId === componentId &&
+            hoveredPinInfo.pinId === pinId
+        );
 
+        // Only show indicator if hovered OR if it is the currently active start pin
+        if (isStartPin || isHovered) {
+          beacon.visible = true;
           const mat = beacon.material as THREE.MeshStandardMaterial;
           if (isStartPin) {
             mat.color.setHex(0xf59e0b); // Pulsing Gold
             mat.emissive.setHex(0xf59e0b);
-            mat.emissiveIntensity = 1.4;
-            beacon.scale.set(1.4, 1.4, 1.4);
-          } else if (isHovered) {
-            mat.color.setHex(0x38bdf8); // Bright Cyan
-            mat.emissive.setHex(0x38bdf8);
-            mat.emissiveIntensity = 1.1;
-            beacon.scale.set(1.25, 1.25, 1.25);
+            mat.emissiveIntensity = 2.2;
+            beacon.scale.set(1.2, 1.2, 1.2);
           } else {
-            mat.color.setHex(0x06b6d4); // Light Teal
-            mat.emissive.setHex(0x06b6d4);
-            mat.emissiveIntensity = 0.6;
+            mat.color.setHex(0x38bdf8); // Bright Luminous Cyan
+            mat.emissive.setHex(0x38bdf8);
+            mat.emissiveIntensity = 1.8;
             beacon.scale.set(1.0, 1.0, 1.0);
           }
+        } else {
+          beacon.visible = false;
         }
       }
     });
@@ -663,6 +885,75 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     }
   }, [minibotTargetCompId, minibotState, document.components]);
 
+  // Active placement from Component Library (attached to mouse cursor)
+  useEffect(() => {
+    if (placingComponentId) {
+      const comp = document.components.find((c) => c.instanceId === placingComponentId);
+      if (comp) {
+        isDraggingRef.current = true;
+        draggedCompIdRef.current = placingComponentId;
+        dragStartPosRef.current = { ...comp.position };
+        currentDragPosRef.current = { ...comp.position };
+        dragOffsetRef.current = { x: 0, z: 0 };
+      }
+    }
+  }, [placingComponentId, document.components]);
+
+  // Track cursor movement across window while placing new component
+  useEffect(() => {
+    if (!placingComponentId) return;
+
+    const handleWindowPointerMove = (e: PointerEvent) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect || !cameraRef.current) return;
+
+      mouseCoordsRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouseCoordsRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycasterRef.current.setFromCamera(mouseCoordsRef.current, cameraRef.current);
+
+      const intersectionPoint = new THREE.Vector3();
+      if (raycasterRef.current.ray.intersectPlane(groundPlaneRef.current, intersectionPoint)) {
+        const step = e.shiftKey ? 0.5 : (document.board.gridSpacing || 2.54);
+        let snappedX = snapToGrid(intersectionPoint.x, step);
+        let snappedZ = snapToGrid(intersectionPoint.z, step);
+        let targetY = 0;
+
+        const breadboard = document.components.find((c) => c.definitionId === 'breadboard');
+        const isDraggedBreadboard = placingComponentId === breadboard?.instanceId;
+
+        if (breadboard && !isDraggedBreadboard) {
+          const bbHalfW = 165 / 2;
+          const bbHalfD = 55 / 2;
+          const relX = snappedX - breadboard.position.x;
+          const relZ = snappedZ - breadboard.position.z;
+
+          if (Math.abs(relX) <= bbHalfW + 3 && Math.abs(relZ) <= bbHalfD + 3) {
+            targetY = 9.8;
+            const bbPitch = 2.54;
+            const snappedCol = Math.max(1, Math.min(60, Math.round(relX / bbPitch + 29.5 + 1)));
+            snappedX = breadboard.position.x + Number(((snappedCol - 1 - 29.5) * bbPitch).toFixed(2));
+
+            const validZs = [-25.8, -23.5, -14.0, -11.46, -8.92, -6.38, -3.84, 3.84, 6.38, 8.92, 11.46, 14.0, 23.5, 25.8];
+            const nearestZ = validZs.reduce((prev, curr) => (Math.abs(curr - relZ) < Math.abs(prev - relZ) ? curr : prev), validZs[0]);
+            snappedZ = breadboard.position.z + nearestZ;
+          }
+        }
+
+        currentDragPosRef.current = { x: snappedX, y: targetY, z: snappedZ };
+
+        const meshGroup = componentsGroupRef.current.children.find(
+          (c) => c.name === `comp-${placingComponentId}`
+        );
+        if (meshGroup) {
+          meshGroup.position.set(snappedX, targetY, snappedZ);
+        }
+      }
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    return () => window.removeEventListener('pointermove', handleWindowPointerMove);
+  }, [placingComponentId, document.components, document.board.gridSpacing]);
+
   // Interactive Pointer Events (Selection, Dragging, Wiring, Switch Toggling, Board Resize, Cut Tool)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button === 2) {
@@ -681,6 +972,24 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     mouseCoordsRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycasterRef.current.setFromCamera(mouseCoordsRef.current, cameraRef.current);
+
+    // Drop and place newly added component on click
+    if (placingComponentId && draggedCompIdRef.current === placingComponentId) {
+      const id = placingComponentId;
+      const oldPos = dragStartPosRef.current || { x: 0, y: 0, z: 0 };
+      const newPos = currentDragPosRef.current || { x: 0, y: 0, z: 0 };
+
+      isDraggingRef.current = false;
+      draggedCompIdRef.current = null;
+      dragStartPosRef.current = null;
+      currentDragPosRef.current = null;
+
+      onMoveComponent(id, oldPos, newPos);
+      if (onPlacedComponent) {
+        onPlacedComponent();
+      }
+      return;
+    }
 
     // 0. Check Cut Mode clicks
     if (isCutMode) {
@@ -854,30 +1163,47 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     const clientX = e.clientX;
     const clientY = e.clientY;
 
-    // Handle Camera Orbit
+    // Handle Camera Orbit with velocity tracking
     if (isOrbitingRef.current) {
+      if (cameraTransitionRef.current) {
+        cameraTransitionRef.current = null;
+      }
       const dx = clientX - mousePrevRef.current.x;
       const dy = clientY - mousePrevRef.current.y;
-      cameraThetaRef.current -= dx * 0.008;
-      cameraPhiRef.current -= dy * 0.008;
+      const dTheta = -dx * 0.0072;
+      const dPhi = -dy * 0.0072;
+
+      targetThetaRef.current += dTheta;
+      targetPhiRef.current = Math.max(0.08, Math.min(Math.PI / 2 - 0.04, targetPhiRef.current + dPhi));
+      orbitVelocityRef.current = { theta: dTheta, phi: dPhi };
       mousePrevRef.current = { x: clientX, y: clientY };
-      updateCameraPosition();
       return;
     }
 
-    // Handle Camera Pan
+    // Handle Camera Pan (Right-click drag across screen plane)
     if (isPanningRef.current) {
+      if (cameraTransitionRef.current) {
+        cameraTransitionRef.current = null;
+      }
       const dx = clientX - mousePrevRef.current.x;
       const dy = clientY - mousePrevRef.current.y;
-      const panSpeed = 0.2;
-      const right = new THREE.Vector3();
-      cameraRef.current.getWorldDirection(right);
-      right.cross(cameraRef.current.up).normalize();
 
-      cameraTargetRef.current.addScaledVector(right, -dx * panSpeed);
-      cameraTargetRef.current.addScaledVector(cameraRef.current.up, dy * panSpeed);
+      cameraRef.current.updateMatrixWorld();
+      const cameraMatrix = cameraRef.current.matrixWorld;
+
+      // Camera Right vector in world space
+      const cameraRight = new THREE.Vector3().setFromMatrixColumn(cameraMatrix, 0).normalize();
+      // Camera Up vector in world space
+      const cameraUp = new THREE.Vector3().setFromMatrixColumn(cameraMatrix, 1).normalize();
+
+      const fovRad = ((cameraRef.current.fov || 40) * Math.PI) / 180;
+      const panFactor = (cameraRadiusRef.current * 2 * Math.tan(fovRad / 2)) / rect.height;
+
+      // Screen-space pan: moves camera target smoothly in screen plane
+      targetLookAtRef.current.addScaledVector(cameraRight, -dx * panFactor);
+      targetLookAtRef.current.addScaledVector(cameraUp, dy * panFactor);
+
       mousePrevRef.current = { x: clientX, y: clientY };
-      updateCameraPosition();
       return;
     }
 
@@ -941,22 +1267,48 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const rawX = intersectionPoint.x + dragOffsetRef.current.x;
         const rawZ = intersectionPoint.z + dragOffsetRef.current.z;
         const step = e.shiftKey ? 0.5 : (document.board.gridSpacing || 2.54);
-        const snappedX = snapToGrid(rawX, step);
-        const snappedZ = snapToGrid(rawZ, step);
+        let snappedX = snapToGrid(rawX, step);
+        let snappedZ = snapToGrid(rawZ, step);
+        let targetY = 0;
 
-        const halfW = document.board.width / 2 - 4;
-        const halfD = document.board.depth / 2 - 4;
-        const clampedX = Math.max(-halfW, Math.min(halfW, snappedX));
-        const clampedZ = Math.max(-halfD, Math.min(halfD, snappedZ));
+        // Check if placed on or near a Breadboard
+        const breadboard = document.components.find((c) => c.definitionId === 'breadboard');
+        const isDraggedBreadboard = draggedCompIdRef.current === breadboard?.instanceId;
 
-        currentDragPosRef.current = { x: clampedX, y: 0, z: clampedZ };
+        if (breadboard && !isDraggedBreadboard) {
+          const bbHalfW = 165 / 2; // 82.5mm
+          const bbHalfD = 55 / 2;  // 27.5mm
+          const relX = snappedX - breadboard.position.x;
+          const relZ = snappedZ - breadboard.position.z;
+
+          if (Math.abs(relX) <= bbHalfW + 3 && Math.abs(relZ) <= bbHalfD + 3) {
+            // Resting on breadboard surface!
+            targetY = 9.8;
+            const bbPitch = 2.54;
+            // Snap X precisely to 60-column breadboard hole coordinates (columns 1..60)
+            const snappedCol = Math.max(1, Math.min(60, Math.round(relX / bbPitch + 29.5 + 1)));
+            snappedX = breadboard.position.x + Number(((snappedCol - 1 - 29.5) * bbPitch).toFixed(2));
+
+            // Snap Z precisely to authentic breadboard row levels (A-E, F-J, rails)
+            const validZs = [-25.8, -23.5, -14.0, -11.46, -8.92, -6.38, -3.84, 3.84, 6.38, 8.92, 11.46, 14.0, 23.5, 25.8];
+            const nearestZ = validZs.reduce((prev, curr) => (Math.abs(curr - relZ) < Math.abs(prev - relZ) ? curr : prev), validZs[0]);
+            snappedZ = breadboard.position.z + nearestZ;
+          }
+        }
+
+        // Allow placing across full workbench ESD mat area (380x250mm)
+        const maxWorkX = 175;
+        const maxWorkZ = 115;
+        const clampedX = Math.max(-maxWorkX, Math.min(maxWorkX, snappedX));
+        const clampedZ = Math.max(-maxWorkZ, Math.min(maxWorkZ, snappedZ));
+
+        currentDragPosRef.current = { x: clampedX, y: targetY, z: clampedZ };
 
         const meshGroup = componentsGroupRef.current.children.find(
           (c) => c.name === `comp-${draggedCompIdRef.current}`
         );
         if (meshGroup) {
-          meshGroup.position.x = clampedX;
-          meshGroup.position.z = clampedZ;
+          meshGroup.position.set(clampedX, targetY, clampedZ);
         }
         if (selectionOutlineRef.current) {
           selectionOutlineRef.current.update();
@@ -969,7 +1321,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         );
         if (hasConnectedWires) {
           const tempComponents = document.components.map((c) =>
-            c.instanceId === draggedId ? { ...c, position: { x: clampedX, y: 0, z: clampedZ } } : c
+            c.instanceId === draggedId ? { ...c, position: { x: clampedX, y: targetY, z: clampedZ } } : c
           );
           const wiresGroup = wiresGroupRef.current;
           while (wiresGroup.children.length > 0) {
@@ -992,7 +1344,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     const hoveredPin = pinIntersects.find((hit) => hit.object.userData?.isPin);
     if (hoveredPin) {
       setHoveredPinInfo({
+        componentId: hoveredPin.object.userData.componentId,
+        pinId: hoveredPin.object.userData.pinId,
         name: hoveredPin.object.userData.name || 'Chân linh kiện',
+        designator: hoveredPin.object.userData.designator,
         x: clientX - rect.left,
         y: clientY - rect.top - 24,
       });
@@ -1076,8 +1431,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       dragStartPosRef.current = null;
       currentDragPosRef.current = null;
 
-      if (oldPos.x !== newPos.x || oldPos.z !== newPos.z) {
+      if (oldPos.x !== newPos.x || oldPos.z !== newPos.z || oldPos.y !== newPos.y) {
         onMoveComponent(id, oldPos, newPos);
+        // Trigger tactile CAD settling micro-bounce
+        settlingComponentsRef.current.set(id, { startTime: performance.now() });
+      }
+
+      if (id === placingComponentId && onPlacedComponent) {
+        settlingComponentsRef.current.set(id, { startTime: performance.now() });
+        onPlacedComponent();
       }
     }
 
@@ -1127,12 +1489,17 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isWiringMode, isCutMode, onCancelWiring, onCancelCutMode]);
 
-  // Wheel Zoom
+  // Smooth Damped Wheel Zoom (interpolated via targetRadius in RAF loop)
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const zoomFactor = e.deltaY > 0 ? 1.08 : 0.92;
-    cameraRadiusRef.current = Math.max(35, Math.min(350, cameraRadiusRef.current * zoomFactor));
-    updateCameraPosition();
+    if (cameraTransitionRef.current) {
+      cameraTransitionRef.current = null;
+      targetThetaRef.current = cameraThetaRef.current;
+      targetPhiRef.current = cameraPhiRef.current;
+      targetLookAtRef.current.copy(cameraTargetRef.current);
+    }
+    const zoomDelta = e.deltaY * 0.13;
+    targetRadiusRef.current = Math.max(30, Math.min(350, targetRadiusRef.current + zoomDelta));
   };
 
   return (
@@ -1145,51 +1512,111 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* View Presets Quick Bar */}
-      <div className="absolute top-4 right-4 z-10 flex items-center gap-1.5 bg-white/85 dark:bg-slate-900/80 backdrop-blur-md p-1.5 rounded-lg border border-slate-200 dark:border-slate-700/60 shadow-lg text-xs">
+      {/* View Presets Quick Bar (Centered horizontally at top of 3D viewport) */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md p-1 rounded-xl border border-slate-200/80 dark:border-cyan-800/40 shadow-xl text-xs select-none">
         <button
           onClick={() => setView('perspective')}
-          className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer active:scale-95 ${
+            activePreset === 'perspective'
+              ? 'bg-cyan-50 dark:bg-cyan-950/80 text-cyan-600 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700/60 font-semibold shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+          }`}
           title={language === 'vi' ? 'Góc nhìn phối cảnh 3D' : '3D Perspective view'}
         >
-          {language === 'vi' ? 'Phối cảnh' : 'Perspective'}
+          <Eye className="w-3.5 h-3.5" />
+          <span>{language === 'vi' ? 'Phối cảnh' : 'Perspective'}</span>
         </button>
+
         <button
           onClick={() => setView('top')}
-          className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer active:scale-95 ${
+            activePreset === 'top'
+              ? 'bg-cyan-50 dark:bg-cyan-950/80 text-cyan-600 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700/60 font-semibold shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+          }`}
           title={language === 'vi' ? 'Nhìn thẳng từ trên xuống (2D PCB View)' : 'Top-down orthogonal view (2D PCB View)'}
         >
-          {language === 'vi' ? 'Mặt trên' : 'Top View'}
+          <Compass className="w-3.5 h-3.5" />
+          <span>{language === 'vi' ? 'Mặt trên' : 'Top View'}</span>
         </button>
+
         <button
           onClick={() => setView('isometric')}
-          className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition"
-          title={language === 'vi' ? 'Góc nhìn trục lượng (Isometric)' : 'Isometric view'}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer active:scale-95 ${
+            activePreset === 'isometric'
+              ? 'bg-cyan-50 dark:bg-cyan-950/80 text-cyan-600 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700/60 font-semibold shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+          }`}
+          title={language === 'vi' ? 'Góc nhìn trục lượng (Isometric 35.26°)' : 'Isometric view (35.26°)'}
         >
-          {language === 'vi' ? 'Trục lượng' : 'Isometric'}
+          <Eye className="w-3.5 h-3.5 rotate-45" />
+          <span>{language === 'vi' ? 'Trục lượng' : 'Isometric'}</span>
         </button>
+
+        <button
+          onClick={() => setView('fit')}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer active:scale-95 ${
+            activePreset === 'fit'
+              ? 'bg-cyan-50 dark:bg-cyan-950/80 text-cyan-600 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-700/60 font-semibold shadow-xs'
+              : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
+          }`}
+          title={language === 'vi' ? 'Căn vừa toàn bộ mạch vào màn hình' : 'Fit all components to view'}
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+          <span>{language === 'vi' ? 'Toàn cảnh' : 'Fit to View'}</span>
+        </button>
+
+        {selectedComponentId && (
+          <button
+            onClick={() => {
+              const comp = document.components.find((c) => c.instanceId === selectedComponentId);
+              if (comp) {
+                flyCameraTo({
+                  target: new THREE.Vector3(comp.position.x, comp.position.y + 2, comp.position.z),
+                  radius: 75,
+                  theta: Math.PI / 4,
+                  phi: Math.PI / 3.4,
+                  duration: 600,
+                });
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-950/70 text-teal-700 dark:text-teal-300 border border-teal-300 dark:border-teal-700/60 font-medium transition cursor-pointer hover:border-teal-400 active:scale-95 shadow-xs"
+            title={language === 'vi' ? 'Phóng to và căn giữa linh kiện đang chọn' : 'Focus camera on selected component'}
+          >
+            <Target className="w-3.5 h-3.5" />
+            <span>{language === 'vi' ? 'Tập trung' : 'Focus'}</span>
+          </button>
+        )}
+
         <button
           onClick={() => setView('reset')}
-          className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60 transition cursor-pointer active:scale-95"
           title={language === 'vi' ? 'Đặt lại góc quay camera ban đầu' : 'Reset camera'}
         >
-          {language === 'vi' ? 'Đặt lại' : 'Reset'}
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>{language === 'vi' ? 'Đặt lại' : 'Reset'}</span>
         </button>
       </div>
 
       {/* Pin Hover Floating Tooltip */}
       {hoveredPinInfo && (
         <div
-          className="pointer-events-none absolute z-20 px-2 py-1 bg-white/95 dark:bg-slate-900/90 text-cyan-700 dark:text-cyan-300 font-mono text-[11px] rounded border border-cyan-300 dark:border-cyan-500/40 shadow-md backdrop-blur-sm -translate-x-1/2 -translate-y-full"
+          className="pointer-events-none absolute z-30 px-2.5 py-1 bg-slate-900/95 dark:bg-slate-950/95 text-cyan-300 font-mono text-[11px] rounded-md border border-cyan-400/50 shadow-xl backdrop-blur-md -translate-x-1/2 -translate-y-full flex items-center gap-1.5"
           style={{ left: hoveredPinInfo.x, top: hoveredPinInfo.y }}
         >
-          {hoveredPinInfo.name}
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+          <span className="font-semibold">{hoveredPinInfo.name}</span>
+          {hoveredPinInfo.designator && (
+            <span className="text-[10px] px-1 py-0.2 bg-cyan-950/80 text-cyan-400 rounded border border-cyan-800/60">
+              {hoveredPinInfo.designator}
+            </span>
+          )}
         </div>
       )}
 
       {/* Cut tool indicator banner */}
       {isCutMode && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-full bg-rose-50 dark:bg-rose-950/90 border border-rose-300 dark:border-rose-500/80 text-rose-800 dark:text-rose-300 text-xs font-medium shadow-lg backdrop-blur-md flex items-center gap-2 animate-pulse">
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-full bg-rose-50 dark:bg-rose-950/90 border border-rose-300 dark:border-rose-500/80 text-rose-800 dark:text-rose-300 text-xs font-medium shadow-lg backdrop-blur-md flex items-center gap-2 animate-pulse">
           <span className="w-2 h-2 rounded-full bg-rose-500 dark:bg-rose-400"></span>
           {cutPointsState.length === 0
             ? (language === 'vi' ? 'Chế độ Cắt bo: Click một điểm trên viền bo mạch để bắt đầu' : 'Board Cut Mode: Click a point on board edge to start')
@@ -1213,7 +1640,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
       {/* Wiring mode indicator banner */}
       {isWiringMode && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-full bg-cyan-50 dark:bg-cyan-950/90 border border-cyan-300 dark:border-cyan-500/80 text-cyan-800 dark:text-cyan-300 text-xs font-medium shadow-lg backdrop-blur-md flex items-center gap-2 animate-pulse">
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-full bg-cyan-50 dark:bg-cyan-950/90 border border-cyan-300 dark:border-cyan-500/80 text-cyan-800 dark:text-cyan-300 text-xs font-medium shadow-lg backdrop-blur-md flex items-center gap-2 animate-pulse">
           <span className="w-2 h-2 rounded-full bg-cyan-500 dark:bg-cyan-400"></span>
           {wiringStartPin
             ? (language === 'vi' ? 'Đang kéo dây: Click vào chân đích để hoàn tất kết nối (Nhấn ESC để hủy)' : 'Wiring: Click target pin to complete connection (Press ESC to cancel)')

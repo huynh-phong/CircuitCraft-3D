@@ -94,10 +94,25 @@ export function createWireMesh(
     type: 'wire',
     connectionId: connection.id,
     connection,
+    curve,
+    wireRadius,
   };
 
   wireMesh.userData = { ...wireGroup.userData };
   wireGroup.add(wireMesh);
+
+  // Electrical Flow Pulse Bead (Animated along curve during active simulation)
+  const pulseRadius = Math.max(0.7, wireRadius * 1.6);
+  const pulseGeom = new THREE.SphereGeometry(pulseRadius, 10, 8);
+  const pulseMat = new THREE.MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0,
+  });
+  const pulseMesh = new THREE.Mesh(pulseGeom, pulseMat);
+  pulseMesh.name = 'electric-pulse';
+  pulseMesh.userData = { isPulse: true, curve };
+  wireGroup.add(pulseMesh);
 
   // Enlarged invisible hit tube for effortless mouse click selection
   const hitRadius = Math.max(wireRadius * 2.2, 1.8);

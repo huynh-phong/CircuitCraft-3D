@@ -1,5 +1,7 @@
 import { SimulationResult, ComponentSimulationState } from './types';
 import { ProjectDocument } from '../project/types';
+import { COMPONENT_DEFINITION_MAP, getBreadboardBusId } from '../components/definitions';
+import { calculatePinWorldPosition } from '../project/coordinates';
 
 interface AdjacencyEdge {
   fromPin: string;
@@ -27,23 +29,77 @@ export function simulateBehavior(
     };
   }
 
-  const powerSource = doc.components.find((c) => c.definitionId === 'dc-source');
+  const powerSource = doc.components.find(
+    (c) => c.definitionId === 'dc-source' || c.definitionId === 'arduino-uno' || c.definitionId === 'arduino_uno'
+  );
   if (!powerSource) {
     return {
       status: 'stopped',
       revision: doc.revision,
       components: compStates,
-      summary: 'Mô phỏng dừng: Chưa có nguồn điện DC trên mạch.',
+      summary: 'Mô phỏng dừng: Chưa có nguồn điện (Nguồn DC hoặc Arduino UNO) trên mạch.',
       isClosedLoop: false,
-      issues: ['Chưa có nguồn điện DC.'],
+      issues: ['Chưa có nguồn điện DC hoặc Bo Arduino.'],
       timestamp: Date.now(),
     };
+  }
+
+  // Auto-connect through-hole components resting on or plugged into a breadboard
+  const breadboards = doc.components.filter((c) => c.definitionId === 'breadboard');
+  const augmentedConnections = [...doc.connections];
+
+  for (const bb of breadboards) {
+    const bbDef = COMPONENT_DEFINITION_MAP.get('breadboard');
+    if (!bbDef) continue;
+    const bbPins = bbDef.pins;
+
+    for (const comp of doc.components) {
+      if (comp.instanceId === bb.instanceId || comp.definitionId === 'breadboard') continue;
+      // Through-hole components resting on or placed over the breadboard
+      const isOverBreadboard =
+        Math.abs(comp.position.x - bb.position.x) <= 165 / 2 + 3 &&
+        Math.abs(comp.position.z - bb.position.z) <= 55 / 2 + 3;
+      if (comp.position.y < 3.5 && !isOverBreadboard) continue;
+
+      const compDef = COMPONENT_DEFINITION_MAP.get(comp.definitionId);
+      if (!compDef) continue;
+
+      // Check each pin of this component to see if it plugs into a breadboard hole
+      for (const pin of compDef.pins) {
+        const pinWorld = calculatePinWorldPosition(comp, pin.localOffset);
+        let nearestHole: typeof bbPins[0] | null = null;
+        let minDistSq = 9.0; // 3.0mm snapping radius squared
+
+        for (const bbPin of bbPins) {
+          const holeWorld = calculatePinWorldPosition(bb, bbPin.localOffset);
+          const dx = pinWorld.x - holeWorld.x;
+          const dz = pinWorld.z - holeWorld.z;
+          const distSq = dx * dx + dz * dz;
+          if (distSq < minDistSq) {
+            minDistSq = distSq;
+            nearestHole = bbPin;
+          }
+        }
+
+        if (nearestHole) {
+          // Virtual plug connection
+          augmentedConnections.push({
+            id: `plug-${comp.instanceId}-${pin.id}-${bb.instanceId}-${nearestHole.id}`,
+            fromComponentId: comp.instanceId,
+            fromPinId: pin.id,
+            toComponentId: bb.instanceId,
+            toPinId: nearestHole.id,
+            wireColor: '#10b981',
+          });
+        }
+      }
+    }
   }
 
   // Build pin graph
   const graph = new Map<string, AdjacencyEdge[]>();
 
-  for (const conn of doc.connections) {
+  for (const conn of augmentedConnections) {
     // Add forward
     if (!graph.has(conn.fromComponentId)) graph.set(conn.fromComponentId, []);
     graph.get(conn.fromComponentId)!.push({
@@ -61,17 +117,26 @@ export function simulateBehavior(
     });
   }
 
+  // Permissible power and ground pins
+  const isArduino = powerSource.definitionId === 'arduino-uno' || powerSource.definitionId === 'arduino_uno';
+  const vccPinNames = isArduino
+    ? ['pin_5v', 'pin_3v3', 'pin_d13', 'pin_vin', 'vcc']
+    : ['vcc', 'pin1'];
+  const gndPinNames = isArduino
+    ? ['pin_gnd', 'pin_gnd2', 'pin_gnd_top', 'gnd']
+    : ['gnd', 'pin2'];
+
   // Check direct short circuit
   const powerEdges = graph.get(powerSource.instanceId) || [];
   const directShort = powerEdges.some(
-    (e) => e.fromPin === 'vcc' && e.toComponentId === powerSource.instanceId && e.toPin === 'gnd'
+    (e) => vccPinNames.includes(e.fromPin) && e.toComponentId === powerSource.instanceId && gndPinNames.includes(e.toPin)
   );
   if (directShort) {
     compStates[powerSource.instanceId] = {
       isPowered: true,
       isOn: false,
       stateLabel: 'NGẮN MẠCH! Bảo vệ quá dòng kích hoạt',
-      note: 'VCC chạm trực tiếp GND',
+      note: 'Nguồn điện chạm trực tiếp GND',
     };
     return {
       status: 'error',
@@ -84,15 +149,6 @@ export function simulateBehavior(
     };
   }
 
-  // Trace path from power VCC pin
-  // A path is valid if:
-  // - Starts at powerSource:vcc
-  // - Traverses through components
-  //   - If switch: only passes if switch is CLOSED (switchStates[id] !== false)
-  //   - If LED: only conducts from anode to cathode (forward biased)
-  //   - If Resistor / Connector / Potentiometer: conducts in both directions
-  // - Reaches powerSource:gnd
-
   interface PathNode {
     compId: string;
     enteredPin: string;
@@ -100,7 +156,7 @@ export function simulateBehavior(
     componentsTraversed: string[];
   }
 
-  const vccEdges = powerEdges.filter((e) => e.fromPin === 'vcc');
+  const vccEdges = powerEdges.filter((e) => vccPinNames.includes(e.fromPin));
   let foundClosedLoop = false;
   let activeComponentsInLoop: string[] = [];
 
@@ -190,8 +246,15 @@ export function simulateBehavior(
         exitPins = current.enteredPin === 'vcc' ? ['out', 'gnd'] : ['out'];
       } else if (comp.definitionId === 'logic-and') {
         exitPins = ['out_y'];
-      } else if (comp.definitionId === 'arduino-uno') {
+      } else if (comp.definitionId === 'arduino-uno' || comp.definitionId === 'arduino_uno') {
         exitPins = ['pin_gnd'];
+      } else if (comp.definitionId === 'breadboard') {
+        const enteredBus = getBreadboardBusId(current.enteredPin);
+        const compEdges = graph.get(comp.instanceId) || [];
+        // Any connected pin on this breadboard that shares the same electrical bus is a valid exit pin
+        exitPins = compEdges
+          .map((e) => e.fromPin)
+          .filter((p) => p !== current.enteredPin && getBreadboardBusId(p) === enteredBus);
       }
 
       // Check next connections
@@ -200,7 +263,7 @@ export function simulateBehavior(
         const matchingEdges = edges.filter((e) => e.fromPin === exitPin);
         for (const nextEdge of matchingEdges) {
           if (nextEdge.toComponentId === powerSource.instanceId) {
-            if (nextEdge.toPin === 'gnd') {
+            if (gndPinNames.includes(nextEdge.toPin)) {
               // Found closed path back to GND!
               foundClosedLoop = true;
               activeComponentsInLoop = Array.from(new Set([...activeComponentsInLoop, ...current.componentsTraversed]));
@@ -317,12 +380,19 @@ export function simulateBehavior(
           isOn: true,
           stateLabel: 'OUT = MỨC CAO 5V (A = 1 & B = 1)',
         };
-      } else if (comp.definitionId === 'arduino-uno') {
+      } else if (comp.definitionId === 'arduino-uno' || comp.definitionId === 'arduino_uno') {
         compStates[compId] = {
           isPowered: true,
           isOn: true,
           stateLabel: 'ARDUINO CHẠY CHƯƠNG TRÌNH (D13 NHẤP NHÁY)',
           note: 'Chân D13 nhấp nháy 1Hz, ADC A0 sẵn sàng đọc dữ liệu',
+        };
+      } else if (comp.definitionId === 'breadboard') {
+        compStates[compId] = {
+          isPowered: true,
+          isOn: true,
+          stateLabel: 'BREADBOARD DẪN ĐIỆN TỐT',
+          note: 'Các thanh nguồn và rãnh cắm đang phân phối tín hiệu thông suốt',
         };
       }
     }

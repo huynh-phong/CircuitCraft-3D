@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { ComponentInstance, ComponentDefinition } from '../domain/project/types';
 import { SceneMaterialRegistry } from './materials';
 import { getResistorColorBands } from '../domain/components/colorCode';
+import { loadGLBModel } from './modelLoader';
 
 /**
  * Creates 3D Procedural Mesh groups for each electronic component type.
@@ -22,7 +23,48 @@ export function createComponentMesh(
 
   const matReg = SceneMaterialRegistry.getInstance();
 
-  switch (definition.definitionId) {
+  if (definition.modelUrl) {
+    // 3D GLB Model Container with instant procedural fallback
+    const modelContainer = new THREE.Group();
+    modelContainer.name = `glb-container-${instance.instanceId}`;
+    group.add(modelContainer);
+
+    const fallbackGroup = new THREE.Group();
+    fallbackGroup.name = 'fallback-model';
+    if (definition.definitionId === 'arduino-uno' || definition.definitionId === 'arduino_uno') {
+      buildArduinoUno(fallbackGroup, instance, matReg, options?.isSimulationOn || false);
+    } else if (definition.definitionId === 'breadboard') {
+      buildBreadboard(fallbackGroup, instance, matReg);
+    } else {
+      buildGenericComponent(fallbackGroup, instance, definition, matReg);
+    }
+    modelContainer.add(fallbackGroup);
+
+    loadGLBModel(
+      definition.modelUrl,
+      (loadedModel) => {
+        const fb = modelContainer.getObjectByName('fallback-model');
+        if (fb) modelContainer.remove(fb);
+
+        loadedModel.name = 'loaded-glb-mesh';
+        loadedModel.traverse((child) => {
+          child.userData = {
+            ...child.userData,
+            type: 'component',
+            instanceId: instance.instanceId,
+            componentId: instance.instanceId,
+          };
+        });
+        modelContainer.add(loadedModel);
+      },
+      {
+        width: definition.dimensions.x,
+        height: definition.dimensions.y,
+        depth: definition.dimensions.z,
+      }
+    );
+  } else {
+    switch (definition.definitionId) {
     case 'dc-source':
     case 'dc_power_supply':
       buildDCSource(group, instance, matReg);
@@ -104,11 +146,12 @@ export function createComponentMesh(
     case 'dc-motor':
       buildDcMotor(group, instance, matReg);
       break;
-    case 'voltage-reg-7805':
-      buildVoltageReg7805(group, instance, matReg);
+    case 'breadboard':
+      buildBreadboard(group, instance, matReg);
       break;
     default:
       buildGenericComponent(group, instance, definition, matReg);
+    }
   }
 
   // Ensure 100% of defined pins have prominent, easily clickable pin targets
@@ -179,23 +222,24 @@ function buildResistor(group: THREE.Group, instance: ComponentInstance, mats: Sc
   const ohms = instance.parameters?.resistance || 220;
   const bands = getResistorColorBands(ohms);
 
-  // Main ceramic cylinder body
+  // Main ceramic cylinder body elevated so only long wire leads plug into the breadboard/PCB
+  const bodyY = 5.0;
   const bodyGeom = new THREE.CylinderGeometry(1.8, 1.8, 8, 16);
   bodyGeom.rotateZ(Math.PI / 2);
   const bodyMesh = new THREE.Mesh(bodyGeom, mats.resistorBodyMaterial);
-  bodyMesh.position.set(0, 3, 0);
+  bodyMesh.position.set(0, bodyY, 0);
   bodyMesh.castShadow = true;
   group.add(bodyMesh);
 
   // Rounded end caps
   const capGeom = new THREE.SphereGeometry(1.8, 12, 12);
   const capLeft = new THREE.Mesh(capGeom, mats.resistorBodyMaterial);
-  capLeft.position.set(-4, 3, 0);
+  capLeft.position.set(-4, bodyY, 0);
   capLeft.scale.set(0.6, 1, 1);
   group.add(capLeft);
 
   const capRight = new THREE.Mesh(capGeom, mats.resistorBodyMaterial);
-  capRight.position.set(4, 3, 0);
+  capRight.position.set(4, bodyY, 0);
   capRight.scale.set(0.6, 1, 1);
   group.add(capRight);
 
@@ -210,34 +254,31 @@ function buildResistor(group: THREE.Group, instance: ComponentInstance, mats: Sc
     const bandMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(hex),
       roughness: 0.3,
-      metalness: idx === 3 ? 0.8 : 0.1, // Metallic for gold tolerance
+      metalness: idx === 3 ? 0.8 : 0.1,
     });
     const bMesh = new THREE.Mesh(bandGeom, bandMat);
-    bMesh.position.set(xPositions[idx], 3, 0);
+    bMesh.position.set(xPositions[idx], bodyY, 0);
     group.add(bMesh);
   });
 
-  // Wire leads going down into PCB
-  // Pin 1 at x = -7, pin 2 at x = +7
+  // Long bare metallic wire leads extending out and bending down into breadboard / PCB holes
+  // Pin 1 at x = -5.08mm, pin 2 at x = +5.08mm (exact 2.54mm breadboard pitch, 4 holes span)
   const leadMat = mats.pinLeadMaterial;
-
-  // Left lead: from body (-4, 3, 0) -> bend to (-7, 3, 0) -> down to (-7, 0, 0)
-  const leftLead = createBentAxialLead(leadMat, -4, -7);
+  const leftLead = createBentAxialLead(leadMat, -3.5, -5.08, bodyY);
   group.add(leftLead);
 
-  // Right lead: from body (4, 3, 0) -> bend to (7, 3, 0) -> down to (7, 0, 0)
-  const rightLead = createBentAxialLead(leadMat, 4, 7);
+  const rightLead = createBentAxialLead(leadMat, 3.5, 5.08, bodyY);
   group.add(rightLead);
 
-  // Pin interaction targets
-  const pin1 = createPinTarget(-7, 1, 0, instance.instanceId, 'pin1', 'Chân 1');
-  const pin2 = createPinTarget(7, 1, 0, instance.instanceId, 'pin2', 'Chân 2');
+  // Pin interaction targets (invisible collider for clicking/wiring)
+  const pin1 = createPinTarget(-5.08, 0, 0, instance.instanceId, 'pin1', 'Chân 1');
+  const pin2 = createPinTarget(5.08, 0, 0, instance.instanceId, 'pin2', 'Chân 2');
   group.add(pin1);
   group.add(pin2);
 }
 
 /**
- * 5mm LED (Translucent lens, reflector cup, leads)
+ * 5mm LED (Translucent lens bulb up top, long metallic wire leads down, NO base underneath)
  */
 function buildLED(
   group: THREE.Group,
@@ -248,41 +289,44 @@ function buildLED(
   const color = instance.parameters?.color || 'red';
   const ledMat = mats.getLedMaterial(color, isSimulationOn);
 
-  // Cylindrical base with lower rim lip
-  const rimGeom = new THREE.CylinderGeometry(2.8, 2.8, 1.0, 20);
-  const rimMesh = new THREE.Mesh(rimGeom, ledMat);
-  rimMesh.position.set(0, 3.5, 0);
-  group.add(rimMesh);
+  // Elevated LED bulb (no base / pedestal underneath)
+  const bulbBaseY = 6.0;
 
-  // Main cylinder
-  const cylGeom = new THREE.CylinderGeometry(2.5, 2.5, 4.5, 20);
+  // Main cylinder bulb
+  const cylGeom = new THREE.CylinderGeometry(2.5, 2.5, 5.0, 20);
   const cylMesh = new THREE.Mesh(cylGeom, ledMat);
-  cylMesh.position.set(0, 6.25, 0);
+  cylMesh.position.set(-1.27, bulbBaseY + 2.5, 0); // Centered symmetrically between the two pins (-2.54 and 0)
   group.add(cylMesh);
 
-  // Hemispherical dome
+  // Hemispherical dome top
   const domeGeom = new THREE.SphereGeometry(2.5, 20, 16, 0, Math.PI * 2, 0, Math.PI / 2);
   const domeMesh = new THREE.Mesh(domeGeom, ledMat);
-  domeMesh.position.set(0, 8.5, 0);
+  domeMesh.position.set(-1.27, bulbBaseY + 5.0, 0);
   group.add(domeMesh);
 
-  // Flat notch on cathode side (pin 2 = cathode at +2.54)
-  const notchGeom = new THREE.BoxGeometry(0.6, 1.1, 1.5);
+  // Flat notch on cathode side (pin cathode is at x = 0)
+  const notchGeom = new THREE.BoxGeometry(0.5, 1.2, 1.4);
   const notchMesh = new THREE.Mesh(notchGeom, ledMat);
-  notchMesh.position.set(2.6, 3.5, 0);
+  notchMesh.position.set(1.23, bulbBaseY + 0.8, 0);
   group.add(notchMesh);
 
-  // Wire leads going down into board
-  const wireGeom = new THREE.CylinderGeometry(0.3, 0.3, 3.5, 8);
-
-  // Anode (+) at x = -2.54
-  const anodeLead = new THREE.Mesh(wireGeom, mats.pinLeadMaterial);
-  anodeLead.position.set(-2.54, 1.75, 0);
+  // Two long bare metallic wire leads extending from bulb bottom down into breadboard holes
+  // Anode (+) at x = -2.54mm (longer lead reaching -4.5mm into breadboard socket)
+  const leadMat = mats.pinLeadMaterial;
+  const leadRadius = 0.28;
+  const anodeTotalHeight = bulbBaseY + 4.5;
+  const anodeGeom = new THREE.CylinderGeometry(leadRadius, leadRadius, anodeTotalHeight, 8);
+  const anodeLead = new THREE.Mesh(anodeGeom, leadMat);
+  anodeLead.position.set(-2.54, (bulbBaseY - 4.5) / 2, 0);
+  anodeLead.castShadow = true;
   group.add(anodeLead);
 
-  // Cathode (-) at x = +2.54
-  const cathodeLead = new THREE.Mesh(wireGeom, mats.pinLeadMaterial);
-  cathodeLead.position.set(2.54, 1.75, 0);
+  // Cathode (-) at x = 0 (slightly shorter lead reaching -3.8mm into breadboard socket)
+  const cathodeTotalHeight = bulbBaseY + 3.8;
+  const cathodeGeom = new THREE.CylinderGeometry(leadRadius, leadRadius, cathodeTotalHeight, 8);
+  const cathodeLead = new THREE.Mesh(cathodeGeom, leadMat);
+  cathodeLead.position.set(0, (bulbBaseY - 3.8) / 2, 0);
+  cathodeLead.castShadow = true;
   group.add(cathodeLead);
 
   // If simulation is on, add point light glow effect
@@ -296,7 +340,7 @@ function buildLED(
     };
     const lightColor = hexColors[color] || 0xff0000;
     const glowLight = new THREE.PointLight(lightColor, 2.5, 40, 1.5);
-    glowLight.position.set(0, 8, 0);
+    glowLight.position.set(-1.27, bulbBaseY + 5.0, 0);
     group.add(glowLight);
 
     // Glowing halo sprite / sphere
@@ -307,13 +351,13 @@ function buildLED(
       opacity: 0.35,
     });
     const halo = new THREE.Mesh(haloGeom, haloMat);
-    halo.position.set(0, 7.5, 0);
+    halo.position.set(-1.27, bulbBaseY + 4.5, 0);
     group.add(halo);
   }
 
-  // Pin targets
-  const pinAnode = createPinTarget(-2.54, 1, 0, instance.instanceId, 'anode', 'Anode (+)');
-  const pinCathode = createPinTarget(2.54, 1, 0, instance.instanceId, 'cathode', 'Cathode (-)');
+  // Pin targets (exact breadboard hole aligned: Anode at -2.54, Cathode at 0)
+  const pinAnode = createPinTarget(-2.54, 0, 0, instance.instanceId, 'anode', 'Anode (+)');
+  const pinCathode = createPinTarget(0, 0, 0, instance.instanceId, 'cathode', 'Cathode (-)');
   group.add(pinAnode);
   group.add(pinCathode);
 }
@@ -439,15 +483,16 @@ function buildPotentiometer(group: THREE.Group, instance: ComponentInstance, mat
  * Electrolytic Capacitor (Aluminum Can with Negative Stripe)
  */
 function buildCapacitor(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry) {
+  const canBaseY = 5.0;
   // Can cylinder
-  const canGeom = new THREE.CylinderGeometry(4.0, 4.0, 12, 20);
+  const canGeom = new THREE.CylinderGeometry(4.0, 4.0, 10, 20);
   const canMat = new THREE.MeshStandardMaterial({
     color: 0x1e293b,
     metalness: 0.6,
     roughness: 0.3,
   });
   const can = new THREE.Mesh(canGeom, canMat);
-  can.position.set(0, 7, 0);
+  can.position.set(-1.27, canBaseY + 5.0, 0);
   can.castShadow = true;
   group.add(can);
 
@@ -455,15 +500,35 @@ function buildCapacitor(group: THREE.Group, instance: ComponentInstance, mats: S
   const ventGeom = new THREE.CylinderGeometry(3.9, 3.9, 0.4, 20);
   const ventMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.2 });
   const vent = new THREE.Mesh(ventGeom, ventMat);
-  vent.position.set(0, 13, 0);
+  vent.position.set(-1.27, canBaseY + 10.0, 0);
   group.add(vent);
 
-  // Negative polarity white stripe on one side
-  const stripeGeom = new THREE.CylinderGeometry(4.05, 4.05, 11.6, 20, 1, false, Math.PI * 0.75, Math.PI * 0.5);
+  // Negative polarity white stripe on one side (pin neg is at x = 0)
+  const stripeGeom = new THREE.CylinderGeometry(4.05, 4.05, 9.6, 20, 1, false, Math.PI * 0.75, Math.PI * 0.5);
   const stripeMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
   const stripe = new THREE.Mesh(stripeGeom, stripeMat);
-  stripe.position.set(0, 7, 0);
+  stripe.position.set(-1.27, canBaseY + 5.0, 0);
   group.add(stripe);
+
+  // Two long bare metallic wire leads going down into breadboard holes
+  const leadMat = mats.pinLeadMaterial;
+  const leadRadius = 0.28;
+  const leadPosHeight = canBaseY + 4.5;
+  const leadPos = new THREE.Mesh(new THREE.CylinderGeometry(leadRadius, leadRadius, leadPosHeight, 8), leadMat);
+  leadPos.position.set(-2.54, (canBaseY - 4.5) / 2, 0);
+  leadPos.castShadow = true;
+  group.add(leadPos);
+
+  const leadNegHeight = canBaseY + 3.8;
+  const leadNeg = new THREE.Mesh(new THREE.CylinderGeometry(leadRadius, leadRadius, leadNegHeight, 8), leadMat);
+  leadNeg.position.set(0, (canBaseY - 3.8) / 2, 0);
+  leadNeg.castShadow = true;
+  group.add(leadNeg);
+
+  const pinPos = createPinTarget(-2.54, 0, 0, instance.instanceId, 'pin_pos', 'Cực dương (+)');
+  const pinNeg = createPinTarget(0, 0, 0, instance.instanceId, 'pin_neg', 'Cực âm (-)');
+  group.add(pinPos);
+  group.add(pinNeg);
 }
 
 /**
@@ -500,12 +565,13 @@ function buildPushbutton(group: THREE.Group, instance: ComponentInstance, mats: 
  * Diode 1N4007 (DO-41 package with cathode silver band)
  */
 function buildDiode(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry) {
+  const bodyY = 5.0;
   // Black molded body
   const bodyGeom = new THREE.CylinderGeometry(2.2, 2.2, 9, 16);
   bodyGeom.rotateZ(Math.PI / 2);
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 });
   const body = new THREE.Mesh(bodyGeom, bodyMat);
-  body.position.set(0, 3, 0);
+  body.position.set(0, bodyY, 0);
   body.castShadow = true;
   group.add(body);
 
@@ -514,14 +580,19 @@ function buildDiode(group: THREE.Group, instance: ComponentInstance, mats: Scene
   bandGeom.rotateZ(Math.PI / 2);
   const bandMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.7, roughness: 0.2 });
   const band = new THREE.Mesh(bandGeom, bandMat);
-  band.position.set(3.2, 3, 0);
+  band.position.set(3.2, bodyY, 0);
   group.add(band);
 
   // Metal axial leads bent down
-  const lead1 = createBentAxialLead(mats.pinLeadMaterial, -4.5, -6.5);
-  const lead2 = createBentAxialLead(mats.pinLeadMaterial, 4.5, 6.5);
-  group.add(lead1 as any);
-  group.add(lead2 as any);
+  const lead1 = createBentAxialLead(mats.pinLeadMaterial, -3.5, -5.08, bodyY);
+  const lead2 = createBentAxialLead(mats.pinLeadMaterial, 3.5, 5.08, bodyY);
+  group.add(lead1);
+  group.add(lead2);
+
+  const pin1 = createPinTarget(-5.08, 0, 0, instance.instanceId, 'anode', 'Anode (A)');
+  const pin2 = createPinTarget(5.08, 0, 0, instance.instanceId, 'cathode', 'Cathode (K)');
+  group.add(pin1);
+  group.add(pin2);
 }
 
 /**
@@ -700,20 +771,32 @@ function buildArduinoUno(group: THREE.Group, instance: ComponentInstance, mats: 
   mcu.castShadow = true;
   group.add(mcu);
 
-  // Female Pin Header strips (Black)
-  const headerMat = new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.8 });
+  // Female Pin Header strips (Authentic 4 distinct header blocks matching arduino_uno.glb)
+  const headerMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.85 });
 
-  // Top digital header
-  const dHeaderGeom = new THREE.BoxGeometry(42, 8.5, 3.5);
-  const dHeader = new THREE.Mesh(dHeaderGeom, headerMat);
-  dHeader.position.set(10, 6.25, -23);
-  group.add(dHeader);
+  // Top digital header 1 (10-pin: SCL to D8)
+  const dHeader1Geom = new THREE.BoxGeometry(22.8, 5.5, 2.5);
+  const dHeader1 = new THREE.Mesh(dHeader1Geom, headerMat);
+  dHeader1.position.set(-0.86, 4.45, -21.47);
+  group.add(dHeader1);
 
-  // Bottom analog & power header
-  const pHeaderGeom = new THREE.BoxGeometry(46, 8.5, 3.5);
+  // Top digital header 2 (8-pin: D7 to D0)
+  const dHeader2Geom = new THREE.BoxGeometry(18.6, 5.5, 2.5);
+  const dHeader2 = new THREE.Mesh(dHeader2Geom, headerMat);
+  dHeader2.position.set(21.08, 4.45, -21.76);
+  group.add(dHeader2);
+
+  // Bottom power header (8-pin: NC to VIN)
+  const pHeaderGeom = new THREE.BoxGeometry(18.7, 5.5, 2.5);
   const pHeader = new THREE.Mesh(pHeaderGeom, headerMat);
-  pHeader.position.set(6, 6.25, 23);
+  pHeader.position.set(5.15, 4.45, 21.31);
   group.add(pHeader);
+
+  // Bottom analog header (6-pin: A0 to A5)
+  const aHeaderGeom = new THREE.BoxGeometry(14.3, 5.5, 2.5);
+  const aHeader = new THREE.Mesh(aHeaderGeom, headerMat);
+  aHeader.position.set(23.26, 4.45, 21.36);
+  group.add(aHeader);
 
   // D13 Onboard LED (Orange/Amber)
   const ledD13Geom = new THREE.BoxGeometry(2, 1, 1.5);
@@ -737,6 +820,64 @@ function buildArduinoUno(group: THREE.Group, instance: ComponentInstance, mats: 
   const onLed = new THREE.Mesh(onLedGeom, onLedMat);
   onLed.position.set(-8, 2.5, -4);
   group.add(onLed);
+}
+
+/**
+ * Standard Solderless Breadboard (Bo test mạch)
+ */
+function buildBreadboard(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry) {
+  // Main White ABS Breadboard Enclosure
+  const bodyGeom = new THREE.BoxGeometry(165, 8.0, 55);
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0xf8fafc,
+    roughness: 0.35,
+    metalness: 0.05,
+  });
+  const body = new THREE.Mesh(bodyGeom, bodyMat);
+  body.position.set(0, 4.0, 0);
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  // Center Notch Divider Groove
+  const grooveGeom = new THREE.BoxGeometry(162, 1.2, 2.5);
+  const grooveMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.8 });
+  const groove = new THREE.Mesh(grooveGeom, grooveMat);
+  groove.position.set(0, 7.8, 0);
+  group.add(groove);
+
+  // Red Power Rail Lines (+ / VCC)
+  const redMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.5 });
+  const redGeom = new THREE.BoxGeometry(158, 0.35, 0.9);
+  const topRedLine = new THREE.Mesh(redGeom, redMat);
+  topRedLine.position.set(0, 8.1, -22);
+  group.add(topRedLine);
+
+  const botRedLine = new THREE.Mesh(redGeom, redMat);
+  botRedLine.position.set(0, 8.1, 22);
+  group.add(botRedLine);
+
+  // Blue Power Rail Lines (- / GND)
+  const blueMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5 });
+  const blueGeom = new THREE.BoxGeometry(158, 0.35, 0.9);
+  const topBlueLine = new THREE.Mesh(blueGeom, blueMat);
+  topBlueLine.position.set(0, 8.1, -25);
+  group.add(topBlueLine);
+
+  const botBlueLine = new THREE.Mesh(blueGeom, blueMat);
+  botBlueLine.position.set(0, 8.1, 25);
+  group.add(botBlueLine);
+
+  // Contact hole socket indicators
+  const holeMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.9 });
+  const holeGeom = new THREE.BoxGeometry(1.4, 0.4, 1.4);
+  for (let x = -70; x <= 70; x += 14) {
+    for (const z of [-16, -10, 10, 16]) {
+      const hole = new THREE.Mesh(holeGeom, holeMat);
+      hole.position.set(x, 8.0, z);
+      group.add(hole);
+    }
+  }
 }
 
 /**
@@ -812,53 +953,62 @@ function createPinTarget(
 
   const matReg = SceneMaterialRegistry.getInstance();
 
-  // 1. Pad collar ring at board surface (gold/copper PCB pad)
-  const padGeom = new THREE.CylinderGeometry(1.3, 1.3, 0.3, 16);
-  const padMesh = new THREE.Mesh(padGeom, matReg.pcbPadMaterial);
-  padMesh.position.set(0, 0.15, 0);
-  padMesh.userData = sharedUserData;
-  pinGroup.add(padMesh);
-
-  // 2. Vertical pin post / lead
-  const postHeight = Math.max(1.0, y);
-  const postGeom = new THREE.CylinderGeometry(0.45, 0.45, postHeight, 10);
-  const postMesh = new THREE.Mesh(postGeom, matReg.pinLeadMaterial);
-  postMesh.position.set(0, postHeight / 2, 0);
-  postMesh.userData = sharedUserData;
-  pinGroup.add(postMesh);
-
-  // 3. Shiny spherical contact terminal head at designated pin height
-  const sphereGeom = new THREE.SphereGeometry(0.85, 12, 12);
-  const sphereMesh = new THREE.Mesh(sphereGeom, matReg.pinLeadMaterial);
-  sphereMesh.position.set(0, y, 0);
-  sphereMesh.userData = sharedUserData;
-  pinGroup.add(sphereMesh);
-
-  // 4. Color identification ring
-  let collarHex = 0x38bdf8; // Cyan default
-  if (pinId === 'vcc' || pinId === 'anode' || pinId.includes('+')) {
-    collarHex = 0xef4444; // Red
-  } else if (pinId === 'gnd' || pinId === 'cathode' || pinId.includes('-')) {
-    collarHex = 0x0f172a; // Dark slate
-  } else if (pinId === 'wiper' || pinId.includes('sig')) {
-    collarHex = 0xf59e0b; // Amber
+  // Color identification based on electrical function
+  let collarHex = 0x06b6d4; // Default Cyan (Digital / GPIO / Signal)
+  if (
+    pinId.includes('5v') ||
+    pinId.includes('3v3') ||
+    pinId.includes('vin') ||
+    pinId === 'vcc' ||
+    pinId === 'anode' ||
+    pinId.includes('+') ||
+    pinId.includes('pos')
+  ) {
+    collarHex = 0xef4444; // Bright Red (Power / VCC)
+  } else if (
+    pinId.includes('gnd') ||
+    pinId === 'cathode' ||
+    pinId.includes('-') ||
+    pinId.includes('neg')
+  ) {
+    collarHex = 0x0f172a; // Dark Slate / Black (Ground)
+  } else if (
+    pinId.startsWith('pin_a') ||
+    pinId === 'a0' ||
+    pinId === 'a1' ||
+    pinId === 'a2' ||
+    pinId === 'a3' ||
+    pinId === 'a4' ||
+    pinId === 'a5' ||
+    pinId.includes('pwm') ||
+    pinId.includes('~') ||
+    pinId === 'wiper'
+  ) {
+    collarHex = 0xf59e0b; // Amber (Analog / PWM)
   }
 
-  const ringGeom = new THREE.CylinderGeometry(0.7, 0.7, 0.35, 12);
-  const ringMat = new THREE.MeshStandardMaterial({
-    color: collarHex,
-    roughness: 0.3,
-  });
-  const ringMesh = new THREE.Mesh(ringGeom, ringMat);
-  ringMesh.position.set(0, Math.max(0.4, y - 0.6), 0);
-  ringMesh.userData = sharedUserData;
-  pinGroup.add(ringMesh);
+  const isBreadboard =
+    componentId.startsWith('breadboard') ||
+    pinId.startsWith('tie_') ||
+    pinId.startsWith('rail_') ||
+    pinId.startsWith('strip_');
+  const isArduino =
+    componentId.startsWith('arduino') ||
+    pinId.startsWith('pin_');
 
-  // 5. Enlarged invisible collider sphere for effortless raycast clicking (3.8mm radius)
-  const hitGeom = new THREE.SphereGeometry(3.8, 8, 8);
+  if (isBreadboard || isArduino) {
+    // Breadboard holes and Arduino Uno female headers:
+    // User requested: "đừng hiện lồi lên lộ liễu như ardruino uno mà hãy ẩn đi"
+    // No protruding geometry added; socket holes are seamlessly integrated in the 3D model.
+  }
+
+  // Precision non-overlapping click/hover collider
+  // Sized to 1.15mm radius so adjacent 2.54mm pitch pins NEVER overlap
+  const hitGeom = new THREE.CylinderGeometry(1.15, 1.15, 3.5, 8);
   const hitMat = new THREE.MeshBasicMaterial({
-    visible: false,
-    wireframe: false,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
   });
   const hitMesh = new THREE.Mesh(hitGeom, hitMat);
   hitMesh.position.set(0, y, 0);
@@ -869,18 +1019,19 @@ function createPinTarget(
 }
 
 /**
- * Creates bent wire lead for axial through-hole resistor
+ * Creates bent wire lead for axial through-hole components with long lead extending into breadboard holes
  */
-function createBentAxialLead(mat: THREE.Material, fromX: number, toX: number): THREE.Line {
+function createBentAxialLead(mat: THREE.Material, fromX: number, toX: number, bodyY = 5.0): THREE.Mesh {
   const points = [
-    new THREE.Vector3(fromX, 3, 0),
-    new THREE.Vector3(toX, 3, 0),
-    new THREE.Vector3(toX, 0, 0),
+    new THREE.Vector3(fromX, bodyY, 0),
+    new THREE.Vector3(toX, bodyY, 0),
+    new THREE.Vector3(toX, -4.5, 0), // Long metallic lead extending straight down into breadboard socket
   ];
-  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.1);
-  const geom = new THREE.TubeGeometry(curve, 16, 0.3, 8, false);
+  const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.05);
+  const geom = new THREE.TubeGeometry(curve, 20, 0.28, 8, false);
   const mesh = new THREE.Mesh(geom, mat);
-  return mesh as any;
+  mesh.castShadow = true;
+  return mesh;
 }
 
 function createPinLeadMesh(mat: THREE.Material, ringHex?: number): THREE.Group {

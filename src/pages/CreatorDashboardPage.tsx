@@ -246,48 +246,70 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
   };
 
   const isCreatorPlanActive =
-    Boolean(currentUser) && paymentService.hasCreatorPlan();
+    Boolean(currentUser) &&
+    (paymentService.hasCreatorPlan() || currentProfile?.role === 'creator' || currentProfile?.role === 'admin');
 
   if (!currentUser || !isCreatorPlanActive) {
     return (
-      <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950 p-6 md:p-12 select-none text-slate-800 dark:text-slate-100 flex items-center justify-center transition-colors">
-        <div className="max-w-md w-full p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-5 shadow-2xl">
-          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+      <div className="flex-1 overflow-y-auto bg-transparent p-4 sm:p-6 md:p-12 select-none text-slate-800 dark:text-slate-100 flex items-center justify-center transition-colors">
+        <div className="tech-panel p-8 sm:p-10 max-w-lg w-full text-center space-y-6 relative overflow-hidden circuit-traces-overlay shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-cyan-50 dark:bg-cyan-950/80 border border-cyan-200 dark:border-cyan-500/40 text-cyan-600 dark:text-cyan-400 flex items-center justify-center mx-auto shadow-md">
             <Sparkles className="w-8 h-8" />
           </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+          <div className="space-y-2.5">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200/90 dark:border-cyan-500/40 text-xs font-semibold shadow-xs">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+              <span>{language === 'vi' ? 'Không Gian Nhà Sáng Tạo 3D' : '3D Creator Studio'}</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
               {language === 'vi' ? 'Dành riêng cho Gói Nhà sáng tạo (Creator Pro)' : 'Creator Pro Plan Required'}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-normal">
               {language === 'vi'
-                ? 'Mục Không gian Nhà sáng tạo chỉ hiển thị và cho phép truy cập khi bạn đã đăng ký gói Nhà sáng tạo (Creator Pro).'
-                : 'The Creator Studio is exclusively available to members subscribed to the Creator Pro plan.'}
+                ? 'Không gian Nhà sáng tạo cho phép bạn tự thiết kế và đăng bán các mô hình mạch điện 3D, mở khóa học thực hành, và nhận 85% doanh thu qua cổng VietQR tự động.'
+                : 'The Creator Studio is exclusively available for Creator Pro members to publish 3D circuits, author courses, and earn 85% VietQR payouts.'}
             </p>
           </div>
-          <div className="flex flex-col gap-2 pt-2">
+
+          <div className="flex flex-col gap-3 pt-2">
             {currentUser ? (
-              <button
-                onClick={() => onNavigate?.('membership')}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-slate-950 text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>{language === 'vi' ? 'Nâng cấp gói Nhà sáng tạo ngay' : 'Upgrade to Creator Pro'}</span>
-              </button>
+              <>
+                <button
+                  onClick={handleActivateCreatorTier}
+                  disabled={isActivatingTier}
+                  className="w-full tech-btn-3d-green py-3 px-4 text-xs font-extrabold text-white rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <ShieldCheck className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
+                  <span>
+                    {isActivatingTier
+                      ? (language === 'vi' ? 'Đang kích hoạt...' : 'Activating...')
+                      : (language === 'vi' ? 'Kích hoạt Dùng thử Gói Nhà Sáng Tạo (Miễn phí)' : 'Activate Free Creator Pro Access')}
+                  </span>
+                </button>
+                <button
+                  onClick={() => onNavigate?.('membership')}
+                  className="w-full tech-btn-secondary py-2.5 px-4 text-xs font-bold cursor-pointer"
+                >
+                  {language === 'vi' ? 'Xem các gói Hội viên & Quyền lợi' : 'View Membership Plans'}
+                </button>
+              </>
             ) : (
-              <button
-                onClick={onOpenAuthModal}
-                className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-white dark:text-slate-950 text-xs font-bold transition shadow-md"
-              >
-                {language === 'vi' ? 'Đăng nhập tài khoản' : 'Sign In'}
-              </button>
+              <>
+                <button
+                  onClick={onOpenAuthModal}
+                  className="w-full tech-btn-3d py-3 px-4 text-xs font-extrabold text-white rounded-2xl flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                >
+                  <User className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
+                  <span>{language === 'vi' ? 'Đăng nhập tài khoản' : 'Sign In'}</span>
+                </button>
+                <button
+                  onClick={() => onNavigate?.('marketplace')}
+                  className="w-full tech-btn-secondary py-2.5 px-4 text-xs font-bold cursor-pointer"
+                >
+                  {language === 'vi' ? 'Về Cửa hàng linh kiện' : 'Back to Marketplace'}
+                </button>
+              </>
             )}
-            <button
-              onClick={() => onNavigate?.('marketplace')}
-              className="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition"
-            >
-              {language === 'vi' ? 'Về Cửa hàng linh kiện' : 'Back to Marketplace'}
-            </button>
           </div>
         </div>
       </div>
@@ -298,52 +320,52 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
     <div className="flex-1 overflow-y-auto bg-transparent p-4 sm:p-6 md:p-8 select-none text-slate-900 dark:text-slate-100 transition-colors">
       <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
         {/* Top Header Banner */}
-        <div className="rounded-3xl bg-gradient-to-r from-cyan-900 via-slate-900 to-teal-950 p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-cyan-500/20">
+        <div className="tech-panel p-6 sm:p-10 relative overflow-hidden circuit-traces-overlay">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 text-xs font-semibold">
-                <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-                <span>{language === 'vi' ? 'Không gian Nhà sáng tạo (Creator Studio)' : 'Creator Studio'}</span>
+            <div className="space-y-3 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200/90 dark:border-cyan-500/40 text-xs font-semibold shadow-xs">
+                <Sparkles className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                <span>{language === 'vi' ? 'Không Gian Nhà Sáng Tạo 3D • Creator Studio' : '3D Creator Studio'}</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                {profile?.displayName || currentProfile?.fullName || 'Nhà Sáng Tạo CircuitCraft'}
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                {profile?.displayName || currentProfile?.fullName || (language === 'vi' ? 'Nhà Sáng Tạo CircuitCraft' : 'CircuitCraft Creator')}
               </h1>
-              <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed font-normal">
                 {language === 'vi'
-                  ? 'Quản lý dự án mạch 3D, tạo khóa học, theo dõi đơn hàng và doanh thu minh bạch với tỷ lệ chia sẻ 85% cho Creator.'
-                  : 'Manage 3D circuit products, author courses, track VietQR sales and revenue with an 85% Creator payout.'}
+                  ? 'Quản lý dự án mạch 3D thương mại, tạo khóa học thực hành, theo dõi đơn hàng và doanh thu minh bạch với tỷ lệ chia sẻ 85% cho Creator.'
+                  : 'Manage 3D circuit products, author interactive courses, track VietQR sales and revenue with an 85% Creator payout.'}
               </p>
             </div>
 
             {/* Quick Actions */}
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
               <button
                 onClick={() => setIsPublishModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition"
+                className="tech-btn-3d flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-extrabold text-white shadow-md cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
                 <span>{language === 'vi' ? 'Đăng bán Mạch điện' : 'Publish Circuit'}</span>
               </button>
 
               <button
                 onClick={() => setIsCreateCourseModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition"
+                className="tech-btn-3d-green flex items-center gap-2 px-5 py-2.5 rounded-2xl text-xs font-extrabold text-white shadow-md cursor-pointer"
               >
-                <GraduationCap className="w-4 h-4" />
+                <GraduationCap className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
                 <span>{language === 'vi' ? 'Tạo Khóa học mới' : 'New Course'}</span>
               </button>
             </div>
           </div>
 
           {/* Sub-strip status */}
-          <div className="mt-6 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-300">
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+          <div className="relative z-10 mt-6 pt-4 border-t border-slate-200/80 dark:border-cyan-800/40 flex flex-wrap items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
                 <ShieldCheck className="w-4 h-4" />
                 <span>{language === 'vi' ? 'Quyền Creator: Đang kích hoạt' : 'Creator Tier Active'}</span>
               </span>
-              <span className="text-slate-400">•</span>
-              <span className="text-cyan-300">
+              <span className="text-slate-300 dark:text-slate-700">•</span>
+              <span className="text-slate-600 dark:text-cyan-300 font-medium">
                 {language === 'vi' ? 'Tỷ lệ chia sẻ doanh thu: 85% Creator / 15% Nền tảng' : '85% Creator / 15% Platform'}
               </span>
             </div>
@@ -352,16 +374,16 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
               <button
                 onClick={handleActivateCreatorTier}
                 disabled={isActivatingTier}
-                className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[11px] transition"
+                className="tech-btn-3d-green px-3.5 py-1.5 text-xs font-bold"
               >
-                {isActivatingTier ? 'Đang kích hoạt...' : 'Kích hoạt Gói Creator Miễn phí'}
+                {isActivatingTier ? (language === 'vi' ? 'Đang kích hoạt...' : 'Activating...') : (language === 'vi' ? 'Kích hoạt Gói Creator Miễn phí' : 'Activate Free Creator Tier')}
               </button>
             )}
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
           {[
             { id: 'overview' as const, label: language === 'vi' ? 'Tổng quan' : 'Overview', icon: TrendingUp },
             { id: 'products' as const, label: language === 'vi' ? `Mạch đã đăng (${products.length})` : `Circuits (${products.length})`, icon: Box },
@@ -376,10 +398,10 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition shrink-0 ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                   isActive
-                    ? 'bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-800/80 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    ? 'tech-btn-primary shadow-[0_4px_14px_rgba(6,182,212,0.35)] -translate-y-0.5'
+                    : 'tech-btn-control border border-[#cbe6f7] dark:border-cyan-800/60 bg-white dark:bg-[#091526] text-slate-700 dark:text-slate-300 hover:text-cyan-600 dark:hover:text-cyan-400 hover:border-cyan-400 dark:hover:border-cyan-500 shadow-xs'
                 }`}
               >
                 <Icon className="w-4 h-4" />
@@ -394,73 +416,73 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
           <div className="space-y-6">
             {/* Metric KPI cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="flex items-center justify-between mb-2">
+              <div className="tech-card p-5 space-y-2">
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                     {language === 'vi' ? 'Doanh thu Thực nhận (85%)' : 'Net Creator Earnings'}
                   </span>
-                  <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                  <div className="tech-icon-tile w-8 h-8 rounded-xl text-emerald-600 dark:text-emerald-400">
                     <DollarSign className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
                   {formatCurrency(metrics.netRevenue)}
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                   {language === 'vi' ? 'Tổng doanh số ghi nhận:' : 'Gross sales:'}{' '}
-                  <span className="font-mono text-slate-600 dark:text-slate-300">
+                  <span className="font-mono text-slate-700 dark:text-slate-300 font-bold">
                     {formatCurrency(metrics.grossRevenue)}
                   </span>
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="flex items-center justify-between mb-2">
+              <div className="tech-card p-5 space-y-2">
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                     {language === 'vi' ? 'Tổng lượt mua thành công' : 'Total Orders Sold'}
                   </span>
-                  <div className="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center">
+                  <div className="tech-icon-tile w-8 h-8 rounded-xl text-cyan-600 dark:text-cyan-400">
                     <ShoppingBag className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   {metrics.totalSalesCount}
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                   {language === 'vi' ? 'Được xác thực qua cổng VietQR' : 'Verified via VietQR gateway'}
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="flex items-center justify-between mb-2">
+              <div className="tech-card p-5 space-y-2">
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                     {language === 'vi' ? 'Mạch điện thương mại' : 'Published Circuits'}
                   </span>
-                  <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                  <div className="tech-icon-tile w-8 h-8 rounded-xl text-teal-600 dark:text-teal-400">
                     <Box className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   {products.length}
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                   {products.filter((p) => p.status === 'PUBLISHED').length} {language === 'vi' ? 'đang mở bán' : 'live'}
                 </div>
               </div>
 
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-xs">
-                <div className="flex items-center justify-between mb-2">
+              <div className="tech-card p-5 space-y-2">
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
                     {language === 'vi' ? 'Khóa học & Phòng Lab 3D' : 'Courses & 3D Labs'}
                   </span>
-                  <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <div className="tech-icon-tile w-8 h-8 rounded-xl text-indigo-600 dark:text-indigo-400">
                     <GraduationCap className="w-4 h-4" />
                   </div>
                 </div>
                 <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono">
                   {courses.length}
                 </div>
-                <div className="text-[11px] text-slate-400 mt-1">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
                   {courses.reduce((acc, c) => acc + (c.studentCount || 0), 0)} {language === 'vi' ? 'học viên ghi danh' : 'students enrolled'}
                 </div>
               </div>
@@ -469,14 +491,14 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
             {/* Recent Orders & Top Selling Circuits */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Recent Orders Table */}
-              <div className="lg:col-span-2 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
+              <div className="lg:col-span-2 tech-card p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">
                     {language === 'vi' ? 'Giao dịch mua sản phẩm gần đây' : 'Recent Customer Purchases'}
                   </h3>
                   <button
                     onClick={() => setActiveTab('orders')}
-                    className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+                    className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
                   >
                     <span>{language === 'vi' ? 'Xem tất cả' : 'View all'}</span>
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -491,7 +513,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs text-left">
                       <thead>
-                        <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 text-[11px]">
+                        <tr className="border-b border-slate-200/80 dark:border-cyan-900/40 text-slate-400 text-[11px]">
                           <th className="pb-2.5 font-bold">{language === 'vi' ? 'Mã đơn' : 'Order ID'}</th>
                           <th className="pb-2.5 font-bold">{language === 'vi' ? 'Sản phẩm' : 'Product'}</th>
                           <th className="pb-2.5 font-bold">{language === 'vi' ? 'Người mua' : 'Buyer'}</th>
@@ -499,14 +521,14 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                           <th className="pb-2.5 font-bold">{language === 'vi' ? 'Trạng thái' : 'Status'}</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                         {sales.slice(0, 5).map((s) => (
-                          <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                            <td className="py-3 font-mono text-slate-500">{s.orderId}</td>
+                          <tr key={s.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                            <td className="py-3 font-mono text-slate-500 dark:text-slate-400">{s.orderId}</td>
                             <td className="py-3 font-medium text-slate-900 dark:text-white truncate max-w-[180px]">
                               {s.productTitle}
                             </td>
-                            <td className="py-3 text-slate-500">{s.buyerName || 'Học viên'}</td>
+                            <td className="py-3 text-slate-500 dark:text-slate-400">{s.buyerName || 'Học viên'}</td>
                             <td className="py-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
                               {formatCurrency(s.creatorEarnings)}
                             </td>
@@ -524,31 +546,31 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
               </div>
 
               {/* Best Performers */}
-              <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-4">
-                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+              <div className="tech-card p-5 space-y-4">
+                <h3 className="font-extrabold text-slate-900 dark:text-white text-sm">
                   {language === 'vi' ? 'Sản phẩm được yêu thích' : 'Top Performing Circuits'}
                 </h3>
                 <div className="space-y-3">
                   {products.slice(0, 4).map((p) => (
                     <div
                       key={p.id}
-                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex items-center justify-between"
+                      className="p-3 rounded-xl bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between"
                     >
                       <div className="truncate pr-2">
                         <div className="font-bold text-slate-900 dark:text-white text-xs truncate">
                           {p.title}
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                           <span>{p.salesCount || 0} {language === 'vi' ? 'lượt mua' : 'sales'}</span>
                           <span>•</span>
-                          <span className="font-mono text-cyan-600 dark:text-cyan-400">
+                          <span className="font-mono font-bold text-cyan-600 dark:text-cyan-400">
                             {formatCurrency(p.price)}
                           </span>
                         </div>
                       </div>
                       <button
                         onClick={() => setSelectedItemFor3DPreview({ id: p.id, title: p.title, price: p.price })}
-                        className="p-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-100 transition"
+                        className="tech-icon-tile w-7 h-7 rounded-lg text-cyan-600 dark:text-cyan-400 cursor-pointer"
                         title={language === 'vi' ? 'Mở xem trước 3D' : '3D Preview'}
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -568,10 +590,10 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
         {/* TAB 2: PRODUCTS (CIRCUITS) */}
         {activeTab === 'products' && (
-          <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {language === 'vi' ? 'Mạch điện & Dự án cá nhân đăng bán' : 'Published 3D Circuit Projects'}
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -583,40 +605,44 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
               <button
                 onClick={() => setIsPublishModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition"
+                className="tech-btn-3d flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-extrabold text-white shadow-md cursor-pointer shrink-0"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
                 <span>{language === 'vi' ? 'Đăng bán mạch mới' : 'Publish Circuit'}</span>
               </button>
             </div>
 
             {products.length === 0 ? (
-              <div className="p-12 text-center rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-3">
-                <Box className="w-10 h-10 mx-auto text-slate-400" />
-                <h4 className="font-bold text-slate-800 dark:text-slate-200">
-                  {language === 'vi' ? 'Bạn chưa đăng bán mạch điện nào' : 'No circuits published yet'}
-                </h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  {language === 'vi'
-                    ? 'Hãy chọn một dự án mạch 3D từ bảng vẽ của bạn để đóng gói phiên bản v1.0.0 và đưa lên Marketplace ngay hôm nay.'
-                    : 'Select a circuit from your workspace to package into version v1.0.0 and start selling.'}
-                </p>
+              <div className="tech-panel p-10 sm:p-14 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-cyan-50 dark:bg-cyan-950/80 border border-cyan-200 dark:border-cyan-500/40 text-cyan-600 dark:text-cyan-400 flex items-center justify-center mx-auto shadow-sm">
+                  <Box className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
+                    {language === 'vi' ? 'Bạn chưa đăng bán mạch điện nào' : 'No circuits published yet'}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    {language === 'vi'
+                      ? 'Hãy chọn một dự án mạch 3D từ bảng vẽ của bạn để đóng gói phiên bản v1.0.0 và đưa lên Marketplace ngay hôm nay.'
+                      : 'Select a circuit from your workspace to package into version v1.0.0 and start selling.'}
+                  </p>
+                </div>
                 <button
                   onClick={() => setIsPublishModalOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition inline-flex items-center gap-2"
+                  className="tech-btn-3d px-5 py-2.5 rounded-xl text-xs font-extrabold text-white cursor-pointer inline-flex items-center gap-2"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 text-white" />
                   <span>{language === 'vi' ? 'Đăng bán ngay' : 'Publish Now'}</span>
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {products.map((prod) => {
                   const isPublished = prod.status === 'PUBLISHED';
                   return (
                     <div
                       key={prod.id}
-                      className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex flex-col justify-between overflow-hidden shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition"
+                      className="tech-card flex flex-col justify-between overflow-hidden group transition-all"
                     >
                       <div className="p-5 space-y-3">
                         <div className="flex items-center justify-between">
@@ -632,13 +658,13 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                               : language === 'vi' ? 'Tạm dừng bán' : 'Archived'}
                           </span>
 
-                          <span className="text-[11px] font-mono font-semibold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/80 px-2 py-0.5 rounded">
+                          <span className="text-[11px] font-mono font-semibold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-200/60 dark:border-cyan-800/60">
                             v{prod.currentVersionNumber || '1.0.0'}
                           </span>
                         </div>
 
                         <div>
-                          <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug line-clamp-1">
+                          <h3 className="font-extrabold text-slate-900 dark:text-white text-base leading-snug line-clamp-1">
                             {prod.title}
                           </h3>
                           <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">
@@ -646,7 +672,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                           </p>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                           <div>
                             <span>{language === 'vi' ? 'Lượt mua:' : 'Sales:'} </span>
                             <span className="font-bold text-slate-900 dark:text-white">
@@ -663,7 +689,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                       </div>
 
                       {/* Card actions */}
-                      <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
+                      <div className="p-3.5 bg-slate-50/70 dark:bg-slate-900/60 border-t border-slate-200/80 dark:border-cyan-900/30 flex items-center justify-between">
                         <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
                           {prod.price === 0 ? (
                             <span className="text-emerald-500">{language === 'vi' ? 'Miễn phí' : 'Free'}</span>
@@ -675,7 +701,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => setSelectedItemFor3DPreview({ id: prod.id, title: prod.title, price: prod.price })}
-                            className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-cyan-600 transition"
+                            className="tech-icon-tile w-7 h-7 rounded-lg text-cyan-600 dark:text-cyan-400 cursor-pointer"
                             title={language === 'vi' ? 'Xem trước 3D (Presentation Mode)' : '3D Turntable Preview'}
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -683,7 +709,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
                           <button
                             onClick={() => setSelectedProductForVersions(prod)}
-                            className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-cyan-600 transition"
+                            className="tech-icon-tile w-7 h-7 rounded-lg text-slate-700 dark:text-slate-300 hover:text-cyan-600 cursor-pointer"
                             title={language === 'vi' ? 'Quản lý phiên bản bất biến (New Release)' : 'Version History'}
                           >
                             <History className="w-3.5 h-3.5" />
@@ -691,7 +717,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
                           <button
                             onClick={() => handleToggleProductStatus(prod)}
-                            className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-amber-500 transition"
+                            className="tech-icon-tile w-7 h-7 rounded-lg text-slate-700 dark:text-slate-300 hover:text-amber-500 cursor-pointer"
                             title={isPublished ? 'Ngừng bán' : 'Mở bán lại'}
                           >
                             {isPublished ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
@@ -708,10 +734,10 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
         {/* TAB 3: COURSES */}
         {activeTab === 'courses' && (
-          <div className="space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {language === 'vi' ? 'Khóa học & Phòng Lab 3D của bạn' : 'Your Authored Courses & Labs'}
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -723,40 +749,44 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
               <button
                 onClick={() => setIsCreateCourseModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs shadow-md transition"
+                className="tech-btn-3d-green flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-extrabold text-white shadow-md cursor-pointer shrink-0"
               >
-                <Plus className="w-4 h-4" />
+                <GraduationCap className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
                 <span>{language === 'vi' ? 'Tạo Khóa học mới' : 'New Course'}</span>
               </button>
             </div>
 
             {courses.length === 0 ? (
-              <div className="p-12 text-center rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-3">
-                <GraduationCap className="w-10 h-10 mx-auto text-slate-400" />
-                <h4 className="font-bold text-slate-800 dark:text-slate-200">
-                  {language === 'vi' ? 'Bạn chưa tạo khóa học nào' : 'No courses created yet'}
-                </h4>
-                <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  {language === 'vi'
-                    ? 'Đóng gói kiến thức chuyên môn và tạo các bài lab thực hành để giúp học viên phát triển kỹ năng.'
-                    : 'Package your knowledge with hands-on 3D labs.'}
-                </p>
+              <div className="tech-panel p-10 sm:p-14 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-cyan-50 dark:bg-cyan-950/80 border border-cyan-200 dark:border-cyan-500/40 text-cyan-600 dark:text-cyan-400 flex items-center justify-center mx-auto shadow-sm">
+                  <GraduationCap className="w-7 h-7" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-extrabold text-slate-900 dark:text-white text-base">
+                    {language === 'vi' ? 'Bạn chưa tạo khóa học nào' : 'No courses created yet'}
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                    {language === 'vi'
+                      ? 'Đóng gói kiến thức chuyên môn và tạo các bài lab thực hành để giúp học viên phát triển kỹ năng.'
+                      : 'Package your knowledge with hands-on 3D labs.'}
+                  </p>
+                </div>
                 <button
                   onClick={() => setIsCreateCourseModalOpen(true)}
-                  className="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition inline-flex items-center gap-2"
+                  className="tech-btn-3d-green px-5 py-2.5 rounded-xl text-xs font-extrabold text-white cursor-pointer inline-flex items-center gap-2"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4 text-white" />
                   <span>{language === 'vi' ? 'Tạo khóa học ngay' : 'Create Course'}</span>
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {courses.map((c) => {
                   const isPublished = c.status === 'PUBLISHED';
                   return (
                     <div
                       key={c.id}
-                      className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 flex flex-col justify-between overflow-hidden shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition"
+                      className="tech-card flex flex-col justify-between overflow-hidden group transition-all"
                     >
                       <div className="p-5 space-y-3">
                         <div className="flex items-center justify-between">
@@ -772,13 +802,13 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                               : language === 'vi' ? 'Tạm dừng' : 'Archived'}
                           </span>
 
-                          <span className="text-[11px] font-medium text-slate-400">
+                          <span className="text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-200/60 dark:border-cyan-800/60">
                             {c.level || 'Cơ bản'}
                           </span>
                         </div>
 
                         <div>
-                          <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug line-clamp-1">
+                          <h3 className="font-extrabold text-slate-900 dark:text-white text-base leading-snug line-clamp-1">
                             {c.title}
                           </h3>
                           <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mt-1">
@@ -786,7 +816,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                           </p>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                           <div>
                             <span>{language === 'vi' ? 'Học viên:' : 'Students:'} </span>
                             <span className="font-bold text-slate-900 dark:text-white">
@@ -803,7 +833,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                       </div>
 
                       {/* Footer Actions */}
-                      <div className="p-3.5 bg-slate-50 dark:bg-slate-950/80 border-t border-slate-200 dark:border-slate-800/80 flex items-center justify-between">
+                      <div className="p-3.5 bg-slate-50/70 dark:bg-slate-900/60 border-t border-slate-200/80 dark:border-cyan-900/30 flex items-center justify-between">
                         <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
                           {c.price === 0 ? (
                             <span className="text-emerald-500">{language === 'vi' ? 'Miễn phí' : 'Free'}</span>
@@ -814,16 +844,8 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
                         <div className="flex items-center gap-1.5">
                           <button
-                            onClick={() => setSelectedItemFor3DPreview({ id: c.id, title: c.title, price: c.price })}
-                            className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-cyan-600 transition"
-                            title={language === 'vi' ? 'Xem trước 3D Cover' : '3D Cover Preview'}
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-
-                          <button
                             onClick={() => handleToggleCourseStatus(c)}
-                            className="p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:text-amber-500 transition"
+                            className="tech-icon-tile w-7 h-7 rounded-lg text-slate-700 dark:text-slate-300 hover:text-amber-500 cursor-pointer"
                             title={isPublished ? 'Tạm dừng khóa học' : 'Mở lại khóa học'}
                           >
                             {isPublished ? <PauseCircle className="w-3.5 h-3.5" /> : <PlayCircle className="w-3.5 h-3.5" />}
@@ -843,7 +865,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
                   {language === 'vi' ? 'Lịch sử Giao dịch & Đơn hàng' : 'Order & Sales History'}
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -854,7 +876,7 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
               </div>
               <button
                 onClick={loadCreatorData}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 transition"
+                className="tech-btn-control p-2 rounded-xl text-slate-700 dark:text-slate-300 hover:text-cyan-600 cursor-pointer"
                 title="Làm mới"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -862,14 +884,14 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
             </div>
 
             {sales.length === 0 ? (
-              <div className="p-8 text-center rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-slate-400 text-xs">
+              <div className="tech-panel p-10 text-center text-slate-400 text-xs">
                 {language === 'vi' ? 'Chưa ghi nhận đơn hàng nào.' : 'No orders recorded yet.'}
               </div>
             ) : (
-              <div className="rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+              <div className="tech-card overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 dark:bg-slate-900/90 text-slate-400 text-[11px] border-b border-slate-200 dark:border-slate-800">
+                    <thead className="bg-slate-50/80 dark:bg-slate-900/80 text-slate-400 text-[11px] border-b border-slate-200/80 dark:border-cyan-900/40">
                       <tr>
                         <th className="p-4 font-bold">{language === 'vi' ? 'Mã đơn' : 'Order Code'}</th>
                         <th className="p-4 font-bold">{language === 'vi' ? 'Thời gian' : 'Date'}</th>
@@ -880,19 +902,19 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                         <th className="p-4 font-bold">{language === 'vi' ? 'Trạng thái' : 'Status'}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                       {sales.map((s) => (
-                        <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <tr key={s.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                           <td className="p-4 font-mono font-medium text-slate-600 dark:text-slate-300">
                             {s.orderId}
                           </td>
-                          <td className="p-4 text-slate-500">
+                          <td className="p-4 text-slate-500 dark:text-slate-400">
                             {new Date(s.createdAt).toLocaleString()}
                           </td>
                           <td className="p-4 font-bold text-slate-900 dark:text-white">
                             {s.productTitle}
                           </td>
-                          <td className="p-4 text-slate-500">{s.buyerName || 'Khách hàng'}</td>
+                          <td className="p-4 text-slate-500 dark:text-slate-400">{s.buyerName || 'Khách hàng'}</td>
                           <td className="p-4 font-mono font-bold text-slate-700 dark:text-slate-300">
                             {formatCurrency(s.amount)}
                           </td>
@@ -917,44 +939,44 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
         {/* TAB 5: ANALYTICS */}
         {activeTab === 'analytics' && (
           <div className="space-y-6">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
               {language === 'vi' ? 'Báo cáo & Phân tích Doanh số' : 'Sales Analytics & Insights'}
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="tech-card p-6 space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   {language === 'vi' ? 'Tỷ lệ chia sẻ doanh thu' : 'Revenue Share'}
                 </span>
-                <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400">85% / 15%</div>
-                <p className="text-xs text-slate-500 leading-relaxed">
+                <div className="text-3xl font-black text-cyan-600 dark:text-cyan-400 font-mono">85% / 15%</div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                   {language === 'vi'
                     ? 'Bạn nhận 85% giá trị đơn hàng. 15% được dùng để duy trì hạ tầng server mô phỏng 3D và cổng thanh toán tự động.'
                     : 'Creator retains 85% of revenue. 15% covers 3D simulation infrastructure and payment gateway costs.'}
                 </p>
               </div>
 
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="tech-card p-6 space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   {language === 'vi' ? 'Tỷ lệ đơn hàng thành công' : 'VietQR Conversion Rate'}
                 </span>
-                <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400">100%</div>
-                <p className="text-xs text-slate-500 leading-relaxed">
+                <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">100%</div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                   {language === 'vi'
                     ? 'Tất cả các giao dịch đều được đối soát và ghi nhận doanh thu tự động qua cổng VietQR.'
                     : 'Transactions are instantly reconciled and credited to your Creator wallet.'}
                 </p>
               </div>
 
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="tech-card p-6 space-y-2">
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
                   {language === 'vi' ? 'Đánh giá trung bình từ học viên' : 'Average Customer Rating'}
                 </span>
-                <div className="text-2xl font-black text-amber-500 flex items-center gap-1.5">
-                  <Star className="w-6 h-6 fill-current" />
+                <div className="text-3xl font-black text-amber-500 flex items-center gap-1.5 font-mono">
+                  <Star className="w-7 h-7 fill-current" />
                   <span>5.0 / 5.0</span>
                 </div>
-                <p className="text-xs text-slate-500 leading-relaxed">
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                   {language === 'vi'
                     ? 'Dựa trên phản hồi từ người mua mạch và học viên tham gia phòng thực hành 3D.'
                     : 'Calculated from engineering reviews and 3D lab completions.'}
@@ -966,21 +988,21 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
 
         {/* TAB 6: CREATOR PROFILE */}
         {activeTab === 'profile' && (
-          <div className="max-w-2xl mx-auto rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 p-6 shadow-xs">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">
+          <div className="max-w-2xl mx-auto tech-card p-6 sm:p-8 space-y-5">
+            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white">
               {language === 'vi' ? 'Thông tin Hồ sơ Nhà sáng tạo' : 'Creator Profile & Branding'}
             </h2>
 
             {profileSavedSuccess && (
-              <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{language === 'vi' ? 'Đã lưu thông tin hồ sơ thành công!' : 'Profile saved successfully!'}</span>
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span className="font-bold">{language === 'vi' ? 'Đã lưu thông tin hồ sơ thành công!' : 'Profile saved successfully!'}</span>
               </div>
             )}
 
             <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   {language === 'vi' ? 'Tên hiển thị thương hiệu Creator *' : 'Creator Brand Name *'}
                 </label>
                 <input
@@ -989,12 +1011,12 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                   value={profileDisplayName}
                   onChange={(e) => setProfileDisplayName(e.target.value)}
                   placeholder="VD: Huỳnh Phong - IoT Lab"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
+                  className="tech-input w-full px-3.5 py-2.5 text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   {language === 'vi' ? 'Chuyên ngành / Lĩnh vực trọng tâm' : 'Specialty / Field'}
                 </label>
                 <input
@@ -1002,12 +1024,12 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                   value={profileSpecialty}
                   onChange={(e) => setProfileSpecialty(e.target.value)}
                   placeholder="VD: Vi điều khiển nhúng, Hệ thống IoT thông minh, Robot tự hành"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
+                  className="tech-input w-full px-3.5 py-2.5 text-slate-900 dark:text-slate-100"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                   {language === 'vi' ? 'Tiểu sử chuyên môn (Bio)' : 'Bio'}
                 </label>
                 <textarea
@@ -1015,13 +1037,13 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                   value={profileBio}
                   onChange={(e) => setProfileBio(e.target.value)}
                   placeholder="Giới thiệu kinh nghiệm thiết kế phần cứng, các dự án tiêu biểu..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 leading-relaxed"
+                  className="tech-input w-full px-3.5 py-2.5 text-slate-900 dark:text-slate-100 leading-relaxed font-sans"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800/80">
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <Github className="w-3.5 h-3.5" />
                     <span>GitHub</span>
                   </label>
@@ -1030,12 +1052,12 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                     value={profileGithub}
                     onChange={(e) => setProfileGithub(e.target.value)}
                     placeholder="https://github.com/username"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
+                    className="tech-input w-full px-3.5 py-2.5 text-slate-900 dark:text-slate-100"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1.5">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
                     <Youtube className="w-3.5 h-3.5" />
                     <span>YouTube</span>
                   </label>
@@ -1044,15 +1066,15 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                     value={profileYoutube}
                     onChange={(e) => setProfileYoutube(e.target.value)}
                     placeholder="https://youtube.com/@channel"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
+                    className="tech-input w-full px-3.5 py-2.5 text-slate-900 dark:text-slate-100"
                   />
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex justify-end">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition"
+                  className="tech-btn-3d px-6 py-2.5 rounded-xl text-xs font-extrabold text-white cursor-pointer shadow-md"
                 >
                   {language === 'vi' ? 'Lưu thay đổi hồ sơ' : 'Save Profile Changes'}
                 </button>

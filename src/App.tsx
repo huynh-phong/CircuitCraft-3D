@@ -73,13 +73,18 @@ import { AccountPage } from './pages/AccountPage';
 import { CreatorDashboardPage } from './pages/CreatorDashboardPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { MyCoursesPage } from './pages/MyCoursesPage';
+import { TheoryLearningPage } from './pages/TheoryLearningPage';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { RouteKey, resolveRouteFromUrl, syncBrowserUrl } from './router/routes';
 
-import { Course } from './domain/courses/types';
+import { Course, CourseSyllabusItem } from './domain/courses/types';
 import { courseService } from './domain/courses/courseService';
-import { GraduationCap, CheckCircle2 } from 'lucide-react';
+import { buildDeterministicPracticeStages } from './domain/courses/pptxAndPracticeParser';
+import { GraduationCap, CheckCircle2, PanelLeftOpen, PanelRightOpen, AlertTriangle, Cpu, FolderOpen } from 'lucide-react';
 import { useI18n } from './i18n/context';
+import { AnimatePresence } from 'motion/react';
+import { PageTransition } from './components/ui/PageTransition';
 
 export const App: React.FC = () => {
   const { language, t } = useI18n();
@@ -102,13 +107,28 @@ export const App: React.FC = () => {
   const [saveStatusText, setSaveStatusText] = useState('Đã lưu');
   const autosaveTimerRef = useRef<any>(null);
 
+  // Snapshot of last saved project state (to detect dirty changes on exit)
+  const lastSavedSnapshotRef = useRef<string>(JSON.stringify(SAMPLE_PROJECTS[0]));
+  // Collapsible panels state for 3D workspace
+  const [isLeftLibraryCollapsed, setIsLeftLibraryCollapsed] = useState(false);
+  const [isRightInspectorCollapsed, setIsRightInspectorCollapsed] = useState(false);
+  const [placingComponentId, setPlacingComponentId] = useState<string | null>(null);
+  // Unsaved changes exit confirmation modal
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
+
   // Auth state
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentProfile, setCurrentProfile] = useState<UserProfile | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Active commercial course lab
+  // Active commercial course lab & theory classroom state
   const [activeCourse, setActiveCourse] = useState<Course | null>(null);
+  const [activePracticeItem, setActivePracticeItem] = useState<CourseSyllabusItem | null>(null);
+  const [selectedMyCourseId, setSelectedMyCourseId] = useState<string | null>(null);
+  const [activeTheoryContext, setActiveTheoryContext] = useState<{
+    course: Course;
+    lesson: CourseSyllabusItem;
+  } | null>(null);
 
   // Concurrency Conflict State
   const [concurrencyConflict, setConcurrencyConflict] = useState<{
@@ -322,6 +342,12 @@ export const App: React.FC = () => {
       historyRef.current.setDocument(docToSave);
 
       if (res && res.success !== false) {
+        lastSavedSnapshotRef.current = JSON.stringify({
+          components: docToSave.components,
+          connections: docToSave.connections,
+          board: docToSave.board,
+          name: docToSave.name,
+        });
         setManualSaveSuccess(true);
         setSaveStatusText(projectRepositoryManager.isCloudMode() ? 'Đã lưu Cloud' : 'Đã lưu vào Dự án');
         setSaveToast(
@@ -414,7 +440,6 @@ export const App: React.FC = () => {
               spread: 80,
               origin: { y: 0.6 },
             });
-            alert(`🎉 Chúc mừng! Bạn đã hoàn thành xuất sắc bài học: "${activeLesson.title}"!`);
           }
         }
       }
@@ -491,7 +516,7 @@ export const App: React.FC = () => {
       instanceId,
       definitionId: def.definitionId,
       name: `${def.name} ${countSameType + 1}`,
-      position: { x: (Math.random() - 0.5) * 40, y: 0, z: (Math.random() - 0.5) * 30 },
+      position: { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
       parameters: { ...def.defaultParameters },
       state: def.definitionId === 'switch' ? { open: false } : undefined,
@@ -501,6 +526,7 @@ export const App: React.FC = () => {
     executeCommand(cmd);
     setSelectedComponentId(instanceId);
     setSelectedConnectionId(null);
+    setPlacingComponentId(instanceId);
   };
 
   const handleMoveComponent = (id: string, oldPos: Vector3D, newPos: Vector3D) => {
@@ -715,11 +741,43 @@ export const App: React.FC = () => {
 
     try {
       const historySnapshot = minibotChatService.getMessages();
+      const practiceLabContext =
+        activeCourse && activePracticeItem
+          ? {
+              courseTitle: activeCourse.title,
+              lessonTitle: activePracticeItem.title,
+              shortDescription:
+                activePracticeItem.summary ||
+                activePracticeItem.shortDescription ||
+                activePracticeItem.desc,
+              practiceSummary:
+                activePracticeItem.practiceGuideSummary || activePracticeItem.practiceSummary,
+              targetProject:
+                activePracticeItem.practiceProject || activePracticeItem.practiceProjectSnapshot,
+              practiceStages:
+                activePracticeItem.practiceStages && activePracticeItem.practiceStages.length === 3
+                  ? activePracticeItem.practiceStages
+                  : activePracticeItem.practiceProject || activePracticeItem.practiceProjectSnapshot
+                  ? buildDeterministicPracticeStages(
+                      (activePracticeItem.practiceProject ||
+                        activePracticeItem.practiceProjectSnapshot)!,
+                      activePracticeItem.title,
+                      activePracticeItem.summary ||
+                        activePracticeItem.shortDescription ||
+                        activePracticeItem.desc ||
+                        ''
+                    ).stages
+                  : [],
+            }
+          : null;
+
       const result = await assistantService.askQuestion(text, historySnapshot, {
         document: project,
         selectedComponentId,
         validationIssues,
+        simulationResult,
         lessonGoal: activeLesson?.goal,
+        practiceContext: practiceLabContext,
         locale: language,
       });
 
@@ -786,6 +844,43 @@ export const App: React.FC = () => {
     setActiveLesson(null);
     syncHistoryState();
 
+    // Determine whether opened project is a Course Practice Lab or a Real Personal Project
+    const isLab =
+      doc.metadata?.projectType === 'practice_lab' ||
+      doc.projectType === 'practice_lab' ||
+      Boolean(doc.metadata?.courseId) ||
+      doc.name.startsWith('Thực hành:');
+
+    if (isLab) {
+      const allCourses = courseService.getCourses();
+      const matchedCourse =
+        (doc.metadata?.courseId && courseService.getCourseById(doc.metadata.courseId)) ||
+        allCourses.find((c) => doc.name.includes(c.title)) ||
+        allCourses[0];
+      const matchedItem =
+        (matchedCourse && doc.metadata?.lessonId && matchedCourse.syllabus.find((s) => s.id === doc.metadata?.lessonId)) ||
+        matchedCourse?.syllabus.find((s) => s.sectionType === 'practice' || s.isPracticalLab) ||
+        null;
+
+      setActiveCourse(matchedCourse || null);
+      setActivePracticeItem(matchedItem || null);
+      if (matchedCourse) {
+        setSelectedMyCourseId(matchedCourse.id);
+      }
+    } else {
+      // Real Personal Project (Dự án cá nhân thật):
+      // CRITICAL: Reset activeCourse & activePracticeItem so editor and bottom panel run in pure personal mode!
+      setActiveCourse(null);
+      setActivePracticeItem(null);
+    }
+
+    lastSavedSnapshotRef.current = JSON.stringify({
+      components: doc.components,
+      connections: doc.connections,
+      board: doc.board,
+      name: doc.name,
+    });
+
     // Ensure the opened project is persisted into the active repository AND local repository
     try {
       const repo = projectRepositoryManager.getActiveRepository();
@@ -802,42 +897,105 @@ export const App: React.FC = () => {
     handleNavigate('editor', { projectId: doc.projectId });
   };
 
-  // Start Commercial Course Lab
-  const handleStartCourseLab = async (course: Course, labId?: string) => {
+  // Open Theory Classroom for a Course Lesson
+  const handleOpenTheoryLesson = (course: Course, lesson: CourseSyllabusItem) => {
     if (!currentUser) {
       setAuthModalTab('signin');
       setIsAuthModalOpen(true);
       return;
     }
-    const doc = course.createLabProject
-      ? course.createLabProject(labId)
-      : createDefaultProjectDocument(`Thực hành: ${course.title}`);
-    if (currentUser?.id) {
-      doc.authorId = currentUser.id;
-    }
-    setActiveProjectId(doc.projectId);
-    historyRef.current = new CommandHistory(doc);
-    setProject(doc);
     setActiveCourse(course);
+    setSelectedMyCourseId(course.id);
+    setActiveTheoryContext({ course, lesson });
+    handleNavigate('theory-learning');
+  };
+
+  // Start Practice Lab in 3D Workspace (always starts with an EMPTY workspace per Requirement 2.3)
+  const handleStartPracticeLab = async (course: Course, practiceItem: CourseSyllabusItem) => {
+    if (!currentUser) {
+      setAuthModalTab('signin');
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    // Create a completely empty 3D board workspace so the student builds the circuit across the 3 stages
+    const emptyLabDoc = createDefaultProjectDocument(
+      `Thực hành: ${practiceItem.title} (${course.title})`
+    );
+    emptyLabDoc.components = [];
+    emptyLabDoc.connections = [];
+    emptyLabDoc.projectType = 'practice_lab';
+    emptyLabDoc.metadata = {
+      ...emptyLabDoc.metadata,
+      projectType: 'practice_lab',
+      courseId: course.id,
+      courseTitle: course.title,
+      lessonId: practiceItem.id,
+      lessonTitle: practiceItem.title,
+    };
+    if (currentUser?.id) {
+      emptyLabDoc.authorId = currentUser.id;
+    }
+
+    setActiveProjectId(emptyLabDoc.projectId);
+    historyRef.current = new CommandHistory(emptyLabDoc);
+    setProject(emptyLabDoc);
+    setActiveCourse(course);
+    setActivePracticeItem(practiceItem);
+    setSelectedMyCourseId(course.id);
     setActiveLesson(null);
     setSelectedComponentId(null);
     setSelectedConnectionId(null);
     setIsSimulating(false);
     syncHistoryState();
 
-    // Immediately persist into repository so user can see it in "Dự án của tôi"
+    lastSavedSnapshotRef.current = JSON.stringify({
+      components: emptyLabDoc.components,
+      connections: emptyLabDoc.connections,
+      board: emptyLabDoc.board,
+      name: emptyLabDoc.name,
+    });
+
     try {
       const repo = projectRepositoryManager.getActiveRepository();
-      await repo.saveProject(doc, { force: true });
+      await repo.saveProject(emptyLabDoc, { force: true });
       if (currentUser?.id) {
-        await localProjectRepository.saveProject(doc, { force: true });
+        await localProjectRepository.saveProject(emptyLabDoc, { force: true });
       }
       setSaveStatusText(projectRepositoryManager.isCloudMode() ? 'Đã lưu Cloud' : 'Đã lưu vào Dự án');
     } catch (err) {
       console.warn('Auto-save lab note:', err);
     }
 
-    handleNavigate('editor', { projectId: doc.projectId });
+    handleNavigate('editor', { projectId: emptyLabDoc.projectId });
+  };
+
+  // Start Commercial Course (from Courses catalog or Account page -> opens My Courses with Theory & Practice sections)
+  const handleStartCourseLab = async (course: Course, labId?: string) => {
+    if (!currentUser) {
+      setAuthModalTab('signin');
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    setSelectedMyCourseId(course.id);
+
+    // If a specific syllabus item ID was passed, open that Theory or Practice lesson directly
+    if (labId) {
+      const foundItem = (course.syllabus || []).find((s) => s.id === labId);
+      if (foundItem) {
+        if (foundItem.sectionType === 'theory' || (!foundItem.isLab && foundItem.sectionType !== 'practice')) {
+          handleOpenTheoryLesson(course, foundItem);
+          return;
+        } else {
+          await handleStartPracticeLab(course, foundItem);
+          return;
+        }
+      }
+    }
+
+    // Otherwise navigate to "Khóa học của tôi" showing the 2 tabs: Lý thuyết & Thực hành
+    handleNavigate('my-courses');
   };
 
   // Start Lesson (STEM Interactive Lab)
@@ -1047,54 +1205,15 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col w-screen h-screen overflow-hidden circuit-bg circuit-traces-overlay font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 relative">
-      {/* 1. Global Navigation Bar */}
-      <Navbar
-        currentRoute={currentRoute}
-        onNavigate={handleNavigate}
-        isAutosaving={isAutosaving}
-        saveStatusText={saveStatusText}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-        onOpenAuthModal={() => {
-          setAuthModalTab('signin');
-          setIsAuthModalOpen(true);
-        }}
-      />
-
-      {/* 2. Main Content Route Switcher */}
-      {currentRoute === 'landing' && (
-        <LandingPage
-          onStartDesigning={() => {
-            if (!currentUser) {
-              setAuthModalTab('signin');
-              setIsAuthModalOpen(true);
-            } else {
-              handleNavigate('projects');
-            }
-          }}
-          onExploreLessons={() => handleNavigate('courses')}
-          onExploreMarketplace={() => handleNavigate('marketplace')}
-        />
-      )}
-
-      {currentRoute === 'projects' && (
-        <ProjectsPage
-          onOpenProject={handleOpenProject}
-          onOpenAuthModal={() => {
-            setAuthModalTab('signin');
-            setIsAuthModalOpen(true);
-          }}
-          onProjectDeleted={handleProjectDeleted}
-          activeProjectId={activeProjectId}
+      {/* 1. Global Navigation Bar (Hidden in 3D design / editor mode and Theory classroom to maximize workspace) */}
+      {currentRoute !== 'editor' && currentRoute !== 'theory-learning' && (
+        <Navbar
+          currentRoute={currentRoute}
+          onNavigate={handleNavigate}
+          isAutosaving={isAutosaving}
+          saveStatusText={saveStatusText}
           currentUser={currentUser}
           currentProfile={currentProfile}
-        />
-      )}
-
-      {currentRoute === 'courses' && (
-        <CoursesPage
-          onStartCourseLab={handleStartCourseLab}
-          currentUser={currentUser}
           onOpenAuthModal={() => {
             setAuthModalTab('signin');
             setIsAuthModalOpen(true);
@@ -1102,78 +1221,187 @@ export const App: React.FC = () => {
         />
       )}
 
-      {currentRoute === 'lessons' && (
-        <LessonsPage
-          completedLessonIds={completedLessonIds}
-          onStartLesson={handleStartLesson}
-        />
-      )}
+      {/* 2. Main Content Route Switcher with Fluid Page Transitions */}
+      <AnimatePresence mode="wait">
+        {currentRoute === 'landing' && (
+          <PageTransition routeKey="landing">
+            <LandingPage
+              onStartDesigning={() => {
+                if (!currentUser) {
+                  setAuthModalTab('signin');
+                  setIsAuthModalOpen(true);
+                } else {
+                  handleNavigate('projects');
+                }
+              }}
+              onExploreLessons={() => handleNavigate('courses')}
+              onExploreMarketplace={() => handleNavigate('marketplace')}
+              onNavigate={handleNavigate}
+              onOpenProject={handleOpenProject}
+              currentUser={currentUser}
+            />
+          </PageTransition>
+        )}
 
-      {currentRoute === 'marketplace' && (
-        <MarketplacePage
-          onOpenProject={handleOpenProject}
-          currentUser={currentUser}
-          onOpenAuthModal={() => {
-            setAuthModalTab('signin');
-            setIsAuthModalOpen(true);
-          }}
-          onNavigate={handleNavigate}
-        />
-      )}
+        {currentRoute === 'projects' && (
+          <PageTransition routeKey="projects">
+            <ProjectsPage
+              onOpenProject={handleOpenProject}
+              onOpenAuthModal={() => {
+                setAuthModalTab('signin');
+                setIsAuthModalOpen(true);
+              }}
+              onProjectDeleted={handleProjectDeleted}
+              activeProjectId={activeProjectId}
+              currentUser={currentUser}
+              currentProfile={currentProfile}
+            />
+          </PageTransition>
+        )}
 
-      {currentRoute === 'membership' && (
-        <MembershipPage
-          onPlanUpdated={() => {}}
-          currentUser={currentUser}
-          onOpenAuthModal={() => {
-            setAuthModalTab('signin');
-            setIsAuthModalOpen(true);
-          }}
-        />
-      )}
+        {currentRoute === 'courses' && (
+          <PageTransition routeKey="courses">
+            <CoursesPage
+              onStartCourseLab={handleStartCourseLab}
+              onOpenMyCourses={(courseId) => {
+                if (courseId) setSelectedMyCourseId(courseId);
+                handleNavigate('my-courses');
+              }}
+              currentUser={currentUser}
+              onOpenAuthModal={() => {
+                setAuthModalTab('signin');
+                setIsAuthModalOpen(true);
+              }}
+            />
+          </PageTransition>
+        )}
 
-      {currentRoute === 'account' && (
-        <AccountPage
-          currentUser={currentUser}
-          currentProfile={currentProfile}
-          onOpenProject={handleOpenProject}
-          onStartCourseLab={handleStartCourseLab}
-          onNavigate={handleNavigate}
-          onOpenAuthModal={() => {
-            setAuthModalTab('signin');
-            setIsAuthModalOpen(true);
-          }}
-        />
-      )}
+        {currentRoute === 'my-courses' && (
+          <PageTransition routeKey="my-courses">
+            <MyCoursesPage
+              currentUser={currentUser}
+              selectedCourseId={selectedMyCourseId}
+              onSelectCourse={setSelectedMyCourseId}
+              onOpenTheoryLesson={handleOpenTheoryLesson}
+              onStartPracticeLab={handleStartPracticeLab}
+              onExploreCatalog={() => handleNavigate('courses')}
+            />
+          </PageTransition>
+        )}
 
-      {currentRoute === 'creator' && (
-        <CreatorDashboardPage
-          currentUser={currentUser}
-          currentProfile={currentProfile}
-          currentProject={project}
-          onOpenProject={handleOpenProject}
-          onNavigate={handleNavigate}
-          onOpenAuthModal={() => {
-            setAuthModalTab('signin');
-            setIsAuthModalOpen(true);
-          }}
-        />
-      )}
+        {currentRoute === 'theory-learning' && (
+          <PageTransition routeKey="theory-learning">
+            {activeTheoryContext ? (
+              <TheoryLearningPage
+                course={activeTheoryContext.course}
+                initialLesson={activeTheoryContext.lesson}
+                currentUser={currentUser}
+                onBackToMyCourse={() => {
+                  setSelectedMyCourseId(activeTheoryContext.course.id);
+                  handleNavigate('my-courses');
+                }}
+                onSwitchPracticeLab={handleStartPracticeLab}
+              />
+            ) : (
+              <MyCoursesPage
+                currentUser={currentUser}
+                selectedCourseId={selectedMyCourseId}
+                onSelectCourse={setSelectedMyCourseId}
+                onOpenTheoryLesson={handleOpenTheoryLesson}
+                onStartPracticeLab={handleStartPracticeLab}
+                onExploreCatalog={() => handleNavigate('courses')}
+              />
+            )}
+          </PageTransition>
+        )}
 
-      {currentRoute === 'admin' && (
-        <AdminDashboardPage
-          currentUser={currentUser}
-          onNavigate={handleNavigate}
-          onOpenProject={handleOpenProject}
-        />
-      )}
+        {currentRoute === 'lessons' && (
+          <PageTransition routeKey="lessons">
+            <LessonsPage
+              completedLessonIds={completedLessonIds}
+              onStartLesson={handleStartLesson}
+            />
+          </PageTransition>
+        )}
 
-      {currentRoute === 'not-found' && (
-        <NotFoundPage
-          currentPath={typeof window !== 'undefined' ? window.location.pathname : undefined}
-          onNavigate={handleNavigate}
-        />
-      )}
+        {currentRoute === 'marketplace' && (
+          <PageTransition routeKey="marketplace">
+            <MarketplacePage
+              onOpenProject={handleOpenProject}
+              currentUser={currentUser}
+              onOpenAuthModal={() => {
+                setAuthModalTab('signin');
+                setIsAuthModalOpen(true);
+              }}
+              onNavigate={handleNavigate}
+            />
+          </PageTransition>
+        )}
+
+        {currentRoute === 'membership' && (
+          <PageTransition routeKey="membership">
+            <MembershipPage
+              onPlanUpdated={() => {}}
+              currentUser={currentUser}
+              onOpenAuthModal={() => {
+                setAuthModalTab('signin');
+                setIsAuthModalOpen(true);
+              }}
+            />
+          </PageTransition>
+        )}
+
+        {currentRoute === 'account' && (
+          <PageTransition routeKey="account">
+            <AccountPage
+              currentUser={currentUser}
+              currentProfile={currentProfile}
+              onOpenProject={handleOpenProject}
+              onStartCourseLab={handleStartCourseLab}
+              onNavigate={handleNavigate}
+              onOpenAuthModal={() => {
+                setAuthModalTab('signin');
+                setIsAuthModalOpen(true);
+              }}
+            />
+          </PageTransition>
+        )}
+
+        {currentRoute === 'creator' && (
+          <PageTransition routeKey="creator">
+            <CreatorDashboardPage
+              currentUser={currentUser}
+              currentProfile={currentProfile}
+              currentProject={project}
+              onOpenProject={handleOpenProject}
+              onNavigate={handleNavigate}
+              onOpenAuthModal={() => {
+                setAuthModalTab('signin');
+                setIsAuthModalOpen(true);
+              }}
+            />
+          </PageTransition>
+        )}
+
+        {currentRoute === 'admin' && (
+          <PageTransition routeKey="admin">
+            <AdminDashboardPage
+              currentUser={currentUser}
+              onNavigate={handleNavigate}
+              onOpenProject={handleOpenProject}
+            />
+          </PageTransition>
+        )}
+
+        {currentRoute === 'not-found' && (
+          <PageTransition routeKey="not-found">
+            <NotFoundPage
+              currentPath={typeof window !== 'undefined' ? window.location.pathname : undefined}
+              onNavigate={handleNavigate}
+            />
+          </PageTransition>
+        )}
+      </AnimatePresence>
 
       {currentRoute === 'editor' && (
         <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -1183,38 +1411,67 @@ export const App: React.FC = () => {
               <div className="flex items-center gap-2.5 truncate">
                 <span className="font-bold text-cyan-300 flex items-center gap-1.5">
                   <GraduationCap className="w-4 h-4 text-cyan-400" />
-                  Đang thực hành khóa học:
+                  Đang thực hành Lab:
                 </span>
-                <span className="truncate font-semibold text-white">{activeCourse.title}</span>
-                <span className="hidden sm:inline text-cyan-400 font-mono text-[11px] px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-500/30">
-                  {activeCourse.level}
+                <span className="truncate font-semibold text-white">
+                  {activePracticeItem ? `${activePracticeItem.title} — ` : ''}
+                  {activeCourse.title}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
-                    const enrollment = courseService.getEnrollment(activeCourse.id);
-                    const firstUnfinished = activeCourse.syllabus.find(
-                      (s) => !enrollment?.completedLessons.includes(s.id)
-                    ) || activeCourse.syllabus[0];
-                    if (firstUnfinished) {
-                      courseService.completeLesson(activeCourse.id, firstUnfinished.id);
+                    const targetLessonId =
+                      activePracticeItem?.id ||
+                      activeCourse.syllabus.find(
+                        (s) => s.sectionType === 'practice' || s.isLab
+                      )?.id ||
+                      activeCourse.syllabus[0]?.id;
+                    if (targetLessonId) {
+                      courseService.completeLesson(activeCourse.id, targetLessonId);
                     }
-                    alert(`Chúc mừng! Bạn đã hoàn thành một bài thực hành trong khóa "${activeCourse.title}". Tiến độ đã được ghi nhận vào Hồ sơ cá nhân của bạn.`);
+                    confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
                   }}
                   className="text-[11px] text-slate-950 font-bold px-2.5 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 transition shadow-sm flex items-center gap-1"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Hoàn thành bài tập</span>
+                  <span>Hoàn thành bài thực hành</span>
                 </button>
                 <button
                   onClick={() => {
-                    setActiveCourse(null);
-                    handleNavigate('courses');
+                    setSelectedMyCourseId(activeCourse.id);
+                    handleNavigate('my-courses');
                   }}
                   className="text-[11px] text-cyan-300 hover:text-white px-2.5 py-1 rounded-lg bg-cyan-900/50 hover:bg-cyan-900/80 border border-cyan-500/20"
                 >
-                  Rời phòng thực hành
+                  Về Khóa học của tôi
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Personal Project Banner (Dự án cá nhân - Không gian tự do) */}
+          {!activeCourse && !activeLesson && !activePracticeItem && (
+            <div className="h-9 px-4 bg-slate-900/95 dark:bg-[#061224]/95 border-b border-slate-700/60 dark:border-cyan-900/50 text-slate-200 text-xs flex items-center justify-between z-20 shrink-0 shadow-xs">
+              <div className="flex items-center gap-2.5 truncate">
+                <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-bold text-[10px] flex items-center gap-1 shadow-xs">
+                  <Cpu className="w-3 h-3 text-cyan-400" />
+                  Dự án cá nhân
+                </span>
+                <span className="font-bold text-white truncate">
+                  {project.name}
+                </span>
+                <span className="hidden md:inline text-slate-400 font-mono text-[11px]">
+                  • Bo mạch: {project.board?.width || 80}×{project.board?.depth || 60}mm • {project.components?.length || 0} linh kiện • {project.connections?.length || 0} dây nối
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleNavigate('projects')}
+                  className="text-[11px] text-cyan-300 hover:text-white px-2.5 py-1 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-500/30 transition flex items-center gap-1 cursor-pointer"
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  <span>Danh sách dự án</span>
                 </button>
               </div>
             </div>
@@ -1287,22 +1544,32 @@ export const App: React.FC = () => {
               setRenameInput(project.name);
               setIsRenameOpen(true);
             }}
-            onBackToProjectSelect={async () => {
-              try {
-                const repo = projectRepositoryManager.getActiveRepository();
-                await repo.saveProject(project, { force: true });
-              } catch {}
-              handleNavigate('projects');
+            onBackToProjectSelect={() => {
+              // Check if project has unsaved changes compared to lastSavedSnapshotRef
+              const currentSnapshot = JSON.stringify({
+                components: project.components,
+                connections: project.connections,
+                board: project.board,
+                name: project.name,
+              });
+
+              const isDirty = currentSnapshot !== lastSavedSnapshotRef.current;
+              if (isDirty) {
+                setIsExitConfirmOpen(true);
+              } else {
+                handleNavigate('projects');
+              }
             }}
+            isLeftLibraryCollapsed={isLeftLibraryCollapsed}
+            onToggleLeftLibrary={() => setIsLeftLibraryCollapsed((prev) => !prev)}
+            isRightInspectorCollapsed={isRightInspectorCollapsed}
+            onToggleRightInspector={() => setIsRightInspectorCollapsed((prev) => !prev)}
           />
 
-          {/* Middle 3D Viewport with Sidebars */}
-          <div className="flex-1 flex overflow-hidden relative">
-            {/* Left Component Library (Hidden in presentation mode) */}
-            {!isPresentationMode && <ComponentLibrary onAddComponent={handleAddComponent} />}
-
-            {/* Center Three.js 3D Canvas */}
-            <main className="flex-1 relative overflow-hidden">
+          {/* Middle 3D Viewport with Floating Overlays */}
+          <div className="flex-1 relative overflow-hidden">
+            {/* Center Three.js 3D Canvas (Full width & height, never displaced by floating panels) */}
+            <main className="w-full h-full relative overflow-hidden">
               <ThreeScene
                 document={project}
                 selectedComponentId={selectedComponentId}
@@ -1338,6 +1605,10 @@ export const App: React.FC = () => {
                 qualityPreset={qualityPreset}
                 showGrid={showGrid}
                 activeWireColor={activeWireColor}
+                isRightInspectorCollapsed={isRightInspectorCollapsed}
+                onToggleRightInspector={() => setIsRightInspectorCollapsed((prev) => !prev)}
+                placingComponentId={placingComponentId}
+                onPlacedComponent={() => setPlacingComponentId(null)}
               />
 
               {/* Floating Presentation Controls */}
@@ -1353,7 +1624,48 @@ export const App: React.FC = () => {
               )}
             </main>
 
-            {/* Right Property Panel (Hidden in presentation mode) */}
+            {/* Left Component Library Floating Panel (Hidden in presentation mode or when collapsed) */}
+            {!isPresentationMode && (
+              <ComponentLibrary
+                onAddComponent={handleAddComponent}
+                isCollapsed={isLeftLibraryCollapsed}
+                onToggleCollapse={() => setIsLeftLibraryCollapsed(true)}
+              />
+            )}
+
+            {/* Floating Reopen Button for Left Library when collapsed */}
+            {!isPresentationMode && isLeftLibraryCollapsed && (
+              <div className="absolute top-4 left-4 z-20 flex items-center bg-white/85 dark:bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-lg text-xs">
+                <button
+                  onClick={() => setIsLeftLibraryCollapsed(false)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/60 font-semibold transition cursor-pointer hover:border-cyan-400 hover:scale-105 active:scale-95 shadow-xs"
+                  title={language === 'vi' ? 'Mở Thư viện linh kiện' : 'Open Component Library'}
+                >
+                  <PanelLeftOpen className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                  <span className="font-semibold">
+                    {language === 'vi' ? 'Thư viện linh kiện' : 'Component Library'}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Floating Reopen Button for Right Inspector when collapsed */}
+            {!isPresentationMode && isRightInspectorCollapsed && (
+              <div className="absolute top-4 right-4 z-20 flex items-center bg-white/85 dark:bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-lg text-xs">
+                <button
+                  onClick={() => setIsRightInspectorCollapsed(false)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/60 font-semibold transition cursor-pointer hover:border-cyan-400 hover:scale-105 active:scale-95 shadow-xs"
+                  title={language === 'vi' ? 'Mở Thông tin & chỉ số' : 'Open Info & Parameters'}
+                >
+                  <span className="font-semibold">
+                    {language === 'vi' ? 'Thông tin & chỉ số' : 'Info & Parameters'}
+                  </span>
+                  <PanelRightOpen className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                </button>
+              </div>
+            )}
+
+            {/* Right Property Panel (Hidden in presentation mode or when collapsed) */}
             {!isPresentationMode && (
               <PropertyPanel
                 selectedComponent={selectedCompObj}
@@ -1361,6 +1673,8 @@ export const App: React.FC = () => {
                 board={project.board}
                 componentsCount={project.components.length}
                 connectionsCount={project.connections.length}
+                isCollapsed={isRightInspectorCollapsed}
+                onToggleCollapse={() => setIsRightInspectorCollapsed(true)}
                 onChangeBoardShape={handleChangeBoardShape}
                 onChangeBoardDimensions={handleChangeBoardDimensions}
                 onUpdateComponentParams={(id, params) => {
@@ -1410,12 +1724,38 @@ export const App: React.FC = () => {
             )}
           </div>
 
-          {/* Bottom Validation & Simulation Panel (Hidden in presentation mode) */}
+          {/* Bottom Validation, Simulation & Practice Lab Panel (Hidden in presentation mode) */}
           {!isPresentationMode && (
             <ValidationPanel
               issues={validationIssues}
               simulationResult={simulationResult}
               onFocusIssue={handleFocusIssue}
+              practiceContext={
+                activeCourse && activePracticeItem
+                  ? {
+                      course: activeCourse,
+                      practiceItem: activePracticeItem,
+                      studentProject: project,
+                      isSimulating,
+                      isLessonCompleted: Boolean(
+                        courseService
+                          .getEnrollment(activeCourse.id)
+                          ?.completedLessons?.includes(activePracticeItem.id)
+                      ),
+                      onCompletePractice: () => {
+                        courseService.completeLesson(activeCourse.id, activePracticeItem.id);
+                        confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
+                      },
+                      onBackToMyCourses: () => {
+                        setSelectedMyCourseId(activeCourse.id);
+                        handleNavigate('my-courses');
+                      },
+                      onAskAIAboutStage: (promptText) => {
+                        handleSendMessage(promptText);
+                      },
+                    }
+                  : null
+              }
             />
           )}
 
@@ -1469,9 +1809,67 @@ export const App: React.FC = () => {
                       }
                       setIsRenameOpen(false);
                     }}
-                    className="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white"
+                    className="px-3 py-1.5 rounded bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white cursor-pointer"
                   >
                     Lưu tên
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Unsaved Changes Exit Confirmation Modal (Lưu, Không lưu, Hủy bỏ) */}
+          {isExitConfirmOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+              <div className="w-full max-w-md bg-white dark:bg-[#0c1424] border border-[#d7e7f0] dark:border-cyan-900/60 rounded-2xl p-6 space-y-4 shadow-2xl">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/30">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {language === 'vi' ? 'Dự án có thay đổi chưa lưu' : 'Unsaved Project Changes'}
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                      {language === 'vi'
+                        ? `Dự án "${project.name}" đã được chỉnh sửa nhưng chưa được lưu lại. Bạn có muốn lưu các thay đổi này trước khi thoát không?`
+                        : `Project "${project.name}" has unsaved modifications. Do you want to save before exiting?`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  {/* Hủy bỏ button */}
+                  <button
+                    onClick={() => setIsExitConfirmOpen(false)}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    {language === 'vi' ? 'Hủy bỏ' : 'Cancel'}
+                  </button>
+
+                  {/* Không lưu button */}
+                  <button
+                    onClick={() => {
+                      setIsExitConfirmOpen(false);
+                      handleNavigate('projects');
+                    }}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 transition cursor-pointer"
+                  >
+                    {language === 'vi' ? 'Không lưu' : 'Don’t Save'}
+                  </button>
+
+                  {/* Lưu button */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        await handleManualSave();
+                      } catch {}
+                      setIsExitConfirmOpen(false);
+                      handleNavigate('projects');
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-bold bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/25 transition cursor-pointer"
+                  >
+                    {language === 'vi' ? 'Lưu' : 'Save'}
                   </button>
                 </div>
               </div>

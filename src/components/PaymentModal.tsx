@@ -18,6 +18,7 @@ import {
 import confetti from 'canvas-confetti';
 import { paymentService } from '../billing/paymentService';
 import { useI18n } from '../i18n/context';
+import { Portal } from './ui/Portal';
 
 export interface PaymentOrderDetails {
   orderId: string;
@@ -152,20 +153,21 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200 select-none">
-      {/* 3D Elevated Card matching Membership reference design */}
-      <div
-        className="
-          relative w-full max-w-xl rounded-3xl overflow-hidden flex flex-col max-h-[92vh]
-          transition-all duration-300
-          bg-gradient-to-b from-[#f8fafc] via-white to-[#f0f9ff] text-slate-800
-          border border-cyan-300/80
-          shadow-[0_16px_50px_rgba(6,182,212,0.16),_inset_0_1px_1px_rgba(255,255,255,0.95)]
-          dark:bg-gradient-to-b dark:from-[#0b1c30] dark:via-[#091829] dark:to-[#071322] dark:text-slate-100
-          dark:border-cyan-500/50
-          dark:shadow-[0_0_40px_rgba(6,182,212,0.22),_0_24px_60px_rgba(0,0,0,0.65),_inset_0_1px_1px_rgba(255,255,255,0.12)]
-        "
-      >
+    <Portal>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200 select-none">
+        {/* 3D Elevated Card matching Membership reference design */}
+        <div
+          className="
+            my-auto relative w-full max-w-xl rounded-3xl overflow-hidden flex flex-col max-h-[92vh]
+            transition-all duration-300
+            bg-gradient-to-b from-[#f8fafc] via-white to-[#f0f9ff] text-slate-800
+            border border-cyan-300/80
+            shadow-[0_16px_50px_rgba(6,182,212,0.16),_inset_0_1px_1px_rgba(255,255,255,0.95)]
+            dark:bg-gradient-to-b dark:from-[#0b1c30] dark:via-[#091829] dark:to-[#071322] dark:text-slate-100
+            dark:border-cyan-500/50
+            dark:shadow-[0_0_40px_rgba(6,182,212,0.22),_0_24px_60px_rgba(0,0,0,0.65),_inset_0_1px_1px_rgba(255,255,255,0.12)]
+          "
+        >
         {/* Subtle Top Glowing Line */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-80" />
 
@@ -412,5 +414,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         </div>
       </div>
     </div>
-  );
+  </Portal>
+);
 };

@@ -9,6 +9,8 @@ export type RouteKey =
   | 'editor'
   | 'projects'
   | 'courses'
+  | 'my-courses'
+  | 'theory-learning'
   | 'lessons'
   | 'marketplace'
   | 'membership'
@@ -29,6 +31,8 @@ export const ROUTE_PATH_MAP: Record<RouteKey, string> = {
   projects: '/projects',
   editor: '/editor',
   courses: '/courses',
+  'my-courses': '/my-courses',
+  'theory-learning': '/theory-learning',
   lessons: '/lessons',
   marketplace: '/marketplace',
   membership: '/membership',
@@ -54,6 +58,14 @@ export const ROUTE_TITLE_MAP: Record<RouteKey, { vi: string; en: string }> = {
   courses: {
     vi: 'Khóa học & Phòng Lab Thực hành 3D | CircuitCraft 3D',
     en: 'Interactive Courses & Labs | CircuitCraft 3D',
+  },
+  'my-courses': {
+    vi: 'Khóa học của tôi | CircuitCraft 3D',
+    en: 'My Enrolled Courses | CircuitCraft 3D',
+  },
+  'theory-learning': {
+    vi: 'Phòng Học Lý thuyết & Trợ giảng AI | CircuitCraft 3D',
+    en: 'Theory Classroom & AI Tutor | CircuitCraft 3D',
   },
   lessons: {
     vi: 'Bài học Thực hành STEM Điện tử 3D | CircuitCraft 3D',
@@ -136,7 +148,28 @@ export function resolveRouteFromUrl(pathname?: string, search?: string): RouteRe
     return { route: 'editor', projectId, rawPath };
   }
 
-  if (path === '/courses' || path.startsWith('/courses/') || path === '/khoa-hoc' || path === '/classes') {
+  if (
+    path === '/my-courses' ||
+    path.startsWith('/my-courses/') ||
+    path === '/khoa-hoc-cua-toi'
+  ) {
+    return { route: 'my-courses', rawPath };
+  }
+
+  if (
+    path === '/theory-learning' ||
+    path.startsWith('/theory-learning/') ||
+    path === '/hoc-ly-thuyet'
+  ) {
+    return { route: 'theory-learning', rawPath };
+  }
+
+  if (
+    path === '/courses' ||
+    path.startsWith('/courses/') ||
+    path === '/khoa-hoc' ||
+    path === '/classes'
+  ) {
     return { route: 'courses', rawPath };
   }
 

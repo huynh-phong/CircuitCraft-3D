@@ -15,6 +15,8 @@ import {
   Grid,
   Trash2,
   ArrowLeft,
+  PanelLeft,
+  PanelRight,
 } from 'lucide-react';
 import { useI18n } from '../i18n/context';
 
@@ -47,6 +49,10 @@ export interface ToolbarProps {
   projectName: string;
   onRenameProject: () => void;
   onBackToProjectSelect?: () => void;
+  isLeftLibraryCollapsed?: boolean;
+  onToggleLeftLibrary?: () => void;
+  isRightInspectorCollapsed?: boolean;
+  onToggleRightInspector?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -78,6 +84,10 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   projectName,
   onRenameProject,
   onBackToProjectSelect,
+  isLeftLibraryCollapsed = false,
+  onToggleLeftLibrary,
+  isRightInspectorCollapsed = false,
+  onToggleRightInspector,
 }) => {
   const { t, language } = useI18n();
 

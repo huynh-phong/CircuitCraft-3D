@@ -25,3 +25,6 @@ dist-ssr/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Tài liệu kiến trúc nội bộ (Không đẩy lên GitHub theo yêu cầu người dùng)
+SYSTEM_ARCHITECTURE_DETAILED.md

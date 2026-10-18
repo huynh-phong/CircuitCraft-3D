@@ -92,16 +92,16 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
   if (!isOpen || !product) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in select-none">
-      <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in select-none">
+      <div className="relative w-full max-w-xl tech-panel border border-[#d7e7f0] dark:border-cyan-800/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-cyan-50 to-slate-100 dark:from-cyan-950 dark:to-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+        <div className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-200/80 dark:border-cyan-900/40 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-cyan-600 text-white flex items-center justify-center shadow-md">
-              <History className="w-4 h-4" />
+            <div className="tech-icon-tile w-9 h-9 rounded-xl text-cyan-600 dark:text-cyan-400">
+              <History className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 {language === 'vi' ? 'Lịch sử Phiên bản Bất biến' : 'Immutable Version History'}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-sm">
@@ -111,7 +111,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="tech-btn-control p-1.5 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-white cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -130,7 +130,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
           {!isCreatingNew ? (
             <button
               onClick={() => setIsCreatingNew(true)}
-              className="w-full py-2.5 px-4 rounded-xl bg-cyan-50 dark:bg-cyan-950/60 hover:bg-cyan-100 dark:hover:bg-cyan-900/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/70 font-bold flex items-center justify-center gap-2 transition"
+              className="w-full tech-btn-control py-2.5 px-4 rounded-xl border border-cyan-300/80 dark:border-cyan-800/70 text-cyan-700 dark:text-cyan-300 font-bold flex items-center justify-center gap-2 cursor-pointer shadow-xs"
             >
               <Plus className="w-4 h-4" />
               <span>
@@ -142,14 +142,14 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
           ) : (
             <form
               onSubmit={handleCreateVersion}
-              className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3"
+              className="p-4 rounded-xl tech-card-nested space-y-3"
             >
               <div className="font-bold text-slate-900 dark:text-white flex items-center justify-between">
                 <span>{language === 'vi' ? 'Phát hành bản cập nhật mới' : 'Create New Release'}</span>
                 <button
                   type="button"
                   onClick={() => setIsCreatingNew(false)}
-                  className="text-slate-400 hover:text-slate-200 text-[11px]"
+                  className="text-slate-400 hover:text-slate-200 text-[11px] cursor-pointer"
                 >
                   {language === 'vi' ? 'Hủy' : 'Cancel'}
                 </button>
@@ -165,7 +165,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                   value={newVersionNumber}
                   onChange={(e) => setNewVersionNumber(e.target.value)}
                   placeholder="1.1.0"
-                  className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-mono text-xs"
+                  className="tech-input w-full px-3 py-1.5 font-mono text-xs text-slate-900 dark:text-slate-100"
                 />
               </div>
 
@@ -179,7 +179,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                   value={newReleaseNotes}
                   onChange={(e) => setNewReleaseNotes(e.target.value)}
                   placeholder="Mô tả các cải tiến, sửa lỗi linh kiện hoặc tối ưu kích thước..."
-                  className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 text-xs"
+                  className="tech-input w-full px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-sans"
                 />
               </div>
 
@@ -187,16 +187,16 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1.5 transition"
+                  className="tech-btn-3d px-4 py-2 rounded-xl text-xs font-extrabold text-white flex items-center gap-1.5 cursor-pointer shadow-md disabled:opacity-50"
                 >
                   {isSubmitting ? (
                     <>
-                      <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                      <RotateCw className="w-3.5 h-3.5 animate-spin text-white" />
                       <span>{language === 'vi' ? 'Đang tạo snapshot...' : 'Snapshotting...'}</span>
                     </>
                   ) : (
                     <>
-                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-white" />
                       <span>{language === 'vi' ? 'Xác nhận phát hành' : 'Publish Version'}</span>
                     </>
                   )}
@@ -217,7 +217,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                 <span>{language === 'vi' ? 'Đang tải danh sách...' : 'Loading versions...'}</span>
               </div>
             ) : versions.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-400 text-center">
+              <div className="p-4 rounded-xl tech-card-nested text-slate-400 text-center">
                 {language === 'vi' ? 'Chưa có phiên bản nào được tạo.' : 'No version snapshots yet.'}
               </div>
             ) : (
@@ -229,7 +229,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                     className={`p-3.5 rounded-xl border transition ${
                       isCurrent
                         ? 'bg-cyan-50/50 dark:bg-cyan-950/40 border-cyan-300 dark:border-cyan-800'
-                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                        : 'tech-card-nested'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1.5">
@@ -253,7 +253,7 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
                       {ver.releaseNotes}
                     </p>
 
-                    <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 pt-1.5 border-t border-slate-200 dark:border-slate-800/70">
+                    <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 pt-1.5 border-t border-slate-200/80 dark:border-slate-800/70">
                       <span>{ver.componentsCount} linh kiện</span>
                       <span>•</span>
                       <span>{ver.connectionsCount} đường dây</span>
@@ -268,10 +268,10 @@ export const VersionHistoryModal: React.FC<VersionHistoryModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+        <div className="p-4 bg-slate-50/80 dark:bg-slate-900/80 border-t border-slate-200/80 dark:border-cyan-900/40 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-slate-700 dark:text-slate-300 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 font-semibold transition"
+            className="tech-btn-secondary px-4 py-2 text-xs font-semibold cursor-pointer"
           >
             {language === 'vi' ? 'Đóng' : 'Close'}
           </button>

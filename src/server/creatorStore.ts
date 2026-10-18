@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { FUNDAMENTAL_ELECTRONICS_COURSE } from '../domain/courses/coursesData';
 
 export type ProductStatus = 'DRAFT' | 'VALIDATING' | 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED' | 'UNPUBLISHED' | 'ARCHIVED';
 
@@ -101,8 +102,10 @@ export interface CreatorCourse {
   prerequisites: string[];
   learningOutcomes: string[];
   estimatedHours: number;
+  duration?: string;
   status: ProductStatus;
   chapters: CourseChapter[];
+  syllabus?: any[];
   studentsCount: number;
   salesCount: number;
   rating: number;
@@ -222,78 +225,91 @@ class CreatorStore {
       }
     });
 
-    // Seed official Course: "Khóa học UNO R3 - Mạch điện tử cơ bản"
-    const unoCourseId = 'course-uno-r3-basic';
-    if (!this.data.courses[unoCourseId]) {
-      this.data.courses[unoCourseId] = {
-        id: unoCourseId,
-        creatorId: officialCreatorId,
-        creatorName: 'Huỳnh Phong',
-        title: 'Khóa học UNO R3 - Mạch điện tử cơ bản',
-        tagline: 'Làm chủ bo mạch Arduino UNO R3, cảm biến và servo qua thực hành 3D trực quan',
-        description: 'Chương trình chuẩn kỹ thuật dành cho học viên và kỹ sư mới bắt đầu. Bao gồm sơ đồ đấu nối 3D, mô phỏng vi điều khiển Atmega328P, điều khiển PWM cho servo và đọc tín hiệu cảm biến môi trường.',
-        price: 799000,
-        currency: 'VND',
-        difficulty: 'Cơ bản',
-        language: 'vi',
-        category: 'Arduino & Vi điều khiển',
-        tags: ['UNO R3', 'Arduino', 'Servo', 'Sensor', 'STEM'],
-        prerequisites: ['Kiến thức vật lý cơ bản về dòng điện và điện áp'],
-        learningOutcomes: [
-          'Thao tác tự tin trên bo mạch Arduino UNO R3',
-          'Đọc hiểu chân digital, analog và chân cấp nguồn',
-          'Điều khiển động cơ servo góc 0-180 độ',
-          'Tích hợp cảm biến môi trường và thiết lập cảnh báo',
-        ],
-        estimatedHours: 12,
-        status: 'PUBLISHED',
-        studentsCount: 0,
-        salesCount: 0,
-        rating: 5.0,
-        createdAt: '2026-09-01T00:00:00.000Z',
-        updatedAt: '2026-09-15T00:00:00.000Z',
-        chapters: [
-          {
-            id: 'chap-1',
-            courseId: unoCourseId,
-            title: 'Chương 1: Khám phá kiến trúc bo mạch Arduino UNO R3',
-            position: 1,
-            lessons: [
-              {
-                id: 'les-1-1',
-                chapterId: 'chap-1',
-                title: 'Bài 1: Cấu trúc phần cứng vi điều khiển ATmega328P',
-                content: 'Tìm hiểu sơ đồ chân pinout của bo mạch Arduino UNO R3, các chân nguồn 5V, 3.3V, GND, 14 chân Digital I/O và 6 chân Analog Inputs A0-A5.',
-                position: 1,
-                hints: ['Luôn kiểm tra kỹ nguồn 5V và GND trước khi cấp điện'],
-              },
-              {
-                id: 'les-1-2',
-                chapterId: 'chap-1',
-                title: 'Bài 2: Mạch nhấp nháy LED đầu tiên (Blinky 3D)',
-                content: 'Đấu nối LED và điện trở hạn dòng 220Ω vào chân Pin 13 của UNO R3. Quan sát dòng điện và xung nhịp điều khiển.',
-                position: 2,
-              },
-            ],
-          },
-          {
-            id: 'chap-2',
-            courseId: unoCourseId,
-            title: 'Chương 2: Tương tác với Động cơ Servo và Cảm biến',
-            position: 2,
-            lessons: [
-              {
-                id: 'les-2-1',
-                chapterId: 'chap-2',
-                title: 'Bài 3: Điều khiển góc quay Servo qua xung PWM chân Pin 9',
-                content: 'Nguyên lý tạo xung điều chế độ rộng (PWM) 50Hz để quay servo chính xác từ 0 đến 180 độ.',
-                position: 1,
-              },
-            ],
-          },
-        ],
-      };
+    // Remove any legacy seeded courses
+    const legacyIds = [
+      'course-uno-r3-basic',
+      'course-intro-stem-3d',
+      'course-switch-relays',
+      'course-digital-logic',
+      'course-timer-555',
+      'course-pcb-design-gerber',
+    ];
+    for (const lid of legacyIds) {
+      if (this.data.courses[lid]) {
+        delete this.data.courses[lid];
+      }
     }
+
+    // Seed the single complete course: "Học tập mạch điện tử căn bản"
+    const fundId = FUNDAMENTAL_ELECTRONICS_COURSE.id;
+    this.data.courses[fundId] = {
+      id: fundId,
+      creatorId: officialCreatorId,
+      creatorName: FUNDAMENTAL_ELECTRONICS_COURSE.author.name,
+      title: FUNDAMENTAL_ELECTRONICS_COURSE.title,
+      tagline: FUNDAMENTAL_ELECTRONICS_COURSE.tagline,
+      description: FUNDAMENTAL_ELECTRONICS_COURSE.description,
+      price: FUNDAMENTAL_ELECTRONICS_COURSE.price,
+      currency: 'VND',
+      status: 'PUBLISHED',
+      difficulty: 'Cơ bản',
+      language: 'vi',
+      category: 'stem',
+      tags: ['Mạch điện tử căn bản', 'Định luật Ohm', 'Đèn LED', 'Công tắc 3D'],
+      prerequisites: ['Không yêu cầu kiến thức nền tảng'],
+      learningOutcomes: FUNDAMENTAL_ELECTRONICS_COURSE.highlights,
+      chapters: [
+        {
+          id: 'chap-fund-theory',
+          courseId: fundId,
+          title: 'Phần 1: Lý thuyết nền tảng (Slide bài giảng & Trợ giảng AI)',
+          position: 1,
+          lessons: FUNDAMENTAL_ELECTRONICS_COURSE.syllabus
+            .filter((s) => s.sectionType === 'theory')
+            .map((s, idx) => ({
+              id: s.id,
+              chapterId: 'chap-fund-theory',
+              title: s.title,
+              content: s.summary || '',
+              summary: s.summary || '',
+              sectionType: 'theory' as const,
+              isPracticalLab: false,
+              pptxFileName: s.pptxFileName,
+              slides: s.slides || [],
+              position: idx + 1,
+            })),
+        },
+        {
+          id: 'chap-fund-practice',
+          courseId: fundId,
+          title: 'Phần 2: Thực hành Lab 3D (3 giai đoạn: Thêm thiết bị → Nối dây → Mô phỏng)',
+          position: 2,
+          lessons: FUNDAMENTAL_ELECTRONICS_COURSE.syllabus
+            .filter((s) => s.sectionType === 'practice')
+            .map((s, idx) => ({
+              id: s.id,
+              chapterId: 'chap-fund-practice',
+              title: s.title,
+              content: s.summary || '',
+              summary: s.summary || '',
+              sectionType: 'practice' as const,
+              isPracticalLab: true,
+              practiceProjectId: s.practiceProjectId,
+              practiceProjectName: s.practiceProjectName,
+              practiceProjectSnapshot: s.practiceProjectSnapshot,
+              practiceStages: s.practiceStages || [],
+              practiceGuideSummary: s.practiceGuideSummary,
+              position: idx + 1,
+            })),
+        },
+      ],
+      syllabus: FUNDAMENTAL_ELECTRONICS_COURSE.syllabus,
+      studentsCount: FUNDAMENTAL_ELECTRONICS_COURSE.studentsCount,
+      rating: FUNDAMENTAL_ELECTRONICS_COURSE.rating,
+      reviewsCount: FUNDAMENTAL_ELECTRONICS_COURSE.reviewsCount,
+      createdAt: '2026-10-18T00:00:00.000Z',
+      updatedAt: '2026-10-18T00:00:00.000Z',
+    } as any;
 
     // Seed official marketplace project: Terminal Block Power Splitter
     const termId = 'prod-terminal-splitter';

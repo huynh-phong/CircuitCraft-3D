@@ -163,16 +163,16 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in select-none">
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in select-none">
+      <div className="relative w-full max-w-2xl tech-panel border border-[#d7e7f0] dark:border-cyan-800/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="p-4 sm:p-5 bg-gradient-to-r from-cyan-50 to-slate-100 dark:from-cyan-950 dark:to-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+        <div className="p-4 sm:p-5 bg-slate-50/80 dark:bg-slate-900/80 border-b border-slate-200/80 dark:border-cyan-900/40 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-cyan-600 text-white flex items-center justify-center shadow-md">
-              <UploadCloud className="w-4 h-4" />
+            <div className="tech-icon-tile w-9 h-9 rounded-xl text-cyan-600 dark:text-cyan-400">
+              <UploadCloud className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                 {language === 'vi' ? 'Đăng bán Mạch điện lên Marketplace' : 'Publish Circuit to Marketplace'}
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -184,7 +184,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="tech-btn-control p-1.5 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-white cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -214,7 +214,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
               <select
                 value={selectedProjectId}
                 onChange={(e) => handleSelectProject(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-medium"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100 font-medium"
               >
                 {userProjects.map((p) => {
                   const pid = p.projectId || (p as any).id;
@@ -235,7 +235,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
           </div>
 
           {/* Snapshot Architecture Explainer */}
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-start gap-2.5 text-[11px] text-slate-600 dark:text-slate-400">
+          <div className="p-3.5 rounded-xl tech-card-nested flex items-start gap-2.5 text-[11px] text-slate-600 dark:text-slate-400">
             <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold text-slate-800 dark:text-slate-200">
@@ -248,7 +248,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
           </div>
 
           {/* 2. Metadata */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div className="sm:col-span-2">
               <label className="block font-bold text-slate-800 dark:text-slate-200 mb-1">
                 {language === 'vi' ? 'Tiêu đề sản phẩm thương mại *' : 'Product Title *'}
@@ -259,7 +259,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="VD: Mạch Giám sát Nhiệt độ Độ ẩm ESP32 v2"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100"
               />
             </div>
 
@@ -272,7 +272,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                 value={tagline}
                 onChange={(e) => setTagline(e.target.value)}
                 placeholder="VD: Mạch đo cảm biến chính xác, thiết kế tối ưu kích thước bỏ túi"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100"
               />
             </div>
 
@@ -286,7 +286,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Mô tả nguyên lý hoạt động, cách lắp ráp, cấu hình và tính ứng dụng của mạch..."
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 leading-relaxed"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100 leading-relaxed font-sans"
               />
             </div>
 
@@ -303,7 +303,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                   step={5000}
                   value={price}
                   onChange={(e) => setPrice(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 disabled:opacity-40 font-mono font-bold"
+                  className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100 disabled:opacity-40 font-mono font-bold"
                 />
                 <label className="flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-300 shrink-0 cursor-pointer">
                   <input
@@ -327,7 +327,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                 value={versionNumber}
                 onChange={(e) => setVersionNumber(e.target.value)}
                 placeholder="1.0.0"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 font-mono"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100 font-mono"
               />
             </div>
 
@@ -340,7 +340,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                 value={tagsInput}
                 onChange={(e) => setTagsInput(e.target.value)}
                 placeholder="Arduino, ESP32, Robotics, Sensor, PWM"
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100"
               />
             </div>
 
@@ -352,7 +352,7 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                 rows={2}
                 value={deliverablesInput}
                 onChange={(e) => setDeliverablesInput(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 leading-relaxed font-sans"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100 leading-relaxed font-sans"
               />
             </div>
 
@@ -364,16 +364,16 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
                 rows={2}
                 value={prerequisitesInput}
                 onChange={(e) => setPrerequisitesInput(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-cyan-500 leading-relaxed font-sans"
+                className="tech-input w-full px-3 py-2 text-slate-900 dark:text-slate-100 leading-relaxed font-sans"
               />
             </div>
           </div>
 
           {/* Footer Submit */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div className="pt-4 border-t border-slate-200/80 dark:border-cyan-900/40 flex items-center justify-between">
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
               {language === 'vi' ? 'Creator nhận:' : 'Creator payout:'}{' '}
-              <span className="font-bold text-emerald-600 dark:text-emerald-400">
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                 {isFree ? '0 đ' : formatCurrency(price * 0.85)} (85%)
               </span>
             </div>
@@ -382,23 +382,23 @@ export const PublishProductModal: React.FC<PublishProductModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition"
+                className="tech-btn-secondary px-4 py-2 text-xs font-semibold cursor-pointer"
               >
                 {language === 'vi' ? 'Hủy' : 'Cancel'}
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold shadow-md shadow-cyan-600/20 transition"
+                className="tech-btn-3d flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold text-white cursor-pointer shadow-md disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <>
-                    <RotateCw className="w-4 h-4 animate-spin" />
+                    <RotateCw className="w-4 h-4 animate-spin text-white" />
                     <span>{language === 'vi' ? 'Đang xuất bản...' : 'Publishing...'}</span>
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="w-4 h-4" />
+                    <CheckCircle2 className="w-4 h-4 text-white" />
                     <span>{language === 'vi' ? 'Xác nhận Đăng bán' : 'Publish Product'}</span>
                   </>
                 )}

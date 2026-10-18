@@ -325,7 +325,6 @@ export async function sendOtpEmail(params: {
           user: smtpUser,
           pass: smtpPass.replace(/\s+/g, ''),
         },
-        // Fail fast when the host blocks SMTP ports instead of hanging ~2 minutes
         connectionTimeout: 10000,
         greetingTimeout: 10000,
         socketTimeout: 15000,

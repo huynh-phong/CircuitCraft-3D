@@ -58,8 +58,8 @@ const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
-// List of candidate models in order of priority
-const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+// List of candidate models in order of priority (using official SDK models)
+const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
 
 // Lazy-initialized Gemini Client with live .env re-check
 let geminiClient: GoogleGenAI | null = null;
@@ -129,7 +129,22 @@ app.post('/api/ai/chat', async (req, res) => {
       });
     }
 
-    const systemInstruction = locale === 'en'
+    const practiceCtx = context?.practiceContext;
+    const practiceSystemNote = practiceCtx
+      ? `\n\n[THÔNG TIN BÀI THỰC HÀNH KHÓA HỌC ĐANG MỞ]:
+- Khóa học: "${practiceCtx.courseTitle || 'Khóa học CircuitCraft'}"
+- Bài thực hành: "${practiceCtx.lessonTitle || ''}"
+- Nội dung yêu cầu: ${practiceCtx.lessonSummary || ''}
+- Linh kiện mục tiêu của giảng viên: ${JSON.stringify(practiceCtx.targetComponents || [])}
+- Sơ đồ nối dây mục tiêu của giảng viên: ${JSON.stringify(practiceCtx.targetConnections || [])}
+- Quy trình 3 giai đoạn chuẩn của bài thực hành:
+${(practiceCtx.stages || [])
+  .map((st: any) => `  + Giai đoạn ${st.stageNumber} (${st.title}): ${(st.steps || []).join(' | ')}`)
+  .join('\n')}
+Hãy hướng dẫn học viên bám sát đúng 3 giai đoạn (1. Thêm thiết bị/mạch -> 2. Nối dây -> 3. Chạy mô phỏng) dựa trên mạch chuẩn của giảng viên và đối chiếu với hiện trạng mạch của học viên!`
+      : '';
+
+    const systemInstruction = (locale === 'en'
       ? `You are Minibot - the intelligent, pedagogically sound, and friendly AI Assistant for CircuitCraft 3D, a hardware circuit design and simulation platform.
 Your mission:
 - Guide users on fundamental electronic principles (Ohm's Law, LED polarity Anode/Cathode, current-limiting resistors, switches, potentiometers).
@@ -143,7 +158,7 @@ Nhiệm vụ của bạn là:
 - Giải thích các lỗi thiết kế DRC (đoản mạch, LED thiếu điện trở hạn dòng, chân linh kiện chưa được nối).
 - Giữ phong cách sư phạm, khích lệ, dùng tiếng Việt chuẩn mực, ngắn gọn và thực tiễn.
 - Khi người dùng chào hỏi (ví dụ "hello", "chào bạn"), hãy đáp lại thân thiện, tự giới thiệu bạn là Minibot và sẵn sàng hỗ trợ thiết kế mạch 3D.
-- Khi người dùng yêu cầu tạo hoặc sửa mạch, hãy phân tích kỹ danh mục linh kiện được hỗ trợ: dc-source (vcc, gnd), resistor (pin1, pin2), led (anode, cathode), switch (pin1, pin2), potentiometer (pin1, wiper, pin2), connector (pin1, pin2).`;
+- Khi người dùng yêu cầu tạo hoặc sửa mạch, hãy phân tích kỹ danh mục linh kiện được hỗ trợ: dc-source (vcc, gnd), resistor (pin1, pin2), led (anode, cathode), switch (pin1, pin2), potentiometer (pin1, wiper, pin2), connector (pin1, pin2).`) + practiceSystemNote;
 
     const contents: any[] = [];
     if (Array.isArray(history)) {
@@ -160,7 +175,7 @@ Nhiệm vụ của bạn là:
     }
 
     const contextSummary = context
-      ? `\n[Circuit State: Revision #${context.revision || 1}, ${context.components?.length || 0} components, ${context.connectionsCount || 0} wires. DRC issues: ${JSON.stringify(context.issues || [])}]`
+      ? `\n[Circuit State: Revision #${context.revision || 1}, ${context.components?.length || 0} components (${JSON.stringify(context.components || [])}), ${context.connectionsCount || 0} wires (${JSON.stringify(context.connections || [])}). DRC issues: ${JSON.stringify(context.issues || [])}]`
       : '';
 
     // If previous item was user, merge or append
@@ -189,6 +204,130 @@ Nhiệm vụ của bạn là:
       reply: locale === 'en'
         ? `[Minibot]: An issue occurred while connecting to the AI model (${error?.message || 'Network error'}). Please try again or recheck your API Key!`
         : `[Minibot]: Đã xảy ra sự cố khi kết nối tới mô hình AI (${error?.message || 'Lỗi mạng'}). Vui lòng kiểm tra lại API Key hoặc gửi lại câu hỏi!`,
+    });
+  }
+});
+
+// 2.1 Independent Website Support AI Chatbot
+// Rate limiter map for support chatbot: key -> array of timestamps
+const supportRateLimits = new Map<string, number[]>();
+
+app.post('/api/support/chat', async (req, res) => {
+  const { prompt, history, locale = 'vi', userId, guestSessionId } = req.body;
+  const lang = locale === 'en' ? 'en' : 'vi';
+
+  // 1. Rate limiting (max 20 requests per 60 seconds per user/session)
+  const clientKey = userId || guestSessionId || req.ip || 'anonymous';
+  const now = Date.now();
+  const timestamps = (supportRateLimits.get(clientKey) || []).filter((t) => now - t < 60000);
+  if (timestamps.length >= 25) {
+    return res.status(429).json({
+      reply: lang === 'en'
+        ? 'You are sending messages too quickly. Please wait a moment before asking another question!'
+        : 'Bạn đang gửi câu hỏi quá nhanh. Vui lòng đợi vài giây trước khi tiếp tục!',
+    });
+  }
+  timestamps.push(now);
+  supportRateLimits.set(clientKey, timestamps);
+
+  try {
+    const ai = getGemini();
+
+    const systemInstruction = lang === 'en'
+      ? `You are the official CircuitCraft 3D Website Guide & Support Assistant.
+Your mission is to welcome visitors, guide beginners, explain platform features, and help users navigate the website.
+You are strictly INDEPENDENT from the 3D circuit simulation engine inside the CAD workspace.
+
+Platform Knowledge:
+- CircuitCraft 3D is a modern web application for interactive 3D electronic circuit design, real-time DC electrical simulation, and STEM learning.
+- 3D Lab / Workspace: Features breadboard 2.54mm grid snapping, Arduino UNO R3, resistors, LEDs, switches, potentiometers, DC voltage sources, smooth Bezier wiring, 360° camera orbit, and Design Rule Checking (DRC) for short circuits.
+- Interactive Courses: The Learning Academy offers structured courses like "UNO R3 - Fundamentals of Electronic Circuits" (8 practical chapters) by Huỳnh Phong, with live 3D labs.
+- Marketplace: A community hub to explore, share, and clone pre-built circuit templates.
+- Membership & Pricing: Free Student tier, Creator tier, and flexible memberships with seamless VietQR automated payment verification.
+- In-workspace Minibot: A 3D companion dedicated to in-canvas circuit debugging and Ohm's Law calculations.
+
+Navigation tags: When suggesting a section, you may include actionable tags such as [nav:projects] for 3D Lab, [nav:courses] for Courses, [nav:marketplace] for Marketplace, [nav:membership] for Membership plans.
+Tone: Warm, encouraging, clear, and professional. Keep responses concise (under 160 words).`
+      : `Bạn là Trợ lý Hỗ trợ & Hướng dẫn chính thức của website CircuitCraft 3D (Website Support AI).
+Nhiệm vụ của bạn là chào đón khách truy cập, hướng dẫn người mới bắt đầu, giải thích tính năng nền tảng và hỗ trợ điều hướng trên website.
+Bạn hoàn toàn ĐỘC LẬP với trợ lý Minibot phân tích mạch bên trong không gian CAD 3D.
+
+Thông tin về nền tảng CircuitCraft 3D:
+- CircuitCraft 3D là nền tảng thiết kế mạch điện tử 3D tương tác và mô phỏng điện học DC thời gian thực ngay trên trình duyệt web.
+- Phòng thí nghiệm 3D (3D Lab): Cung cấp breadboard chuẩn 2.54mm, Arduino UNO R3, bóng LED, điện trở, công tắc gạt, chiết áp xoay, nguồn DC, hệ thống dây uốn Bezier mượt mà, xoay camera 360° và bộ kiểm tra luật thiết kế DRC phát hiện đoản mạch tức thì.
+- Học viện Khóa học: Gồm các khóa học tương tác thực hành như "Khóa học UNO R3 - Mạch điện tử cơ bản" (8 chương bài bản) do giảng viên Huỳnh Phong phụ trách, kèm phòng lab 3D trực tiếp.
+- Cửa hàng (Marketplace): Nơi cộng đồng chia sẻ, tải về và mở trực tiếp các bản vẽ mạch mẫu mã nguồn mở.
+- Gói thành viên & Thanh toán: Gói Student miễn phí, gói Creator và các gói nâng cao với cổng thanh toán VietQR quét mã chuyển khoản tự động kích hoạt tức thì.
+- Trợ lý Minibot: Robot 3D trong không gian thiết kế phục vụ gỡ lỗi mạch và hỗ trợ kỹ thuật chuyên sâu.
+
+Điều hướng: Khi gợi ý người dùng đến tính năng tương ứng, bạn có thể kèm thẻ điều hướng như [nav:projects] (Vào Thiết kế 3D), [nav:courses] (Xem Khóa học), [nav:marketplace] (Vào Cửa hàng), [nav:membership] (Gói thành viên).
+Phong cách: Thân thiện, chu đáo, súc tích, dễ hiểu cho người mới bắt đầu (dưới 160 từ).`;
+
+    if (!ai) {
+      // Smart offline fallback response
+      const lower = (prompt || '').toLowerCase();
+      let replyText = '';
+      if (lower.includes('bắt đầu') || lower.includes('start') || lower.includes('làm sao')) {
+        replyText = lang === 'en'
+          ? 'To start building, click [nav:projects] to enter our 3D Workspace! You can drag components like Arduino, LEDs, and breadboards onto the board, connect wires, and press "Run Simulation".'
+          : 'Để bắt đầu, bạn hãy nhấn [nav:projects] để vào Phòng thí nghiệm 3D! Bạn có thể kéo thả linh kiện (Arduino, LED, điện trở) lên bo mạch, nối dây và bấm "Chạy mô phỏng".';
+      } else if (lower.includes('khóa học') || lower.includes('course') || lower.includes('học')) {
+        replyText = lang === 'en'
+          ? 'We offer beginner-friendly courses like "UNO R3 - Basic Circuits" with 8 interactive hands-on chapters. Visit [nav:courses] to explore the curriculum!'
+          : 'Hệ thống có các khóa học thực hành như "Khóa học UNO R3 - Mạch điện tử cơ bản" gồm 8 chương từ thắp sáng LED đến vi điều khiển. Mời bạn ghé [nav:courses] để khám phá!';
+      } else if (lower.includes('giá') || lower.includes('tiền') || lower.includes('membership') || lower.includes('price')) {
+        replyText = lang === 'en'
+          ? 'CircuitCraft 3D is free to get started for students! We also offer Creator & Pro packages with VietQR instant payment. Check out [nav:membership] for full details.'
+          : 'CircuitCraft 3D miễn phí cho người học cơ bản! Ngoài ra có các gói Creator & Pro thanh toán tiện lợi qua VietQR. Bạn có thể xem tại [nav:membership].';
+      } else {
+        replyText = lang === 'en'
+          ? 'Welcome to CircuitCraft 3D! I can help you find courses [nav:courses], explore the 3D lab [nav:projects], or learn about community projects in the [nav:marketplace]. What would you like to explore?'
+          : 'Chào mừng bạn đến với CircuitCraft 3D! Tôi có thể hướng dẫn bạn vào [nav:projects] (Thiết kế 3D), khám phá [nav:courses] (Khóa học) hoặc ghé thăm [nav:marketplace] (Cửa hàng). Bạn cần hỗ trợ gì ạ?';
+      }
+      return res.json({ reply: replyText });
+    }
+
+    const contents: any[] = [];
+    if (Array.isArray(history)) {
+      for (const h of history) {
+        if (!h.content) continue;
+        const role = h.role === 'assistant' ? 'model' : 'user';
+        if (contents.length === 0 && role === 'model') continue;
+        contents.push({
+          role,
+          parts: [{ text: h.content }],
+        });
+      }
+    }
+
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents[contents.length - 1].parts[0].text += `\n${prompt}`;
+    } else {
+      contents.push({
+        role: 'user',
+        parts: [{ text: prompt }],
+      });
+    }
+
+    const response = await generateWithGemini(ai, {
+      contents,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+      },
+    });
+
+    const reply = response.text || (lang === 'en'
+      ? 'Hello! I am your CircuitCraft Guide. How can I help you explore the platform today?'
+      : 'Chào bạn! Tôi là Trợ lý Hướng dẫn CircuitCraft. Tôi có thể hỗ trợ gì cho bạn hôm nay?');
+
+    res.json({ reply });
+  } catch (error: any) {
+    console.error('Lỗi Support AI chat:', error);
+    res.json({
+      reply: lang === 'en'
+        ? `[CircuitCraft Guide]: I encountered a brief connection issue. You can easily start by clicking [nav:projects] or browsing our [nav:courses]!`
+        : `[Trợ lý Hướng dẫn]: Kết nối AI tạm thời bị gián đoạn. Bạn có thể bắt đầu ngay bằng cách nhấn [nav:projects] để vào Thiết kế 3D hoặc xem [nav:courses] nhé!`,
     });
   }
 });
@@ -401,51 +540,11 @@ interface ServerProductItem {
 
 const SERVER_PRODUCTS: Record<string, ServerProductItem> = {
   // Courses
-  'course-uno-r3-basic': {
-    id: 'course-uno-r3-basic',
-    title: 'Khóa học UNO R3 - Mạch điện tử cơ bản',
+  'course-hoc-tap-mach-dien-tu-can-ban': {
+    id: 'course-hoc-tap-mach-dien-tu-can-ban',
+    title: 'Học tập mạch điện tử căn bản',
     category: 'course',
     authorName: 'Huỳnh Phong',
-    price: 799000,
-    currency: 'VND',
-  },
-  'course-digital-logic': {
-    id: 'course-digital-logic',
-    title: 'Thiết Kế Mạch Logic Số & Cổng Boolean Tương Tác 3D',
-    category: 'course',
-    authorName: 'TS. Lê Đăng Khoa',
-    price: 199000,
-    currency: 'VND',
-  },
-  'course-timer-555': {
-    id: 'course-timer-555',
-    title: 'Mastering IC Định Thời 555 & Dao Động Xung Đồng Hồ',
-    category: 'course',
-    authorName: 'Kỹ Sư Vũ Minh Quân',
-    price: 299000,
-    currency: 'VND',
-  },
-  'course-pcb-design-gerber': {
-    id: 'course-pcb-design-gerber',
-    title: 'Thiết Kế Bo Mạch PCB Chuẩn Công Nghiệp & Xuất Gerber',
-    category: 'course',
-    authorName: 'KS. Đỗ Gia Huy',
-    price: 590000,
-    currency: 'VND',
-  },
-  'course-intro-stem-3d': {
-    id: 'course-intro-stem-3d',
-    title: 'Nhập Môn Mạch Điện Tử & Mô Phỏng Thực Tế 3D',
-    category: 'course',
-    authorName: 'KS. Nguyễn Thành Luân',
-    price: 0,
-    currency: 'VND',
-  },
-  'course-switch-relays': {
-    id: 'course-switch-relays',
-    title: 'Mạch Đóng Cắt Tự Động: Công Tắc, Relay & Bảo Vệ Mạch',
-    category: 'course',
-    authorName: 'ThS. Trần Hoàng Nam',
     price: 0,
     currency: 'VND',
   },
@@ -760,18 +859,9 @@ function isCreatorUser(userId: string): boolean {
 }
 
 // 4.2 Catalog Endpoints
-app.get('/api/courses', (req, res) => {
-  const staticCourses = Object.values(SERVER_PRODUCTS)
-    .filter((p) => p.category === 'course')
-    .map((c) => ({
-      id: c.id,
-      title: c.title,
-      price: c.price,
-      currency: c.currency,
-      author: { name: c.authorName || 'Huỳnh Phong' },
-    }));
-
-  const creatorCourses = creatorStore.listPublishedCourses().map((c) => ({
+app.get('/api/courses', (_req, res) => {
+  const creatorCourses = creatorStore.listPublishedCourses().map((c: any) => ({
+    ...c,
     id: c.id,
     title: c.title,
     tagline: c.tagline,
@@ -782,15 +872,16 @@ app.get('/api/courses', (req, res) => {
     language: c.language,
     category: c.category,
     tags: c.tags,
-    author: { name: c.creatorName },
+    author: { name: c.creatorName || 'Huỳnh Phong' },
     studentsCount: c.studentsCount,
     rating: c.rating,
     chapters: c.chapters,
+    syllabus: c.syllabus,
     featuredProjectId: c.featuredProjectId,
     updatedAt: c.updatedAt,
   }));
 
-  res.json({ courses: [...creatorCourses, ...staticCourses] });
+  res.json({ success: true, courses: creatorCourses });
 });
 
 // All published Marketplace products (system + creator products)
@@ -1333,88 +1424,218 @@ app.post('/api/creator/products/:id/unpublish', (req, res) => {
   }
 });
 
-// Creator Courses List
-app.get('/api/creator/courses/:userId', (req, res) => {
-  const { userId } = req.params;
-  if (!isCreatorUser(userId)) {
-    return res.status(403).json({ error: 'Yêu cầu gói Creator' });
-  }
-  const courses = creatorStore.listCreatorCourses(userId);
-  res.json({ courses });
+// Public Published Courses List
+app.get('/api/courses', (_req, res) => {
+  const courses = creatorStore.listPublishedCourses();
+  res.json({ success: true, courses });
 });
 
-// Create Creator Course
-app.post('/api/creator/courses', (req, res) => {
-  const {
-    creatorId,
-    title,
-    tagline,
-    description,
-    price,
-    difficulty,
-    language,
-    category,
-    tags,
-    prerequisites,
-    learningOutcomes,
-    estimatedHours,
-    chapters,
-    featuredProjectId,
-  } = req.body;
+// AI Endpoint 1: Automatically split Creator's uploaded Practice Project into 3 stages (Thêm thiết bị/mạch -> Nối dây -> Chạy mô phỏng)
+app.post('/api/courses/analyze-practice-project', async (req, res) => {
+  const { project, lessonTitle, shortDescription, baseStages } = req.body;
+  try {
+    const ai = getGemini();
+    if (!ai || !project) {
+      return res.json({
+        success: true,
+        stages: baseStages || [],
+        summary: shortDescription || `Bài thực hành: ${lessonTitle}`,
+      });
+    }
 
-  if (!creatorId || !isCreatorUser(creatorId)) {
-    return res.status(403).json({
-      error: 'Tài khoản chưa kích hoạt gói Nhà sáng tạo (Creator). Vui lòng nâng cấp gói để tạo khóa học.',
+    const comps = (project.components || []).map((c: any) => ({
+      id: c.instanceId,
+      name: c.name,
+      type: c.definitionId,
+      parameters: c.parameters,
+    }));
+    const conns = (project.connections || []).map((cn: any) => ({
+      from: `${cn.fromComponentId}.${cn.fromPinId}`,
+      to: `${cn.toComponentId}.${cn.toPinId}`,
+    }));
+
+    const promptText = `Hãy phân tích dự án mạch điện 3D của giảng viên cho bài thực hành "${lessonTitle || 'Thực hành mạch 3D'}" (Mô tả: "${shortDescription || ''}").
+Danh sách linh kiện (${comps.length}): ${JSON.stringify(comps)}
+Danh sách dây nối (${conns.length}): ${JSON.stringify(conns)}
+
+Hãy tách bài thực hành này thành ĐÚNG 3 giai đoạn rõ ràng cho học sinh làm theo từ bo mạch trống:
+- Giai đoạn 1: Thêm thiết bị & Linh kiện lên mạch
+- Giai đoạn 2: Nối dây mạch điện
+- Giai đoạn 3: Chạy mô phỏng & Kiểm tra kết quả
+
+Trả về JSON hợp lệ với cấu trúc:
+{
+  "summary": "Tóm tắt mục tiêu và nguyên lý bài thực hành trong 2 câu dễ hiểu",
+  "stage1Description": "Hướng dẫn ngắn gọn cho giai đoạn 1",
+  "stage1Steps": ["Bước 1.1: ...", "Bước 1.2: ..."],
+  "stage2Description": "Hướng dẫn ngắn gọn cho giai đoạn 2",
+  "stage2Steps": ["Bước 2.1: ...", "Bước 2.2: ..."],
+  "stage3Description": "Hướng dẫn ngắn gọn cho giai đoạn 3",
+  "stage3Steps": ["Bước 3.1: ...", "Bước 3.2: ..."]
+}`;
+
+    const response = await generateWithGemini(ai, {
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      config: {
+        responseMimeType: 'application/json',
+        temperature: 0.3,
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{}');
+    const enrichedStages = Array.isArray(baseStages) && baseStages.length === 3
+      ? [
+          {
+            ...baseStages[0],
+            description: parsed.stage1Description || baseStages[0].description,
+            steps: Array.isArray(parsed.stage1Steps) && parsed.stage1Steps.length > 0 ? parsed.stage1Steps : baseStages[0].steps,
+          },
+          {
+            ...baseStages[1],
+            description: parsed.stage2Description || baseStages[1].description,
+            steps: Array.isArray(parsed.stage2Steps) && parsed.stage2Steps.length > 0 ? parsed.stage2Steps : baseStages[1].steps,
+          },
+          {
+            ...baseStages[2],
+            description: parsed.stage3Description || baseStages[2].description,
+            steps: Array.isArray(parsed.stage3Steps) && parsed.stage3Steps.length > 0 ? parsed.stage3Steps : baseStages[2].steps,
+          },
+        ]
+      : baseStages;
+
+    res.json({
+      success: true,
+      stages: enrichedStages,
+      summary: parsed.summary || shortDescription || `Bài thực hành: ${lessonTitle}`,
+    });
+  } catch (err) {
+    res.json({
+      success: true,
+      stages: baseStages || [],
+      summary: shortDescription || `Bài thực hành: ${lessonTitle}`,
     });
   }
-
-  const val = creatorStore.validateCourse({ title, description, price: Number(price), chapters });
-  if (!val.valid) {
-    return res.status(400).json({ error: `Khóa học chưa đạt yêu cầu: ${val.errors.join('; ')}` });
-  }
-
-  const creatorProfile = creatorStore.getProfile(creatorId);
-  const authorName = creatorProfile?.displayName || getUserById(creatorId)?.fullName || 'Nhà sáng tạo';
-  const courseId = `course-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-  const course = creatorStore.createCourse({
-    id: courseId,
-    creatorId,
-    creatorName: authorName,
-    title,
-    tagline: tagline || 'Khóa học thực hành mạch điện 3D',
-    description,
-    price: Math.max(0, Math.floor(Number(price) || 0)),
-    currency: 'VND',
-    difficulty: difficulty || 'Cơ bản',
-    language: language || 'vi',
-    category: category || 'Điện tử ứng dụng',
-    tags: Array.isArray(tags) ? tags : ['Arduino', 'Circuit'],
-    prerequisites: Array.isArray(prerequisites) ? prerequisites : [],
-    learningOutcomes: Array.isArray(learningOutcomes) ? learningOutcomes : [],
-    estimatedHours: Number(estimatedHours) || 8,
-    status: 'PUBLISHED',
-    chapters: Array.isArray(chapters) ? chapters : [],
-    featuredProjectId,
-  });
-
-  res.json({ success: true, course });
 });
 
-// Update Creator Course
-app.put('/api/creator/courses/:id', (req, res) => {
-  const { id } = req.params;
-  const { creatorId, ...updates } = req.body;
-  if (!creatorId || !isCreatorUser(creatorId)) {
-    return res.status(403).json({ error: 'Từ chối quyền Creator' });
-  }
+// AI Endpoint 2: Dedicated Theory Slide AI Teaching Assistant (Trợ giảng AI Lý thuyết)
+app.post('/api/courses/theory-tutor', async (req, res) => {
+  const {
+    courseTitle,
+    courseDescription,
+    lessonTitle,
+    lessonSummary,
+    currentSlideNumber,
+    currentSlide,
+    allSlides,
+    courseSyllabusSummary,
+    prompt,
+    history,
+  } = req.body;
 
   try {
-    const updated = creatorStore.updateCourse(id, creatorId, updates);
-    res.json({ success: true, course: updated });
+    const ai = getGemini();
+    const slideDeckText = Array.isArray(allSlides)
+      ? allSlides
+          .map(
+            (s: any) =>
+              `[Slide ${s.slideNumber}: ${s.title}]\nNội dung: ${(s.bullets || []).join('; ') || s.contentText || ''}${
+                s.notes ? `\nGhi chú: ${s.notes}` : ''
+              }`
+          )
+          .join('\n\n')
+      : '';
+
+    const currentSlideText = currentSlide
+      ? `Slide số ${currentSlide.slideNumber}/${Array.isArray(allSlides) ? allSlides.length : 1}: "${currentSlide.title}"\nNội dung trên slide này:\n${(
+          currentSlide.bullets || []
+        )
+          .map((b: string) => `- ${b}`)
+          .join('\n')}${currentSlide.notes ? `\nGhi chú giảng viên: ${currentSlide.notes}` : ''}`
+      : `Slide số ${currentSlideNumber || 1}`;
+
+    if (!ai) {
+      // Intelligent slide-aware local tutor response
+      const reply = `**[Trợ giảng AI Lý thuyết — Đang theo dõi Slide ${currentSlide?.slideNumber || 1}: "${currentSlide?.title || lessonTitle}"]**\n\nTại slide này, nội dung trọng tâm là:\n${
+        (currentSlide?.bullets || []).map((b: string) => `• ${b}`).join('\n') || currentSlide?.contentText || lessonSummary
+      }\n\n💡 **Giải thích thêm cho câu hỏi của bạn:**\nNội dung này nằm trong bài *"${lessonTitle}"* thuộc khóa học *"${courseTitle}"* (tổng cộng ${
+        Array.isArray(allSlides) ? allSlides.length : 1
+      } slide). Bạn có thể chuyển qua các slide tiếp theo hoặc hỏi bất kỳ khái niệm nào trên slide để mình phân tích sâu hơn nhé!`;
+      return res.json({ success: true, reply });
+    }
+
+    const systemInstruction = `Bạn là Trợ giảng AI Lý thuyết (AI Teaching Assistant) chuyên biệt và độc lập dành riêng cho trang Học Lý Thuyết của khóa học "${courseTitle || ''}" trên nền tảng CircuitCraft 3D.
+
+THÔNG TIN KHÓA HỌC & BÀI GIẢNG HIỆN TẠI:
+- Tên khóa học: ${courseTitle || ''}
+- Mô tả khóa học: ${courseDescription || ''}
+- Cấu trúc toàn khóa học: ${courseSyllabusSummary || ''}
+- Bài học lý thuyết đang mở: "${lessonTitle || ''}" (${lessonSummary || ''})
+
+SLIDE MÀ HỌC VIÊN ĐANG XEM HIỆN TẠI (RẤT QUAN TRỌNG):
+${currentSlideText}
+
+TOÀN BỘ NỘI DUNG CÁC SLIDE TRONG BÀI GIẢNG NÀY (ĐỂ BẠN NẮM HẾT BÀI GIẢNG):
+${slideDeckText}
+
+NGUYÊN TẮC TRẢ LỜI CỦA TRỢ GIẢNG AI:
+1. Bạn luôn biết chính xác học viên đang dừng ở Slide số mấy và nội dung trên slide đó là gì.
+2. Bạn cũng nắm rõ toàn bộ tất cả các slide trong bài giảng cũng như toàn bộ chương trình của khóa học.
+3. Khi học viên hỏi (ví dụ: "Giải thích slide này", "Ý nghĩa công thức này là gì?", "Tóm tắt bài học"), hãy giải thích rõ ràng, sư phạm, dễ hiểu, có ví dụ thực tế liên hệ trực tiếp với nội dung của Slide hiện tại và liên kết mạch lạc với các slide khác trong bài.
+4. Trình bày câu trả lời bằng tiếng Việt súc tích, thân thiện, khích lệ tinh thần học tập.`;
+
+    const contents: any[] = [];
+    if (Array.isArray(history)) {
+      for (const h of history.slice(-8)) {
+        if (!h.content) continue;
+        const role = h.role === 'assistant' ? 'model' : 'user';
+        if (contents.length === 0 && role === 'model') continue;
+        contents.push({
+          role,
+          parts: [{ text: h.content }],
+        });
+      }
+    }
+
+    const userPromptWithSlideContext = `[Học viên đang xem Slide ${currentSlide?.slideNumber || currentSlideNumber || 1}: "${
+      currentSlide?.title || ''
+    }"]\nCâu hỏi của học viên: ${prompt}`;
+
+    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+      contents[contents.length - 1].parts[0].text += `\n${userPromptWithSlideContext}`;
+    } else {
+      contents.push({
+        role: 'user',
+        parts: [{ text: userPromptWithSlideContext }],
+      });
+    }
+
+    const response = await generateWithGemini(ai, {
+      contents,
+      config: {
+        systemInstruction,
+        temperature: 0.5,
+      },
+    });
+
+    const reply =
+      response.text ||
+      `Mình đang theo dõi Slide ${currentSlide?.slideNumber || 1} ("${currentSlide?.title || ''}"). Bạn cần mình giải thích chi tiết phần nào trên slide này?`;
+    res.json({ success: true, reply });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    res.json({
+      success: true,
+      reply: `**[Trợ giảng AI — Slide ${currentSlide?.slideNumber || 1}: ${currentSlide?.title || ''}]**\nNội dung chính của slide: ${(
+        currentSlide?.bullets || []
+      ).join('; ')}. Bạn có thể xem tiếp các slide kế tiếp hoặc đặt câu hỏi cụ thể hơn nhé!`,
+    });
   }
+});
+
+// Creator Courses List (by path param)
+app.get('/api/creator/courses/:userId', (req, res) => {
+  const { userId } = req.params;
+  const courses = creatorStore.listCreatorCourses(userId);
+  res.json({ success: true, courses });
 });
 
 // Publish / Unpublish Course
@@ -2348,6 +2569,7 @@ app.post('/api/creator/courses', (req, res) => {
   try {
     const {
       userId,
+      creatorId,
       title,
       tagline,
       description,
@@ -2355,6 +2577,7 @@ app.post('/api/creator/courses', (req, res) => {
       currency,
       difficulty,
       level,
+      duration,
       category,
       tags,
       prerequisites,
@@ -2363,7 +2586,7 @@ app.post('/api/creator/courses', (req, res) => {
       chapters,
     } = req.body;
 
-    const uid = userId || 'creator-demo';
+    const uid = userId || creatorId || 'creator-demo';
     const profile = creatorStore.getProfile(uid);
     const creatorName = profile?.displayName || 'Huỳnh Phong';
 
@@ -2376,14 +2599,16 @@ app.post('/api/creator/courses', (req, res) => {
           {
             id: `chap-${Date.now()}`,
             courseId,
-            title: 'Nội dung thực hành khóa học',
+            title: 'Nội dung khóa học',
             position: 1,
             lessons: syllabus.map((s: any, idx: number) => ({
-              id: `les-${idx + 1}`,
+              id: s.id || `les-${idx + 1}`,
               chapterId: `chap-${Date.now()}`,
               title: s.title || `Bài học ${idx + 1}`,
-              content: s.description || s.content || '',
+              content: s.summary || s.description || s.content || '',
               position: idx + 1,
+              videoUrl: s.videoUrl,
+              practiceProjectSnapshot: s.practiceProjectSnapshot,
             })),
           },
         ]
@@ -2394,8 +2619,8 @@ app.post('/api/creator/courses', (req, res) => {
       creatorId: uid,
       creatorName,
       title: title || 'Khóa học thiết kế mạch 3D',
-      tagline: tagline || 'Thực hành mô phỏng kỹ thuật điện tử 3D',
-      description: description || 'Nội dung đào tạo thực chiến kết hợp mô phỏng vi mạch.',
+      tagline: tagline || 'Học lý thuyết & thực hành mô phỏng kỹ thuật điện tử 3D',
+      description: description || 'Nội dung đào tạo kết hợp slide lý thuyết và mô phỏng vi mạch.',
       price: typeof price === 'number' ? price : 0,
       currency: currency || 'VND',
       difficulty: (difficulty || level || 'Cơ bản') as any,
@@ -2405,8 +2630,10 @@ app.post('/api/creator/courses', (req, res) => {
       prerequisites: Array.isArray(prerequisites) ? prerequisites : [],
       learningOutcomes: Array.isArray(learningOutcomes) ? learningOutcomes : [],
       estimatedHours: 10,
+      duration: duration || `${Array.isArray(syllabus) ? syllabus.length : 1} bài học`,
       status: 'PUBLISHED',
       chapters: courseChapters,
+      syllabus: Array.isArray(syllabus) ? syllabus : [],
     });
 
     res.json({ success: true, course });
@@ -2533,68 +2760,7 @@ function getUnifiedCoursesList() {
   const enrollments = listAllCourseEnrollments();
   const orders = Array.from(serverOrdersStore.values()).filter((o) => o.status === 'paid');
 
-  const systemCourseDefs = [
-    {
-      id: 'course-uno-r3-basic',
-      title: 'Khóa học UNO R3 - Mạch điện tử cơ bản',
-      authorName: 'Huỳnh Phong',
-      price: 799000,
-      chaptersCount: 8,
-      lessonsCount: 8,
-      category: 'stem',
-      createdAt: '2026-09-01T00:00:00.000Z',
-    },
-    {
-      id: 'course-intro-stem-3d',
-      title: 'Nhập Môn Mạch Điện Tử & Mô Phỏng Thực Tế 3D',
-      authorName: 'KS. Nguyễn Thành Luân',
-      price: 0,
-      chaptersCount: 4,
-      lessonsCount: 4,
-      category: 'stem',
-      createdAt: '2026-09-02T00:00:00.000Z',
-    },
-    {
-      id: 'course-switch-relays',
-      title: 'Mạch Đóng Cắt Tự Động: Công Tắc, Relay & Bảo Vệ Mạch',
-      authorName: 'ThS. Trần Hoàng Nam',
-      price: 0,
-      chaptersCount: 4,
-      lessonsCount: 4,
-      category: 'analog',
-      createdAt: '2026-09-03T00:00:00.000Z',
-    },
-    {
-      id: 'course-digital-logic',
-      title: 'Thiết Kế Mạch Logic Số & Cổng Boolean Tương Tác 3D',
-      authorName: 'TS. Lê Đăng Khoa',
-      price: 199000,
-      chaptersCount: 4,
-      lessonsCount: 6,
-      category: 'digital',
-      createdAt: '2026-09-04T00:00:00.000Z',
-    },
-    {
-      id: 'course-timer-555',
-      title: 'Mastering IC Định Thời 555 & Dao Động Xung Đồng Hồ',
-      authorName: 'Kỹ Sư Vũ Minh Quân',
-      price: 299000,
-      chaptersCount: 4,
-      lessonsCount: 7,
-      category: 'analog',
-      createdAt: '2026-09-05T00:00:00.000Z',
-    },
-    {
-      id: 'course-pcb-design-gerber',
-      title: 'Thiết Kế Bo Mạch PCB Chuẩn Công Nghiệp & Xuất Gerber',
-      authorName: 'KS. Đỗ Gia Huy',
-      price: 590000,
-      chaptersCount: 4,
-      lessonsCount: 9,
-      category: 'pcb',
-      createdAt: '2026-09-06T00:00:00.000Z',
-    },
-  ];
+  const systemCourseDefs: any[] = [];
 
   const results: any[] = [];
   const seenIds = new Set<string>();

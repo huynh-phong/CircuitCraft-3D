@@ -561,16 +561,6 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
             setViewerProduct(null);
             onOpenProject(saveDoc);
           }}
-          onSaveToMyProjects={async (doc) => {
-            const repo = projectRepositoryManager.getActiveRepository();
-            const saveDoc: ProjectDocument = {
-              ...doc,
-              projectId: doc.projectId.startsWith('proj-') ? doc.projectId : `proj-${Date.now()}`,
-              authorId: currentUser?.id || doc.authorId,
-              updatedAt: new Date().toISOString(),
-            };
-            await repo.saveProject(saveDoc, { force: true });
-          }}
         />
       )}
     </div>

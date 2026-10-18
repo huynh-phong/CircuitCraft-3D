@@ -57,6 +57,8 @@ export interface ComponentDefinition {
   }>;
   dimensions: Vector3D; // bounding box in mm [width, height, depth]
   footprintType: 'through-hole' | 'smd' | 'modular';
+  imageUrl?: string; // Optional preview thumbnail image path
+  modelUrl?: string; // Optional 3D GLB model path (e.g. /3d-model/breadboard.glb)
 }
 
 export interface ComponentInstance {
@@ -118,6 +120,11 @@ export interface ProjectMetadata {
   version?: string;
   slug?: string;
   isTemplate?: boolean;
+  projectType?: 'personal' | 'practice_lab'; // Phân biệt rõ Dự án cá nhân thật và Bài thực hành Lab
+  courseId?: string;
+  courseTitle?: string;
+  lessonId?: string;
+  lessonTitle?: string;
 }
 
 export interface ProjectDocument {
@@ -136,6 +143,7 @@ export interface ProjectDocument {
   authorId?: string;
   thumbnail?: string;
   metadata?: ProjectMetadata;
+  projectType?: 'personal' | 'practice_lab';
 }
 
 export interface DerivedPinWorldPosition {

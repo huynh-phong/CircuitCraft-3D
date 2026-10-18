@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'motion/react';
 import {
   Cpu,
   Box,
@@ -133,6 +134,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleLogout = async () => {
     try {
+      setProfileDropdownOpen(false);
       await authService.signOut();
       onNavigate('landing');
     } catch (err) {
@@ -141,8 +143,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[1380px] mx-auto pt-3 sm:pt-4 px-4 z-30 shrink-0 select-none">
-      <header className="h-16 px-4 sm:px-6 rounded-[28px] border border-[#cbe6f7] dark:border-cyan-800/40 bg-white/95 dark:bg-[#061224]/95 shadow-[0_12px_36px_rgba(6,182,212,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_25px_rgba(6,182,212,0.12),inset_0_1px_1px_rgba(255,255,255,0.06)] backdrop-blur-xl flex items-center justify-between transition-all duration-300 relative">
+    <div className="w-full max-w-[1380px] mx-auto pt-3 sm:pt-4 px-4 relative z-40 shrink-0 select-none">
+      <header className="h-16 px-4 sm:px-6 rounded-[28px] border border-[#cbe6f7] dark:border-cyan-800/40 bg-white/95 dark:bg-[#061224]/95 shadow-[0_12px_36px_rgba(6,182,212,0.12),inset_0_1px_1px_rgba(255,255,255,0.9)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.7),0_0_25px_rgba(6,182,212,0.12),inset_0_1px_1px_rgba(255,255,255,0.06)] backdrop-blur-xl flex items-center justify-between transition-all duration-300 relative z-40">
         {/* Brand Logo & Name */}
         <div className="flex items-center gap-6">
           <button
@@ -166,7 +168,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {/* Desktop Navigation Tabs */}
-          <nav className="hidden lg:flex items-center gap-1.5">
+          <nav className="hidden lg:flex items-center gap-1 p-1 bg-slate-100/60 dark:bg-slate-900/60 rounded-full border border-slate-200/60 dark:border-cyan-900/30">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive =
@@ -178,22 +180,34 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <button
                   key={item.id}
                   onClick={() => onNavigate(item.id)}
-                  className={`flex items-center gap-2 px-3.5 py-2 text-xs font-semibold transition-all duration-200 rounded-full cursor-pointer ${
+                  className={`relative flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold rounded-full cursor-pointer transition-colors duration-150 active:scale-[0.97] select-none ${
                     isActive
-                      ? 'bg-[#e0f2fe] dark:bg-[#0c233f] text-[#0284c7] dark:text-[#38bdf8] border border-[#bae6fd] dark:border-cyan-500/50 shadow-[0_4px_12px_rgba(6,182,212,0.15)] dark:shadow-[0_4px_16px_rgba(6,182,212,0.3)] font-bold -translate-y-[1px]'
-                      : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-slate-800/60 active:scale-[0.98]'
+                      ? 'text-[#0284c7] dark:text-[#38bdf8] font-bold'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
+                  {isActive && (
+                    <motion.div
+                      layoutId="navbar-active-pill"
+                      className="absolute inset-0 bg-[#e0f2fe] dark:bg-[#0c233f] border border-[#bae6fd] dark:border-cyan-500/50 rounded-full shadow-[0_2px_8px_rgba(6,182,212,0.18)] dark:shadow-[0_4px_16px_rgba(6,182,212,0.3)] -z-0"
+                      transition={{
+                        type: 'spring',
+                        damping: 26,
+                        stiffness: 260,
+                        mass: 0.9,
+                      }}
+                    />
+                  )}
                   <div
-                    className={`w-4.5 h-4.5 rounded-md flex items-center justify-center transition-transform ${
+                    className={`relative z-10 w-4 h-4 rounded flex items-center justify-center transition-transform ${
                       isActive
-                        ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-300'
-                        : 'text-slate-400 group-hover:text-slate-600 dark:text-slate-500'
+                        ? 'text-cyan-600 dark:text-cyan-300 scale-105'
+                        : 'text-slate-400 dark:text-slate-500'
                     }`}
                   >
                     <Icon className="w-3.5 h-3.5" />
                   </div>
-                  <span>{item.label}</span>
+                  <span className="relative z-10">{item.label}</span>
                 </button>
               );
             })}
@@ -249,7 +263,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* User Auth Action or Profile Dropdown */}
           {currentUser ? (
-            <div className="relative" ref={profileDropdownRef}>
+            <div className="relative z-50" ref={profileDropdownRef}>
               <button
                 onClick={() => setProfileDropdownOpen((prev) => !prev)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all cursor-pointer ${
@@ -296,10 +310,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                       onNavigate('projects');
                       setProfileDropdownOpen(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-xl text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-cyan-950/60 hover:text-cyan-600 dark:hover:text-cyan-400 transition-all text-left"
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-xl text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-cyan-950/60 hover:text-cyan-600 dark:hover:text-cyan-400 transition-all text-left cursor-pointer"
                   >
                     <Box className="w-4 h-4 text-cyan-500" />
                     <span>{language === 'vi' ? 'Dự án của tôi' : 'My Projects'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onNavigate('my-courses');
+                      setProfileDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-xl text-slate-700 dark:text-slate-200 hover:bg-cyan-50 dark:hover:bg-cyan-950/60 hover:text-cyan-600 dark:hover:text-cyan-400 transition-all text-left cursor-pointer"
+                  >
+                    <GraduationCap className="w-4 h-4 text-emerald-500" />
+                    <span>{language === 'vi' ? 'Khóa học của tôi' : 'My Courses'}</span>
                   </button>
 
                   {isCreator && (

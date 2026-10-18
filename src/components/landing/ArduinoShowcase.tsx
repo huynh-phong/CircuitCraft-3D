@@ -234,7 +234,7 @@ export const ArduinoShowcase: React.FC = () => {
             key={item.id}
             onMouseEnter={() => setHoveredCallout(item.id)}
             onMouseLeave={() => setHoveredCallout(null)}
-            className={`absolute ${item.positionClass} z-30 transition-all duration-300 cursor-pointer ${
+            className={`absolute ${item.positionClass} z-20 transition-all duration-300 cursor-pointer ${
               isHighlighted ? '-translate-y-1 scale-[1.03]' : ''
             }`}
           >

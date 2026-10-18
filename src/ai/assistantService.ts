@@ -1,327 +1,243 @@
-import { ProjectDocument, ComponentInstance, Connection } from '../domain/project/types';
-import { ValidationIssue } from '../domain/validation/types';
-import { AIProposal, AIChatMessage } from './types';
-import { COMPONENT_DEFINITION_MAP } from '../domain/components/definitions';
+import { ProjectDocument } from '../domain/project/types';
+import { SimulationResult } from '../domain/simulation/types';
+import { AIChatMessage, AIProposal } from './types';
 
-export interface AssistantQueryContext {
-  document: ProjectDocument;
-  selectedComponentId: string | null;
-  validationIssues: ValidationIssue[];
-  lessonGoal?: string;
-  locale?: 'vi' | 'en';
+export interface PracticeLabAIContext {
+  courseTitle: string;
+  lessonTitle: string;
+  shortDescription?: string;
+  practiceSummary?: string;
+  targetProject?: ProjectDocument;
+  practiceStages?: any[];
 }
 
 export class AssistantService {
   /**
-   * Send question to AI Assistant
+   * Supports both calling conventions:
+   * 1) askQuestion(text, history, { document, selectedComponentId, validationIssues, simulationResult, lessonGoal, practiceContext, locale })
+   * 2) askQuestion(prompt, project, simResult, selectedObjectId, practiceContext)
    */
-  async askQuestion(
+  public async askQuestion(
     prompt: string,
-    history: AIChatMessage[],
-    context: AssistantQueryContext
-  ): Promise<{ text: string; proposal?: AIProposal }> {
+    secondArg: any,
+    thirdArg?: any,
+    fourthArg?: any,
+    fifthArg?: PracticeLabAIContext | null
+  ): Promise<AIChatMessage & { text: string }> {
+    let project: ProjectDocument;
+    let simResult: SimulationResult | null = null;
+    let issues: any[] = [];
+    let selectedObjectId: string | null = null;
+    let practiceContext: PracticeLabAIContext | null = null;
+
+    if (Array.isArray(secondArg) && thirdArg && typeof thirdArg === 'object') {
+      // Convention 1 (from App.tsx)
+      project = thirdArg.document;
+      selectedObjectId = thirdArg.selectedComponentId || null;
+      issues = thirdArg.validationIssues || [];
+      simResult = thirdArg.simulationResult || null;
+      practiceContext = thirdArg.practiceContext || null;
+    } else {
+      // Convention 2
+      project = secondArg as ProjectDocument;
+      simResult = (thirdArg as SimulationResult) || null;
+      selectedObjectId = (fourthArg as string) || null;
+      practiceContext = fifthArg || null;
+    }
+
     try {
-      const res = await fetch('/api/ai/chat', {
+      const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt,
-          history: history.slice(-6).map((h) => ({ role: h.role, content: h.content })),
-          context: {
-            locale: context.locale || 'vi',
-            revision: context.document.revision,
-            components: context.document.components.map((c) => ({
-              id: c.instanceId,
-              name: c.name,
-              type: c.definitionId,
-              params: c.parameters,
-            })),
-            connectionsCount: context.document.connections.length,
-            selectedComponentId: context.selectedComponentId,
-            issues: context.validationIssues.map((i) => i.message),
-            lessonGoal: context.lessonGoal,
-          },
+          project,
+          simResult,
+          issues,
+          selectedObjectId,
+          practiceContext: practiceContext || null,
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.proposal) {
-          this.validateProposal(data.proposal, context.document);
-        }
+      if (response.ok) {
+        const data = await response.json();
+        const replyText = data.reply || data.text || 'Tôi đã phân tích mạch của bạn.';
         return {
-          text: data.reply || data.text,
+          id: `msg_${Date.now()}`,
+          role: 'assistant',
+          content: replyText,
+          text: replyText,
           proposal: data.proposal,
+          timestamp: new Date().toISOString(),
         };
       }
-    } catch (e) {
-      console.warn('API server call failed, using intelligent rule-based AI fallback:', e);
+    } catch {
+      // Fallback to local deterministic rule engine if offline or backend unavailable
     }
 
-    // High quality local AI reasoning fallback
-    return this.generateFallbackResponse(prompt, context);
-  }
-
-  /**
-   * Request structured circuit proposal from AI
-   */
-  async generateCircuitProposal(
-    userRequirement: string,
-    document: ProjectDocument
-  ): Promise<AIProposal> {
-    try {
-      const res = await fetch('/api/ai/propose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requirement: userRequirement,
-          baseRevision: document.revision,
-          currentComponentsCount: document.components.length,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.proposal) {
-          this.validateProposal(data.proposal, document);
-          return data.proposal;
-        }
-      }
-    } catch (e) {
-      console.warn('Server proposal call failed, falling back to local generator:', e);
-    }
-
-    return this.generateFallbackProposal(userRequirement, document);
-  }
-
-  /**
-   * Strict validation of AI Proposal against component whitelist and board boundaries
-   */
-  private validateProposal(proposal: AIProposal, doc: ProjectDocument): void {
-    if (!proposal || !Array.isArray(proposal.componentsToAdd) || !Array.isArray(proposal.connectionsToAdd)) {
-      throw new Error('AI Proposal không đúng định dạng schema.');
-    }
-
-    // Whitelist check
-    for (const comp of proposal.componentsToAdd) {
-      if (!COMPONENT_DEFINITION_MAP.has(comp.definitionId)) {
-        throw new Error(`Linh kiện ${comp.definitionId} không nằm trong danh mục hỗ trợ của CircuitCraft 3D.`);
-      }
-    }
-
-    // Ensure positions are within board bounds
-    const halfW = doc.board.width / 2 - 4;
-    const halfD = doc.board.depth / 2 - 4;
-    for (const comp of proposal.componentsToAdd) {
-      comp.position.x = Math.max(-halfW, Math.min(halfW, comp.position.x));
-      comp.position.z = Math.max(-halfD, Math.min(halfD, comp.position.z));
-      comp.position.y = 0;
-    }
-  }
-
-  /**
-   * Intelligent domain-aware fallback response in Vietnamese or English
-   */
-  private generateFallbackResponse(
-    prompt: string,
-    ctx: AssistantQueryContext
-  ): { text: string; proposal?: AIProposal } {
-    const p = prompt.toLowerCase();
-    const isEn = ctx.locale === 'en';
-
-    if (p.includes('sai ở đâu') || p.includes('lỗi gì') || p.includes('kiểm tra') || p.includes('error') || p.includes('wrong') || p.includes('check')) {
-      if (ctx.validationIssues.length === 0) {
-        return {
-          text: isEn
-            ? 'Great news! Your circuit has no detected design rule violations. You can click "Simulate" to observe circuit behavior!'
-            : 'Tin vui! Mạch điện hiện tại của bạn không phát hiện bất kỳ lỗi thiết kế nào theo quy tắc kiểm tra tiêu chuẩn. Bạn có thể nhấn nút "Mô phỏng hành vi" để quan sát mạch hoạt động!',
-        };
-      }
-      const issueList = ctx.validationIssues
-        .map((iss, i) => `${i + 1}. **${iss.message}** (${isEn ? 'Hint' : 'Gợi ý'}: ${iss.suggestion || (isEn ? 'Check wire connections' : 'Kiểm tra lại kết nối')})`)
-        .join('\n');
-      return {
-        text: isEn
-          ? `Minibot analyzed your circuit and found the following points to note:\n\n${issueList}\n\nPlease address these to ensure safe and functional operation!`
-          : `Minibot đã phân tích mạch của bạn và phát hiện các điểm cần chú ý:\n\n${issueList}\n\nHãy sửa các điểm trên để mạch có thể hoạt động an toàn nhé!`,
-      };
-    }
-
-    if (p.includes('led') && (p.includes('chiều') || p.includes('cực') || p.includes('chân') || p.includes('polarity') || p.includes('anode') || p.includes('cathode'))) {
-      return {
-        text: isEn
-          ? 'An LED is a semiconductor diode that permits current in only one forward direction:\n- **Anode (+) pin**: The longer lead, must connect towards the positive supply rail (+VCC).\n- **Cathode (-) pin**: The shorter lead or flat notch on rim, must connect to Ground (GND).\n*Note*: Always include a series resistor (220Ω - 330Ω) to limit forward current below 20mA and prevent burnout.'
-          : 'Đèn LED là linh kiện bán dẫn chỉ cho dòng điện chạy qua theo một chiều duy nhất (phân cực thuận):\n- **Chân Anode (+)**: Chân dài hơn, cần được nối về phía cực dương (+VCC).\n- **Chân Cathode (-)**: Chân ngắn hơn hoặc vát cạnh thân LED, cần được nối về mass (GND).\n*Lưu ý*: Luôn mắc nối tiếp điện trở (220Ω - 330Ω) để tránh dòng điện vượt quá 20mA làm cháy LED.',
-      };
-    }
-
-    if (p.includes('tạo mạch') || p.includes('làm mạch') || p.includes('đề xuất') || p.includes('create') || p.includes('circuit') || p.includes('propose')) {
-      const proposal = this.generateFallbackProposal(prompt, ctx.document);
-      return {
-        text: isEn
-          ? `I have synthesized a circuit proposal for your request: "${prompt}".\nIncludes: ${proposal.layoutDescription}.\n\nYou can click **View Proposal** below to inspect it before applying to your 3D board.`
-          : `Tôi đã lập một đề xuất thiết kế mạch theo yêu cầu: "${prompt}".\nBao gồm: ${proposal.layoutDescription}.\n\nBạn có thể nhấn nút **Xem đề xuất** bên dưới để kiểm tra trước khi áp dụng vào mạch.`,
-        proposal,
-      };
-    }
-
+    const fallback = this.localSmartFallback(prompt, project, simResult, issues, practiceContext);
     return {
-      text: isEn
-        ? `Hello! I am Minibot - your 3D electronic laboratory assistant. Your board currently has ${ctx.document.components.length} components and ${ctx.document.connections.length} connections. Ask me about pinouts, Ohm's law, or ask me to propose a circuit design!`
-        : `Xin chào! Tôi là Minibot - Trợ lý phòng thí nghiệm điện tử 3D của bạn. Hiện tại mạch đang có ${ctx.document.components.length} linh kiện và ${ctx.document.connections.length} đường dây nối. Bạn có thể hỏi tôi về cách nối chân, nguyên lý hoạt động hoặc yêu cầu tôi tạo một mạch điện mẫu tự động.`,
+      ...fallback,
+      text: fallback.content,
     };
   }
 
-  private generateFallbackProposal(requirement: string, doc: ProjectDocument): AIProposal {
-    const isSwitchReq = requirement.toLowerCase().includes('công tắc') || requirement.toLowerCase().includes('switch');
-    const baseRev = doc.revision;
+  private localSmartFallback(
+    prompt: string,
+    project: ProjectDocument,
+    simResult: SimulationResult | null,
+    issues: any[],
+    practiceContext?: PracticeLabAIContext | null
+  ): AIChatMessage {
+    const q = prompt.toLowerCase();
 
-    if (isSwitchReq) {
-      const compPwr: ComponentInstance = {
-        instanceId: `pwr-${Date.now().toString(36)}`,
-        definitionId: 'dc-source',
-        name: 'Nguồn 5V',
-        position: { x: -45, y: 0, z: 0 },
-        rotation: { x: 0, y: 0, z: 0 },
-        parameters: { voltage: 5.0 },
+    if (practiceContext) {
+      const targetComps = practiceContext.targetProject?.components || [];
+      const targetConns = practiceContext.targetProject?.connections || [];
+      const studentComps = project?.components || [];
+      const studentConns = project?.connections || [];
+
+      const stagesText = (practiceContext.practiceStages || [])
+        .map(
+          (st: any) =>
+            `**${st.title}**:\n${(st.steps || []).map((s: string) => `  - ${s}`).join('\n')}`
+        )
+        .join('\n\n');
+
+      return {
+        id: `msg_${Date.now()}`,
+        role: 'assistant',
+        content:
+          `Chào bạn! Tôi đang đồng hành cùng bạn trong bài thực hành **"${practiceContext.lessonTitle}"** thuộc khóa học **"${practiceContext.courseTitle}"**.\n\n` +
+          `📌 **Mục tiêu bài thực hành:** ${practiceContext.shortDescription || practiceContext.practiceSummary || 'Hoàn thiện lắp ráp mạch 3D theo 3 giai đoạn chuẩn.'}\n\n` +
+          `📊 **Tiến độ trên bàn làm việc của bạn hiện tại:**\n` +
+          `- Thiết bị đã đặt: **${studentComps.length}/${targetComps.length}** linh kiện\n` +
+          `- Dây dẫn đã nối: **${studentConns.length}/${targetConns.length}** kết nối\n\n` +
+          `🧭 **Hướng dẫn 3 giai đoạn chuẩn của bài thực hành này:**\n${stagesText || 'Xem chi tiết trong thanh Hướng dẫn thực hành ở phía dưới màn hình.'}`,
+        timestamp: new Date().toISOString(),
       };
+    }
 
-      const compSw: ComponentInstance = {
-        instanceId: `sw-${Date.now().toString(36)}`,
-        definitionId: 'switch',
-        name: 'Công tắc SW1',
-        position: { x: -15, y: 0, z: -15 },
-        rotation: { x: 0, y: 0, z: 0 },
-        parameters: { type: 'slide' },
-        state: { open: false },
+    // Check if user wants to build or add an LED circuit
+    if (
+      q.includes('thêm') ||
+      q.includes('tạo') ||
+      q.includes('đề xuất') ||
+      q.includes('mạch mẫu') ||
+      q.includes('led')
+    ) {
+      const baseX = (project?.components?.length || 0) > 0 ? 4 : 0;
+      const proposal: AIProposal = {
+        proposalId: `prop_${Date.now()}`,
+        explanation:
+          'Đề xuất thêm một nhánh mạch mẫu an toàn gồm: Nguồn DC 5V, Điện trở hạn dòng 220Ω và Đèn LED Xanh lá được nối khép kín.',
+        baseRevision: Date.now(),
+        layoutDescription: 'Bố trí thẳng hàng ngang cách mạch hiện tại 4 đơn vị.',
+        componentsToAdd: [
+          {
+            instanceId: `ai_bat_${Date.now()}`,
+            definitionId: 'dc_source',
+            name: 'Nguồn AI 5V',
+            position: { x: baseX - 3, y: 0, z: 2 },
+            rotation: { x: 0, y: 0, z: 0 },
+            parameters: { voltage: 5 },
+          },
+          {
+            instanceId: `ai_res_${Date.now()}`,
+            definitionId: 'resistor',
+            name: 'R_AI 220Ω',
+            position: { x: baseX, y: 0, z: 2 },
+            rotation: { x: 0, y: 0, z: 0 },
+            parameters: { resistance: 220 },
+          },
+          {
+            instanceId: `ai_led_${Date.now()}`,
+            definitionId: 'led',
+            name: 'LED AI Xanh',
+            position: { x: baseX + 3, y: 0, z: 2 },
+            rotation: { x: 0, y: 0, z: 0 },
+            parameters: { color: 'green', forwardVoltage: 2.1 },
+          },
+        ],
+        connectionsToAdd: [],
       };
-
-      const compRes: ComponentInstance = {
-        instanceId: `res-${Date.now().toString(36)}`,
-        definitionId: 'resistor',
-        name: 'Điện trở R1 (220Ω)',
-        position: { x: 15, y: 0, z: -15 },
-        rotation: { x: 0, y: 0, z: 0 },
-        parameters: { resistance: 220 },
-      };
-
-      const compLed: ComponentInstance = {
-        instanceId: `led-${Date.now().toString(36)}`,
-        definitionId: 'led',
-        name: 'LED Đỏ',
-        position: { x: 45, y: 0, z: 0 },
-        rotation: { x: 0, y: 0, z: 0 },
-        parameters: { color: 'red' },
-      };
-
-      const conns: Connection[] = [
+      const batId = proposal.componentsToAdd[0].instanceId;
+      const resId = proposal.componentsToAdd[1].instanceId;
+      const ledId = proposal.componentsToAdd[2].instanceId;
+      proposal.connectionsToAdd = [
         {
-          id: `conn-ai-1-${Date.now()}`,
-          fromComponentId: compPwr.instanceId,
+          id: `ai_w1_${Date.now()}`,
+          fromComponentId: batId,
           fromPinId: 'vcc',
-          toComponentId: compSw.instanceId,
-          toPinId: 'pin1',
+          toComponentId: resId,
+          toPinId: 'p1',
           wireColor: '#ef4444',
         },
         {
-          id: `conn-ai-2-${Date.now()}`,
-          fromComponentId: compSw.instanceId,
-          fromPinId: 'pin2',
-          toComponentId: compRes.instanceId,
-          toPinId: 'pin1',
-          wireColor: '#f59e0b',
-        },
-        {
-          id: `conn-ai-3-${Date.now()}`,
-          fromComponentId: compRes.instanceId,
-          fromPinId: 'pin2',
-          toComponentId: compLed.instanceId,
+          id: `ai_w2_${Date.now()}`,
+          fromComponentId: resId,
+          fromPinId: 'p2',
+          toComponentId: ledId,
           toPinId: 'anode',
-          wireColor: '#10b981',
+          wireColor: '#eab308',
         },
         {
-          id: `conn-ai-4-${Date.now()}`,
-          fromComponentId: compLed.instanceId,
+          id: `ai_w3_${Date.now()}`,
+          fromComponentId: ledId,
           fromPinId: 'cathode',
-          toComponentId: compPwr.instanceId,
+          toComponentId: batId,
           toPinId: 'gnd',
-          wireColor: '#0f172a',
+          wireColor: '#3b82f6',
         },
       ];
 
       return {
-        proposalId: `prop-${Date.now()}`,
-        baseRevision: baseRev,
-        explanation: 'Mạch điều khiển đèn LED nối tiếp bằng công tắc SPST: Nguồn 5V -> Công tắc -> Điện trở 220Ω -> LED -> GND.',
-        componentsToAdd: [compPwr, compSw, compRes, compLed],
-        connectionsToAdd: conns,
-        layoutDescription: '4 linh kiện bố trí nối tiếp tạo thành chu trình khép kín an toàn.',
-        suggestedActions: ['Bật mô phỏng và click vào công tắc để bật/tắt đèn.'],
+        id: `msg_${Date.now()}`,
+        role: 'assistant',
+        content:
+          'Tôi đã chuẩn bị một đề xuất thêm mạch nhánh LED hoàn chỉnh (kèm điện trở bảo vệ 220Ω). Bạn có thể xem chi tiết và nhấn **"Áp dụng đề xuất"** bên dưới để đưa vào cảnh 3D.',
+        proposal,
+        timestamp: new Date().toISOString(),
       };
     }
 
-    // Standard LED circuit
-    const compPwr: ComponentInstance = {
-      instanceId: `pwr-${Date.now().toString(36)}`,
-      definitionId: 'dc-source',
-      name: 'Nguồn DC 5V',
-      position: { x: -35, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      parameters: { voltage: 5.0 },
-    };
-
-    const compRes: ComponentInstance = {
-      instanceId: `res-${Date.now().toString(36)}`,
-      definitionId: 'resistor',
-      name: 'R1 (220Ω)',
-      position: { x: 0, y: 0, z: -15 },
-      rotation: { x: 0, y: 0, z: 0 },
-      parameters: { resistance: 220 },
-    };
-
-    const compLed: ComponentInstance = {
-      instanceId: `led-${Date.now().toString(36)}`,
-      definitionId: 'led',
-      name: 'LED Xanh',
-      position: { x: 35, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      parameters: { color: 'green' },
-    };
-
-    const conns: Connection[] = [
-      {
-        id: `c-ai-1-${Date.now()}`,
-        fromComponentId: compPwr.instanceId,
-        fromPinId: 'vcc',
-        toComponentId: compRes.instanceId,
-        toPinId: 'pin1',
-        wireColor: '#ef4444',
-      },
-      {
-        id: `c-ai-2-${Date.now()}`,
-        fromComponentId: compRes.instanceId,
-        fromPinId: 'pin2',
-        toComponentId: compLed.instanceId,
-        toPinId: 'anode',
-        wireColor: '#10b981',
-      },
-      {
-        id: `c-ai-3-${Date.now()}`,
-        fromComponentId: compLed.instanceId,
-        fromPinId: 'cathode',
-        toComponentId: compPwr.instanceId,
-        toPinId: 'gnd',
-        wireColor: '#0f172a',
-      },
-    ];
+    // Check if user asks about errors or why circuit isn't working
+    if (
+      q.includes('lỗi') ||
+      q.includes('sao') ||
+      q.includes('không sáng') ||
+      q.includes('kiểm tra')
+    ) {
+      if (!issues || issues.length === 0) {
+        return {
+          id: `msg_${Date.now()}`,
+          role: 'assistant',
+          content: `Mạch hiện tại gồm ${project?.components?.length || 0} linh kiện và ${project?.connections?.length || 0} dây nối. Không phát hiện lỗi quy tắc thiết kế (DRC). Hãy nhấn nút **Mô phỏng** trên thanh công cụ để xem dòng điện chạy!`,
+          timestamp: new Date().toISOString(),
+        };
+      } else {
+        const list = issues
+          .map(
+            (i: any, idx: number) =>
+              `${idx + 1}. **[${i.severity?.toUpperCase() || 'INFO'}]** ${i.message} ${
+                i.suggestion ? `*(Gợi ý: ${i.suggestion})*` : ''
+              }`
+          )
+          .join('\n');
+        return {
+          id: `msg_${Date.now()}`,
+          role: 'assistant',
+          content: `Tôi phát hiện **${issues.length} vấn đề** trong mạch của bạn:\n\n${list}`,
+          timestamp: new Date().toISOString(),
+        };
+      }
+    }
 
     return {
-      proposalId: `prop-${Date.now()}`,
-      baseRevision: baseRev,
-      explanation: 'Mạch thắp sáng LED tiêu chuẩn với Nguồn 5V, Điện trở bảo vệ 220Ω và Đèn LED xanh.',
-      componentsToAdd: [compPwr, compRes, compLed],
-      connectionsToAdd: conns,
-      layoutDescription: '3 linh kiện được định tuyến dây hợp lý và cân đối trên bo mạch.',
+      id: `msg_${Date.now()}`,
+      role: 'assistant',
+      content: `Tôi đang quan sát mạch **"${project?.name || 'Dự án 3D'}"** (${project?.components?.length || 0} linh kiện, ${project?.connections?.length || 0} kết nối).\n\nBạn có thể hỏi tôi:\n- *"Kiểm tra lỗi mạch hiện tại"*\n- *"Tại sao đèn LED không sáng?"*\n- *"Đề xuất thêm một nhánh mạch LED mẫu"*`,
+      timestamp: new Date().toISOString(),
     };
   }
 }
