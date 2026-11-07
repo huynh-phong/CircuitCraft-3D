@@ -152,3 +152,14 @@ Ghi chú: các test "nhiều instance" chạy nhiều tiến trình server thậ
 
 ### Bước tiếp theo
 Chủ dự án thực hiện bước 1-10 của `docs/DEPLOYMENT.md` trên staging. Chưa có commit.
+
+## D1 — Sự cố sau deploy đầu tiên (2026-11-07)
+- Triệu chứng: bản deploy không đăng nhập hay đăng ký được.
+- Kiểm tra chỉ đọc trên project Supabase trong `.env` (`vdtjak…`): hàm `cc_rate_limit_peek` trả 404 `PGRST202`, bảng `cc_documents` không tồn tại, chưa có bucket Storage ⇒ **migration `20261105000000` chưa được chạy**. Mỗi request API đều đọc database trước nên trả 503, kể cả đăng nhập và đăng ký.
+- Dữ liệu online nằm trong các bảng cũ: `profiles` 9, `projects` 21, `project_versions` 652, `orders` 31 (28 `paid`), `entitlements` 9, `subscriptions` 3, `course_enrollments` 8, `lesson_progress` 8. Script cũ chỉ chép `data/*.json` nên người mua sẽ mất quyền.
+- Đã sửa trong code:
+  - `scripts/migrate-to-supabase.ts --include-supabase-tables` chép tài khoản, gói, quyền, đơn và ghi danh từ các bảng cũ (chỉ đọc; giữ id Supabase; email trùng thì giữ bản trong `data/*.json` và chuyển quyền theo).
+  - `/api/health` có trường `database` (`ok` / `not_migrated` / `unreachable`); API trả `DATABASE_NOT_MIGRATED` thay vì lỗi chung.
+- Test: `serverless_persistence` 51/51 PASS (thêm: chép bảng cũ, đăng nhập OTP tài khoản cũ còn quyền, báo `not_migrated`).
+- Còn lại cho chủ dự án: chạy migration SQL, chạy script chép dữ liệu, Redeploy (chi tiết ở mục "Khắc phục sự cố" trong `docs/DEPLOYMENT.md`). Dự án (`projects`) của tài khoản Supabase Auth vẫn đọc trực tiếp từ bảng cũ như trước, không cần chép.
+

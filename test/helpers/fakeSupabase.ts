@@ -25,6 +25,8 @@ export interface FakeSupabase {
   db: PGlite;
   storage: Map<string, { bytes: Buffer; contentType: string }>;
   rpcCalls: Record<string, number>;
+  /** Rows served for plain table reads (GET /rest/v1/<table>), as tables of an earlier version. */
+  tables: Map<string, any[]>;
   /** While true, RPC calls fail as if the database were unreachable. */
   setDatabaseDown(down: boolean): void;
   stop(): Promise<void>;
@@ -36,6 +38,7 @@ export async function startFakeSupabase(repoRoot: string): Promise<FakeSupabase>
   await db.exec(migration);
 
   const storage = new Map<string, { bytes: Buffer; contentType: string }>();
+  const tables = new Map<string, any[]>();
   const rpcCalls: Record<string, number> = {};
   let databaseDown = false;
 
@@ -72,6 +75,15 @@ export async function startFakeSupabase(repoRoot: string): Promise<FakeSupabase>
         const list = names.map((arg, i) => `${arg} => $${i + 1}::${types[arg]}`).join(', ');
         const result = await db.query(`SELECT * FROM public.${name}(${list})`, params);
         return json(res, 200, result.rows);
+      }
+      const table = /^\/rest\/v1\/([a-z_]+)$/.exec(url.pathname)?.[1];
+      if (table && req.method === 'GET' && tables.has(table)) {
+        const [from, to] = String(req.headers.range || '0-999').split('-').map(Number);
+        const email = url.searchParams.get('email')?.replace(/^eq\./, '');
+        const rows = tables.get(table)!.filter((row) => !email || row.email === email);
+        const wantsObject = String(req.headers.accept || '').includes('vnd.pgrst.object');
+        if (wantsObject) return rows[0] ? json(res, 200, rows[0]) : json(res, 406, { code: 'PGRST116', message: 'no rows' });
+        return json(res, 200, rows.slice(from, to + 1));
       }
       if (url.pathname.startsWith('/rest/v1/')) return json(res, req.method === 'GET' ? 200 : 201, []);
 
@@ -129,6 +141,7 @@ export async function startFakeSupabase(repoRoot: string): Promise<FakeSupabase>
     url: `http://127.0.0.1:${port}`,
     db,
     storage,
+    tables,
     rpcCalls,
     setDatabaseDown: (down) => {
       databaseDown = down;

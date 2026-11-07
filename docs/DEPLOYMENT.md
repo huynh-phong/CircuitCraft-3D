@@ -73,11 +73,12 @@ SQL Editor, đúng thứ tự, mỗi file một lần:
 
 Sau đó chép dữ liệu bằng script (đặt `SUPABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY` của **đúng** project trong terminal):
 ```bash
-npm run migrate:supabase -- --compare
+npm run migrate:supabase -- --include-supabase-tables --compare
 ```
+`--include-supabase-tables` chép thêm dữ liệu mà phiên bản cũ đã lưu trong các bảng Supabase: `profiles`, `subscriptions`, `entitlements`, `orders`, `course_enrollments`, `lesson_progress`. Các bảng cũ chỉ được đọc, không bị sửa. Tài khoản trùng email với `data/*.json` giữ bản trong file. Quyền và gói lấy từ bảng cũ được đánh dấu là mô phỏng (trước đây chưa từng có thanh toán thật). Tài khoản cũ đăng nhập bằng mật khẩu Supabase Auth hoặc bằng OTP như trước.
 Lệnh này chỉ đọc. Kiểm tra số bản ghi theo nhóm, lỗi và cảnh báo. Khi đã đúng thì chạy:
 ```bash
-npm run migrate:supabase -- --apply
+npm run migrate:supabase -- --include-supabase-tables --apply
 ```
 Script:
 - sao lưu `data/` vào `.backups/migrate-*`;
@@ -97,7 +98,7 @@ Push một nhánh (không phải `main`) hoặc bấm **Deploy** trong Vercel. T
 
 ### 10. Kiểm thử Preview
 Ghi kết quả vào `docs/PROGRESS.md`:
-- `/api/health` trả `status: "ok"`, `persistence: "remote"`, `missingSettings: []`.
+- `/api/health` trả `status: "ok"`, `persistence: "remote"`, `database: "ok"`, `missingSettings: []`.
 - `/api/khong-ton-tai` trả JSON 404, không phải trang HTML.
 - Mở trực tiếp rồi F5: `/projects`, `/editor?id=...`, `/courses`, `/my-courses`, `/theory-learning`, `/marketplace`, `/membership`, `/creator`, `/admin`.
 - Workspace 3D: model Arduino/breadboard hiện, nối dây, mô phỏng, DRC, Undo/Redo, Minibot.
@@ -118,6 +119,18 @@ Mở URL production (`*.vercel.app` hoặc tên miền riêng) và lặp lại m
 - Supabase → Table Editor → `cc_documents`: số dòng theo `collection` khớp `report.json`.
 - Vercel → Logs: không có `[Config] Missing`, `[Persistence]` hay lỗi 5xx lặp lại.
 - Gửi OTP thật tới một email, mở chatbot AI, mua mô phỏng một sản phẩm rồi mở thiết kế.
+
+## Khắc phục sự cố: không đăng nhập, không đăng ký được
+Mở `https://<tên-miền>/api/health` và đọc các trường:
+
+| Kết quả | Nguyên nhân | Cách sửa |
+|---|---|---|
+| `missingSettings` có tên biến | Thiếu biến môi trường trên Vercel | Thêm biến (bước 4), rồi **Redeploy** |
+| `database: "not_migrated"` (API trả `DATABASE_NOT_MIGRATED`) | Chưa chạy `20261105000000_serverless_persistence.sql` trên đúng project | Chạy migration (bước 7). Không cần deploy lại |
+| `database: "unreachable"` | Sai `SUPABASE_URL` hoặc sai khóa, hoặc project bị tạm dừng | Kiểm tra biến; khôi phục project trên Supabase |
+| Mọi thứ `ok` nhưng tài khoản cũ báo "chưa đăng ký" hoặc mất quyền | Chưa chép dữ liệu | Chạy script với `--include-supabase-tables --apply` (bước 7) |
+| Không nhận được email OTP | Chưa có `BREVO_API_KEY`/`BREVO_SENDER_EMAIL`, hoặc email gửi chưa được xác minh trên Brevo | Đặt biến, xác minh sender trên Brevo, Redeploy |
+| Đăng nhập bằng mật khẩu thất bại với tài khoản cũ | Thiếu `VITE_SUPABASE_ANON_KEY` ở runtime | Đặt biến cho cả Production và Preview, Redeploy |
 
 ## Rollback
 - Code: Vercel → Deployments → **Promote** bản trước.

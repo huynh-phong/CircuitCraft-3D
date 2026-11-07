@@ -616,6 +616,78 @@ async function main() {
       assert.equal(run.report.result, 'INVALID_SOURCE');
       assert.equal(await countDocs(), before);
     });
+    await check('Bảng Supabase của bản cũ: chép tài khoản, gói, quyền, đơn, ghi danh; bảng cũ không bị sửa', async () => {
+      const legacyUser = '0f6c2f5e-1111-4a2b-9c3d-aaaaaaaaaaaa';
+      const overlapUser = '0f6c2f5e-2222-4a2b-9c3d-bbbbbbbbbbbb';
+      supabase.tables.set('profiles', [
+        { id: legacyUser, email: 'Legacy.Buyer@circuitcraft.test', full_name: 'Người mua cũ', role: 'pro', created_at: '2026-10-01T00:00:00Z' },
+        { id: overlapUser, email: 'keep.me@circuitcraft.test', full_name: 'Trùng email', role: 'user', created_at: '2026-10-01T00:00:00Z' },
+      ]);
+      supabase.tables.set('subscriptions', [{ user_id: legacyUser, plan_id: 'student', status: 'active' }]);
+      supabase.tables.set('entitlements', [
+        { id: 'ent_1', user_id: legacyUser, feature_key: 'prod-terminal-splitter', granted_at: '2026-10-02T00:00:00Z' },
+        { id: 'ent_2', user_id: overlapUser, feature_key: 'prod-555-pwm-controller', granted_at: '2026-10-02T00:00:00Z' },
+      ]);
+      supabase.tables.set('orders', [
+        { id: 'ord-legacy-1', user_id: legacyUser, status: 'paid', total_amount: 49000, currency: 'VND', payment_method: 'vietqr', created_at: '2026-10-02T00:00:00Z', updated_at: '2026-10-02T00:01:00Z' },
+      ]);
+      supabase.tables.set('course_enrollments', [{ user_id: legacyUser, course_id: 'course-hoc-tap-mach-dien-tu-can-ban', enrolled_at: '2026-10-03T00:00:00Z' }]);
+      supabase.tables.set('lesson_progress', [{ user_id: legacyUser, course_id: 'course-hoc-tap-mach-dien-tu-can-ban', lesson_id: 'l1', status: 'completed' }]);
+      const before = JSON.stringify(Array.from(supabase.tables.entries()));
+
+      const dry = await runMigration('--include-supabase-tables', '--compare');
+      assert.equal(dry.status, 0, dry.stderr);
+      assert.equal(dry.report.sourceCounts['supabase.profiles'], 2);
+      const run = await runMigration('--include-supabase-tables', '--apply');
+      // The only difference reported is the record an earlier check edited online on purpose
+      assert.equal(run.report.result, 'DIFFERENCES_FOUND', `${run.stderr} ${JSON.stringify(run.report).slice(0, 600)}`);
+      assert.deepEqual(run.report.differentFromSource, ['users/keep.me@circuitcraft.test']);
+      assert.deepEqual(run.report.missingAfterCopy, []);
+      assert.equal(JSON.stringify(Array.from(supabase.tables.entries())), before, 'bảng cũ chỉ được đọc');
+
+      const doc = async (collection: string, id: string) =>
+        (await supabase.db.query<{ data: any }>(`SELECT data FROM cc_documents WHERE collection=$1 AND id=$2`, [collection, id])).rows[0]?.data;
+      const user = await doc('users', 'legacy.buyer@circuitcraft.test');
+      assert.equal(user.id, legacyUser, 'giữ nguyên id Supabase');
+      assert.equal(user.tier, 'student');
+      assert.equal(user.tierGrantedByMock, true);
+      assert.ok(await doc('entitlements', `${legacyUser}_prod-terminal-splitter`));
+      assert.ok(await doc('entitlements', `${legacyUser}_plan-student`));
+      assert.equal((await doc('orders', 'ord-legacy-1')).status, 'paid');
+      assert.deepEqual((await doc('enrollments', `enr_${legacyUser}_course-hoc-tap-mach-dien-tu-can-ban`)).completedLessons, ['l1']);
+      // Same e-mail in data/*.json: that account (and its id) is kept; its legacy purchase follows it
+      const kept = await doc('users', 'keep.me@circuitcraft.test');
+      assert.equal(kept.id, 'u-keep');
+      assert.ok(await doc('entitlements', 'u-keep_prod-555-pwm-controller'));
+    });
+    await check('Tài khoản chuyển từ bảng cũ đăng nhập OTP được và còn nguyên quyền đã mua', async () => {
+      const C = api((await startInstance(supabase)).baseUrl);
+      const email = 'legacy.buyer@circuitcraft.test';
+      const send = await C('POST', '/api/auth/send-otp', { email, intent: 'signin' });
+      assert.equal(send.status, 200, JSON.stringify(send.data));
+      const code = (await C('GET', `/api/auth/email-preview/${encodeURIComponent(email)}`)).data.email.code;
+      const login = await C('POST', '/api/auth/verify-otp', { email, code, intent: 'signin' });
+      assert.equal(login.status, 200, JSON.stringify(login.data));
+      assert.equal(login.data.user.id, '0f6c2f5e-1111-4a2b-9c3d-aaaaaaaaaaaa');
+      const design = await C('GET', '/api/products/prod-terminal-splitter/design', undefined, bearer(login.data.sessionToken));
+      assert.equal(design.status, 200, 'sản phẩm đã mua ở bản cũ vẫn mở được');
+    });
+    await check('Database chưa chạy migration: /api/health báo not_migrated, API trả DATABASE_NOT_MIGRATED', async () => {
+      const C = api((await startInstance(supabase)).baseUrl);
+      await supabase.db.exec(`ALTER FUNCTION public.cc_documents_since(timestamptz, text, text, integer) RENAME TO cc_documents_since_hidden`);
+      try {
+        const D = api((await startInstance(supabase)).baseUrl);
+        const health = await D('GET', '/api/health');
+        assert.equal(health.status, 503);
+        assert.equal(health.data.database, 'not_migrated');
+        const login = await D('POST', '/api/auth/send-otp', { email: 'x@circuitcraft.test', intent: 'signin' });
+        assert.equal(login.status, 503);
+        assert.equal(login.data.code, 'DATABASE_NOT_MIGRATED');
+      } finally {
+        await supabase.db.exec(`ALTER FUNCTION public.cc_documents_since_hidden(timestamptz, text, text, integer) RENAME TO cc_documents_since`);
+      }
+      assert.equal((await C('GET', '/api/health')).data.database, 'ok');
+    });
     await check('Server đọc được dữ liệu đã di trú: người dùng, quyền, dự án, khóa học', async () => {
       const c = await startInstance(supabase);
       const C = api(c.baseUrl);

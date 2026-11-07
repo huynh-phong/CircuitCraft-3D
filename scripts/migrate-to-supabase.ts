@@ -5,6 +5,9 @@
  *   npx tsx scripts/migrate-to-supabase.ts --apply         backs up, copies, verifies
  *   --data-dir <path>   source folder (default: ./data)
  *   --report <path>     where the report goes (default: inside the backup; a dry run only prints it)
+ *   --include-supabase-tables
+ *                       also copies what earlier versions stored in Supabase tables (profiles, subscriptions,
+ *                       entitlements, orders, course_enrollments, lesson_progress). Those tables are only read.
  *
  * Needs SUPABASE_URL (or VITE_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY. The source files are never
  * changed. Existing database records are never overwritten: a record already there is compared and any
@@ -171,6 +174,190 @@ export function buildDocuments(dir: string): { docs: Document[]; problems: Probl
   return { docs, problems, sourceCounts };
 }
 
+// ---------------------------------------------------------------------------
+// Earlier versions kept accounts, plans and purchases in Supabase tables. They are read, never changed.
+// ---------------------------------------------------------------------------
+export interface LegacyTables {
+  profiles: any[];
+  subscriptions: any[];
+  entitlements: any[];
+  orders: any[];
+  course_enrollments: any[];
+  lesson_progress: any[];
+}
+
+async function readTable(client: SupabaseClient, table: string, problems: Problems): Promise<any[]> {
+  const rows: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await client.from(table).select('*').range(from, from + 999);
+    if (error) {
+      // A table that never existed in this project is not an error
+      if (/does not exist|Could not find the table|PGRST205|42P01/i.test(`${error.code} ${error.message}`)) return rows;
+      problems.errors.push(`Không đọc được bảng ${table}: ${error.message}`);
+      return rows;
+    }
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) return rows;
+  }
+}
+
+export async function readLegacyTables(client: SupabaseClient, problems: Problems): Promise<LegacyTables> {
+  return {
+    profiles: await readTable(client, 'profiles', problems),
+    subscriptions: await readTable(client, 'subscriptions', problems),
+    entitlements: await readTable(client, 'entitlements', problems),
+    orders: await readTable(client, 'orders', problems),
+    course_enrollments: await readTable(client, 'course_enrollments', problems),
+    lesson_progress: await readTable(client, 'lesson_progress', problems),
+  };
+}
+
+/**
+ * Maps the legacy rows to the server's records. Every legacy checkout was simulated (there has never been
+ * a bank integration), so plans, orders and entitlements from there are marked as simulated: they keep
+ * working while PAYMENT_MODE=mock and count for nothing in real mode. Where data/*.json already holds a
+ * record with the same key, that record wins; accounts are matched by e-mail and keep the data/*.json id.
+ */
+export function legacyDocuments(legacy: LegacyTables, existing: Document[], problems: Problems): Document[] {
+  const docs: Document[] = [];
+  const taken = new Set(existing.map((d) => `${d.collection}\u0000${d.id}`));
+  const add = (collection: string, id: string, data: any) => {
+    if (taken.has(`${collection}\u0000${id}`)) return;
+    taken.add(`${collection}\u0000${id}`);
+    docs.push({ collection, id, data });
+  };
+
+  // Account ids: the existing record's id when the e-mail is already known, otherwise the Supabase id
+  const existingUsers = new Map(existing.filter((d) => d.collection === 'users').map((d) => [d.id, d.data]));
+  const emailById = new Map<string, string>();
+  const resolvedId = new Map<string, string>();
+  for (const profile of legacy.profiles) {
+    const email = String(profile?.email || '').trim().toLowerCase();
+    if (!profile?.id || !email) continue;
+    emailById.set(profile.id, email);
+    resolvedId.set(profile.id, existingUsers.get(email)?.id || profile.id);
+  }
+  const userIdOf = (supabaseId: string) => resolvedId.get(supabaseId) || supabaseId;
+
+  const planByUser = new Map<string, 'student' | 'creator'>();
+  for (const sub of legacy.subscriptions) {
+    if (sub?.status === 'active' && (sub.plan_id === 'student' || sub.plan_id === 'creator')) planByUser.set(sub.user_id, sub.plan_id);
+  }
+  for (const ent of legacy.entitlements) {
+    const key = String(ent?.feature_key || ent?.product_id || '');
+    if (key === 'plan-creator') planByUser.set(ent.user_id, 'creator');
+    else if (key === 'plan-student' && planByUser.get(ent.user_id) !== 'creator') planByUser.set(ent.user_id, 'student');
+  }
+
+  for (const profile of legacy.profiles) {
+    const email = emailById.get(profile?.id);
+    if (!email) {
+      problems.warnings.push(`profiles: bỏ qua một hồ sơ không có email`);
+      continue;
+    }
+    if (email === PLACEHOLDER_ADMIN) continue;
+    const plan = planByUser.get(profile.id);
+    const existingUser = existingUsers.get(email);
+    if (existingUser) {
+      // Keep the record from data/*.json; a plan bought online is reported, not merged silently
+      if (plan && existingUser.tier !== plan) {
+        problems.warnings.push(`users/${email}: gói trên Supabase là "${plan}", trong data/*.json là "${existingUser.tier}" — giữ data/*.json`);
+      }
+      continue;
+    }
+    add('users', email, {
+      id: profile.id,
+      email,
+      // No password here: these accounts sign in through Supabase Auth, which the server checks
+      passwordHash: '',
+      fullName: profile.full_name || email.split('@')[0],
+      role: plan === 'creator' ? 'creator' : plan === 'student' ? 'pro' : 'user',
+      tier: plan || 'free',
+      tierGrantedByMock: Boolean(plan),
+      status: 'active',
+      createdAt: profile.created_at || new Date().toISOString(),
+      verifiedAt: profile.created_at || new Date().toISOString(),
+      migratedFrom: 'supabase.profiles',
+    });
+  }
+
+  for (const ent of legacy.entitlements) {
+    const productId = String(ent?.feature_key || ent?.product_id || '');
+    if (!ent?.user_id || !productId) continue;
+    if (ent.expires_at && new Date(ent.expires_at).getTime() < Date.now()) continue;
+    const userId = userIdOf(ent.user_id);
+    add('entitlements', `${userId}_${productId}`, {
+      userId,
+      userEmail: emailById.get(ent.user_id) || '',
+      productId,
+      productTitle: productId,
+      grantedAt: ent.granted_at || new Date().toISOString(),
+      isMock: true,
+      migratedFrom: 'supabase.entitlements',
+    });
+  }
+  // A plan recorded only as an active subscription still grants the plan
+  for (const [supabaseId, plan] of planByUser) {
+    const userId = userIdOf(supabaseId);
+    add('entitlements', `${userId}_plan-${plan}`, {
+      userId,
+      userEmail: emailById.get(supabaseId) || '',
+      productId: `plan-${plan}`,
+      productTitle: `plan-${plan}`,
+      grantedAt: new Date().toISOString(),
+      isMock: true,
+      migratedFrom: 'supabase.subscriptions',
+    });
+  }
+
+  for (const order of legacy.orders) {
+    if (!order?.id || !order.user_id) continue;
+    const meta = order.metadata && typeof order.metadata === 'object' ? order.metadata : {};
+    const productId = meta.productId || meta.product_id || (order.plan_id ? `plan-${String(order.plan_id).replace(/^plan-/, '')}` : 'unknown');
+    add('orders', String(order.id), {
+      orderId: String(order.id),
+      orderCode: order.order_code || String(order.id),
+      productId,
+      productTitle: meta.productTitle || meta.productName || productId,
+      amount: Number(order.total_amount) || 0,
+      currency: order.currency || 'VND',
+      status: order.status === 'paid' ? 'paid' : order.status === 'cancelled' ? 'cancelled' : 'pending',
+      paymentMethod: order.payment_method || 'VietQR (Mô phỏng)',
+      isMock: true,
+      userId: userIdOf(order.user_id),
+      userEmail: order.user_email || emailById.get(order.user_id) || '',
+      createdAt: order.created_at,
+      paidAt: order.paid_at || (order.status === 'paid' ? order.updated_at : undefined),
+      migratedFrom: 'supabase.orders',
+    });
+  }
+
+  const completedByUserCourse = new Map<string, string[]>();
+  for (const row of legacy.lesson_progress) {
+    if (row?.status !== 'completed' || !row.user_id || !row.course_id) continue;
+    const key = `${row.user_id}|${row.course_id}`;
+    completedByUserCourse.set(key, [...(completedByUserCourse.get(key) || []), String(row.lesson_id)]);
+  }
+  for (const enr of legacy.course_enrollments) {
+    if (!enr?.user_id || !enr.course_id) continue;
+    const userId = userIdOf(enr.user_id);
+    const completed = completedByUserCourse.get(`${enr.user_id}|${enr.course_id}`) || [];
+    add('enrollments', `enr_${userId}_${enr.course_id}`, {
+      id: `enr_${userId}_${enr.course_id}`,
+      userId,
+      userEmail: emailById.get(enr.user_id) || '',
+      courseId: enr.course_id,
+      courseTitle: enr.course_id,
+      enrolledAt: enr.enrolled_at || enr.created_at,
+      progressPercent: enr.completed_at ? 100 : Math.min(100, completed.length * 13),
+      completedLessons: completed,
+      updatedAt: enr.created_at || enr.enrolled_at,
+      migratedFrom: 'supabase.course_enrollments',
+    });
+  }
+  return docs;
+}
+
 function detectImageExtension(bytes: Buffer): string | null {
   if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png';
   if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg';
@@ -321,6 +508,17 @@ async function main() {
 
   const { docs, problems, sourceCounts } = buildDocuments(dataDir);
   const media = new Map([...readMediaFolder(dataDir, problems), ...extractInlineImages(docs, problems)]);
+
+  const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
+  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const client = url && key ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
+
+  if (args.includes('--include-supabase-tables')) {
+    if (!client) throw new Error('--include-supabase-tables cần SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY.');
+    const legacy = await readLegacyTables(client, problems);
+    for (const [table, rows] of Object.entries(legacy)) sourceCounts[`supabase.${table}`] = rows.length;
+    docs.push(...legacyDocuments(legacy, docs, problems));
+  }
   const report: any = {
     mode: apply ? 'apply' : 'dry-run',
     dataDir,
@@ -331,10 +529,6 @@ async function main() {
     mediaBytes: Array.from(media.values()).reduce((n, b) => n + b.length, 0),
     ...problems,
   };
-
-  const url = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
-  const key = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  const client = url && key ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }) : null;
 
   const finish = (exitCode: number) => {
     report.finishedAt = new Date().toISOString();

@@ -177,6 +177,13 @@ app.use('/api', async (req, res, next) => {
     next();
   } catch (err: any) {
     console.error('[Persistence] Could not read data:', err?.message || err);
+    if (isMissingMigrationError(err)) {
+      return res.status(503).json({
+        success: false,
+        error: 'Cơ sở dữ liệu chưa được cài đặt (chưa chạy migration). Vui lòng liên hệ quản trị viên.',
+        code: 'DATABASE_NOT_MIGRATED',
+      });
+    }
     res.status(503).json({
       success: false,
       error: 'Máy chủ tạm thời không đọc được dữ liệu. Vui lòng thử lại sau ít phút.',
@@ -255,12 +262,29 @@ async function generateWithGemini(ai: GoogleGenAI, request: { contents: any; con
 }
 
 // 1. Health check
-app.get('/api/health', (req, res) => {
+/** The database answers, but the functions of supabase/migrations/20261105000000 are not there. */
+function isMissingMigrationError(err: any): boolean {
+  return /PGRST202|Could not find the function|function .* does not exist/i.test(String(err?.message || err));
+}
+
+app.get('/api/health', async (req, res) => {
   const missing = missingServerConfig();
-  res.status(missing.length ? 503 : 200).json({
-    status: missing.length ? 'misconfigured' : 'ok',
+  // ok | not_migrated | unreachable | not_used (local files)
+  let database = 'not_used';
+  if (missing.length === 0 && isRemotePersistence()) {
+    try {
+      await syncFromRemote();
+      database = 'ok';
+    } catch (err) {
+      database = isMissingMigrationError(err) ? 'not_migrated' : 'unreachable';
+    }
+  }
+  const healthy = missing.length === 0 && (database === 'ok' || database === 'not_used');
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : missing.length ? 'misconfigured' : 'database_error',
     time: new Date().toISOString(),
     persistence: getPersistenceMode(),
+    database,
     missingSettings: missing,
   });
 });
