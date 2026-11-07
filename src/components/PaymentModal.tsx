@@ -108,9 +108,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const res = await fetch(`/api/orders/status?orderId=${order.orderId}`);
-      if (!res.ok) throw new Error('Không thể kiểm tra trạng thái đơn hàng');
-      const data = await res.json();
+      const res = paymentMode === 'mock' ? null : await fetch(`/api/orders/status?orderId=${order.orderId}`);
+      if (res && !res.ok) throw new Error('Không thể kiểm tra trạng thái đơn hàng');
+      const data = res ? await res.json() : { status: 'pending', paymentMode: 'mock' };
 
       if (data.status === 'paid' || data.status === 'completed') {
         setPaymentStatus('paid');
@@ -444,6 +444,11 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               <>
                 <CheckCircle2 className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
                 <span className="tracking-wide">{language === 'vi' ? 'Đã xác nhận thanh toán' : 'Payment Confirmed'}</span>
+              </>
+            ) : paymentMode === 'mock' ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.3)]" />
+                <span className="tracking-wide">{language === 'vi' ? 'Thanh toán thành công (Demo)' : 'Payment successful (Demo)'}</span>
               </>
             ) : (
               <>

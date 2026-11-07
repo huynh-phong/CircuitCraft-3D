@@ -53,7 +53,7 @@ Settings → Environment Variables. Đặt riêng cho **Preview** (trỏ tới S
 | `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` | Cho OTP email | Gửi qua HTTPS. Cổng SMTP có thể bị chặn trên serverless |
 | `GEMINI_API_KEY` | Cho AI | Không có thì chatbot/Trợ giảng trả lời cục bộ, có ghi rõ |
 | `VERCEL_FUNCTION_REGION` | Không | Mặc định `sin1`. Chọn vùng gần project Supabase nhất (xem Supabase → Settings → General) |
-| `PAYMENT_ACCOUNT_NAME/NUMBER`, `PAYMENT_BANK_NAME/ID` | Chỉ chế độ thật | Bị bỏ qua khi `PAYMENT_MODE=mock` |
+| `PAYMENT_ACCOUNT_NAME/NUMBER`, `PAYMENT_BANK_NAME/ID` | Không | Thông tin chuyển khoản và mã QR hiện trong hộp thanh toán (cả demo). Chế độ thật bắt buộc có `PAYMENT_ACCOUNT_NUMBER` |
 
 Không đặt `ENABLE_DEV_OTP_PREVIEW` và `PERSISTENCE_BACKEND` trên Vercel (Vercel luôn dùng Supabase).
 Thiếu biến bắt buộc thì API trả `503 SERVER_NOT_CONFIGURED`, còn `/api/health` liệt kê **tên** các biến còn thiếu.
@@ -104,7 +104,7 @@ Ghi kết quả vào `docs/PROGRESS.md`:
 - Workspace 3D: model Arduino/breadboard hiện, nối dây, mô phỏng, DRC, Undo/Redo, Minibot.
 - Đăng ký bằng OTP email thật, đăng xuất, đăng nhập lại; mở dự án trên trình duyệt khác; "Đăng xuất mọi thiết bị".
 - Tài khoản, đơn hàng và quyền đã di trú hiển thị đúng.
-- Mua mô phỏng: gói Student, Creator Pro, một khóa học, một sản phẩm. Đơn ghi "mô phỏng", không có QR; sau khi mua mở được nội dung. Tài khoản khác chưa mua phải bị từ chối.
+- Mua mô phỏng: gói Student, Creator Pro, một khóa học, một sản phẩm. Hộp thanh toán hiện QR và thông tin chuyển khoản; bấm "Thanh toán thành công (Demo)" là mở được nội dung ngay. Tài khoản khác chưa mua phải bị từ chối.
 - Creator: tạo khóa có PPTX (và một video MP4 ≤ 50 MB); học viên đã mua thấy ảnh và video; Trợ giảng trả lời.
 - Admin: vào được bằng `ADMIN_EMAIL`; tài khoản thường bị 403.
 - Kiểm tra định tuyến sau rewrite: mọi API ở trên hoạt động (Function nhận đường dẫn gốc qua tham số `__path`).

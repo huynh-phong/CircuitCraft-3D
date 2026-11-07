@@ -140,7 +140,7 @@ Thêm (tùy chọn, tương thích ngược): `solver: "mna-dc"`, `unsupportedCo
 - Mã gắn mục đích: `auth` (`/api/auth/send-otp`, `verify-otp`) và `recovery` (`forgot-password/*`), không dùng lẫn. Hiệu lực 10 phút (điện thoại 5 phút), chờ 60 giây giữa hai lần gửi, sai 5 lần thì vô hiệu, dùng một lần.
 
 ### Thanh toán mô phỏng
-- Đơn mock luôn dùng tài khoản giả, `qrUrl: ""`, bỏ qua `PAYMENT_ACCOUNT_*`.
+- Đơn mock vẫn có thông tin chuyển khoản và `qrUrl` VietQR (từ `PAYMENT_ACCOUNT_*`, hoặc giá trị mặc định); nút "Thanh toán thành công (Demo)" gọi `/api/orders/mock-verify` và mở quyền ngay, không chuyển tiền.
 - Ở chế độ thật, quyền và gói từ mô phỏng không có hiệu lực (`entitlement.isMock`, `user.tierGrantedByMock`).
 
 ### Collection trong `cc_documents`

@@ -1297,8 +1297,9 @@ app.post('/api/orders/create', requireAuth, (req, res) => {
   const orderId = `ord-${orderHash.slice(0, 24)}`;
   const nowIso = new Date().toISOString();
 
-  // Recipient details. The simulated checkout always shows a placeholder account, even when real bank
-  // settings exist; real mode refuses to invent one, so nobody can transfer money to a wrong account.
+  // Recipient details and VietQR code, shown in both modes. The demo (mock) checkout shows them too,
+  // and its "payment successful" button confirms the order without any transfer.
+  // Real mode refuses to use the built-in default account.
   const isSimulated = paymentMode === 'mock';
   if (!isSimulated && amount > 0 && !process.env.PAYMENT_ACCOUNT_NUMBER?.trim()) {
     return res.status(503).json({
@@ -1307,18 +1308,15 @@ app.post('/api/orders/create', requireAuth, (req, res) => {
       code: 'PAYMENT_NOT_CONFIGURED',
     });
   }
-  const accountName = isSimulated ? 'CIRCUITCRAFT DEMO' : process.env.PAYMENT_ACCOUNT_NAME?.trim() || 'CircuitCraft 3D';
-  const bankName = isSimulated ? 'Ngân hàng mô phỏng' : process.env.PAYMENT_BANK_NAME?.trim() || 'MB Bank';
-  const bankId = isSimulated ? '970422' : process.env.PAYMENT_BANK_ID?.trim() || '970422';
-  const accountNumber = isSimulated ? '0000000000' : process.env.PAYMENT_ACCOUNT_NUMBER!.trim();
+  const accountName = process.env.PAYMENT_ACCOUNT_NAME?.trim() || 'Huỳnh Phong';
+  const bankName = process.env.PAYMENT_BANK_NAME?.trim() || 'MB Bank';
+  const bankId = process.env.PAYMENT_BANK_ID?.trim() || '970422';
+  const accountNumber = process.env.PAYMENT_ACCOUNT_NUMBER?.trim() || '0988888888';
   const transferContent = `CC3D ${orderCode}`;
 
   const encodedAccountName = encodeURIComponent(accountName);
   const encodedContent = encodeURIComponent(transferContent);
-  // The simulated checkout has no QR: nothing goes to an outside service and nothing can be scanned and paid
-  const qrUrl = isSimulated
-    ? ''
-    : `https://api.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?accountName=${encodedAccountName}&amount=${amount}&addInfo=${encodedContent}`;
+  const qrUrl = `https://api.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?accountName=${encodedAccountName}&amount=${amount}&addInfo=${encodedContent}`;
 
   const bankDetails = {
     bankName,

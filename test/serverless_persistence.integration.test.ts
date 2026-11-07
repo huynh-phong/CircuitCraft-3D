@@ -236,8 +236,8 @@ async function main() {
       const order = await A('POST', '/api/orders/create', { planId: 'plan-creator' }, bearer(creator.token));
       assert.equal(order.status, 200, JSON.stringify(order.data));
       assert.equal(order.data.order.isMock, true);
-      assert.equal(order.data.order.bankDetails.accountNumber, '0000000000', 'chế độ mô phỏng chỉ hiện tài khoản giả');
-      assert.equal(order.data.order.bankDetails.qrUrl, '', 'chế độ mô phỏng không gọi dịch vụ QR');
+      assert.ok(order.data.order.bankDetails.accountNumber, 'demo vẫn hiện thông tin chuyển khoản');
+      assert.match(order.data.order.bankDetails.qrUrl, /^https:\/\/api\.vietqr\.io\/image\//, 'demo vẫn hiện mã QR');
       const paid = await B('POST', '/api/orders/mock-verify', { orderId: order.data.order.orderId }, bearer(creator.token));
       assert.equal(paid.status, 200, JSON.stringify(paid.data));
       const media = await A('POST', '/api/creator/media', { dataUrl: dataUrl(PNG) }, bearer(creator.token));
@@ -342,11 +342,17 @@ async function main() {
       assert.equal(noBank.status, 503);
       assert.equal(noBank.data.code, 'PAYMENT_NOT_CONFIGURED');
     });
-    await check('Tài khoản ngân hàng thật không xuất hiện trong chế độ mô phỏng', async () => {
-      const mock = await startInstance(supabase, { PAYMENT_ACCOUNT_NUMBER: '123456789012', PAYMENT_ACCOUNT_NAME: 'REAL OWNER' });
-      const order = await api(mock.baseUrl)('POST', '/api/orders/create', { productId: 'prod-555-pwm-controller' }, bearer(buyer.token));
-      assert.ok(!JSON.stringify(order.data).includes('123456789012'));
-      assert.ok(!JSON.stringify(order.data).includes('REAL OWNER'));
+    await check('Demo hiện tài khoản và QR đã cấu hình; một lần bấm là thanh toán thành công', async () => {
+      const mock = await startInstance(supabase, { PAYMENT_ACCOUNT_NUMBER: '123456789012', PAYMENT_ACCOUNT_NAME: 'CHU SHOP' });
+      const M = api(mock.baseUrl);
+      const fresh = await signup(M, M, 'demo.qr@circuitcraft.test');
+      const order = await M('POST', '/api/orders/create', { productId: 'prod-555-pwm-controller' }, bearer(fresh.token));
+      assert.equal(order.data.order.bankDetails.accountNumber, '123456789012');
+      assert.ok(order.data.order.bankDetails.qrUrl.includes('123456789012'));
+      assert.equal(order.data.order.isMock, true);
+      const paid = await M('POST', '/api/orders/mock-verify', { orderId: order.data.order.orderId }, bearer(fresh.token));
+      assert.equal(paid.status, 200);
+      assert.equal(paid.data.order.status, 'paid');
     });
 
     console.log('\n[8] Failure handling and environment');
