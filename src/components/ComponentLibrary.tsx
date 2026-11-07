@@ -167,7 +167,7 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
   }
 
   return (
-    <aside className="absolute top-4 left-4 bottom-14 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 dark:border-cyan-900/60 bg-white/95 dark:bg-[#0c1424]/95 backdrop-blur-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-left-4 duration-200 select-none">
+    <aside className="absolute top-4 left-4 bottom-14 short:top-2 short:left-2 short:bottom-2 short:w-72 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 dark:border-cyan-900/60 bg-white/95 dark:bg-[#0c1424]/95 backdrop-blur-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-left-4 duration-200 select-none">
       {/* Search & Header */}
       <div className="p-3 border-b border-[#d7e7f0] dark:border-cyan-950/40 flex flex-col gap-2.5">
         <div className="flex items-center justify-between">

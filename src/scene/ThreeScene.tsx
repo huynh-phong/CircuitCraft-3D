@@ -42,6 +42,8 @@ export interface ThreeSceneProps {
   minibotTargetCompId?: string | null;
   minibotState?: MinibotState;
   qualityPreset?: 'low' | 'balanced' | 'high';
+  /** Touch / pen: press and hold a part (opens its properties). */
+  onLongPressComponent?: (componentId: string) => void;
   showGrid?: boolean;
   activeWireColor?: string;
   isRightInspectorCollapsed?: boolean;
@@ -95,6 +97,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   onToggleRightInspector,
   placingComponentId,
   onPlacedComponent,
+  onLongPressComponent,
 }) => {
   const { effectiveTheme, language } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -128,6 +131,20 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   const cutPointsRef = useRef<{ x: number; z: number }[]>([]);
   const [cutPointsState, setCutPointsState] = useState<{ x: number; z: number }[]>([]);
   const cutLineMeshRef = useRef<THREE.Line | null>(null);
+
+  // Touch & pen gestures. Every active pointer is tracked so that a second finger turns the gesture
+  // into camera control (pinch zoom + two-finger pan) and cancels a part drag started by the first.
+  const activePointersRef = useRef(new Map<number, { x: number; y: number; type: string }>());
+  const primaryPointerIdRef = useRef<number | null>(null);
+  const pinchRef = useRef<{ startDistance: number; startRadius: number; lastMid: { x: number; y: number } } | null>(null);
+  /** After a two-finger gesture, remaining fingers do nothing until all are lifted. */
+  const gestureLockRef = useRef(false);
+  /** Last time a stylus touched the screen: palm contacts right after are ignored. */
+  const penActiveAtRef = useRef(0);
+  const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  // WebGL can lose its context (GPU reset, backgrounded tab on mobile): the scene is rebuilt on restore
+  const [contextEpoch, setContextEpoch] = useState(0);
+  const [isContextLost, setIsContextLost] = useState(false);
 
   // Interaction tracking state
   const isDraggingRef = useRef(false);
@@ -348,6 +365,18 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
     container.appendChild(renderer.domElement);
 
+    const handleContextLost = (event: Event) => {
+      // Ask the browser to give the context back; nothing in the project depends on the GPU
+      event.preventDefault();
+      setIsContextLost(true);
+    };
+    const handleContextRestored = () => {
+      setIsContextLost(false);
+      setContextEpoch((n) => n + 1);
+    };
+    renderer.domElement.addEventListener('webglcontextlost', handleContextLost, false);
+    renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
+
     // 4. Lighting Setup
     const ambientLight = new THREE.AmbientLight(0xffffff, isPresentationMode ? 0.9 : 0.7);
     scene.add(ambientLight);
@@ -545,6 +574,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      renderer.domElement.removeEventListener('webglcontextlost', handleContextLost, false);
+      renderer.domElement.removeEventListener('webglcontextrestored', handleContextRestored, false);
       // The Minibot is re-created with the scene: release its GPU resources
       scene.remove(minibot.group);
       disposeObjectTree(minibot.group);
@@ -553,7 +584,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         rendererRef.current.dispose();
       }
     };
-  }, [isPresentationMode, qualityPreset]);
+  }, [isPresentationMode, qualityPreset, contextEpoch]);
 
   // Release board / component / wire meshes when the workspace is unmounted
   useEffect(() => {
@@ -998,6 +1029,172 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     return () => window.removeEventListener('pointermove', handleWindowPointerMove);
   }, [placingComponentId, document.components, document.board.gridSpacing]);
 
+  /** Nearest pin to a screen point, in pixels, among all placed parts. */
+  const findNearestPin = (clientX: number, clientY: number, rect: DOMRect, maxDistancePx: number) => {
+    const camera = cameraRef.current;
+    if (!camera) return null;
+    let best: { componentId: string; pinId: string; worldPos: Vector3D; distance: number } | null = null;
+    const projected = new THREE.Vector3();
+    for (const comp of document.components) {
+      const def = COMPONENT_DEFINITION_MAP.get(comp.definitionId);
+      if (!def) continue;
+      for (const pin of def.pins) {
+        const world = calculatePinWorldPosition(comp, pin.localOffset);
+        projected.set(world.x, world.y, world.z).project(camera);
+        if (projected.z > 1) continue; // behind the camera
+        const sx = ((projected.x + 1) / 2) * rect.width + rect.left;
+        const sy = ((1 - projected.y) / 2) * rect.height + rect.top;
+        const distance = Math.hypot(sx - clientX, sy - clientY);
+        if (distance <= maxDistancePx && (!best || distance < best.distance)) {
+          best = { componentId: comp.instanceId, pinId: pin.id, worldPos: world, distance };
+        }
+      }
+    }
+    return best;
+  };
+
+  const panCameraByPixels = (dx: number, dy: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect || !cameraRef.current) return;
+    cameraRef.current.updateMatrixWorld();
+    const cameraMatrix = cameraRef.current.matrixWorld;
+    const cameraRight = new THREE.Vector3().setFromMatrixColumn(cameraMatrix, 0).normalize();
+    const cameraUp = new THREE.Vector3().setFromMatrixColumn(cameraMatrix, 1).normalize();
+    const fovRad = ((cameraRef.current.fov || 40) * Math.PI) / 180;
+    const panFactor = (cameraRadiusRef.current * 2 * Math.tan(fovRad / 2)) / rect.height;
+    targetLookAtRef.current.addScaledVector(cameraRight, -dx * panFactor);
+    targetLookAtRef.current.addScaledVector(cameraUp, dy * panFactor);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current.timer);
+      longPressRef.current = null;
+    }
+  };
+
+  /** A second finger arrived: undo what the first one started, without recording anything. */
+  const abandonSingleFingerAction = () => {
+    cancelLongPress();
+    isOrbitingRef.current = false;
+    isPanningRef.current = false;
+    orbitVelocityRef.current = { theta: 0, phi: 0 };
+    if (isDraggingRef.current && draggedCompIdRef.current && dragStartPosRef.current) {
+      const start = dragStartPosRef.current;
+      const mesh = componentsGroupRef.current.children.find((c) => c.name === `comp-${draggedCompIdRef.current}`);
+      mesh?.position.set(start.x, start.y, start.z);
+    }
+    if (draggedCompIdRef.current !== placingComponentId) {
+      isDraggingRef.current = false;
+      draggedCompIdRef.current = null;
+      dragStartPosRef.current = null;
+      currentDragPosRef.current = null;
+    }
+    if (isResizingBoardRef.current) {
+      isResizingBoardRef.current = false;
+      boardGroupRef.current.scale.set(1, 1, 1);
+      originalBoardRef.current = null;
+      currentResizedBoardRef.current = null;
+    }
+  };
+
+  const twoPointers = () => Array.from(activePointersRef.current.values()).slice(0, 2);
+
+  const onGesturePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const onCanvas = e.target === rendererRef.current?.domElement;
+    if (e.pointerType === 'pen') penActiveAtRef.current = Date.now();
+    // Palm rejection: a hand resting on the screen while drawing with a stylus
+    if (e.pointerType === 'touch' && Date.now() - penActiveAtRef.current < 800) return;
+    if (!onCanvas || e.pointerType === 'mouse') {
+      handlePointerDown(e);
+      return;
+    }
+    try {
+      (e.target as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // capture is a convenience only
+    }
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+
+    if (e.pointerType === 'touch' && activePointersRef.current.size >= 2) {
+      abandonSingleFingerAction();
+      gestureLockRef.current = true;
+      const [a, b] = twoPointers();
+      pinchRef.current = {
+        startDistance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+        startRadius: targetRadiusRef.current,
+        lastMid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+      };
+      if (cameraTransitionRef.current) cameraTransitionRef.current = null;
+      return;
+    }
+    if (gestureLockRef.current) return;
+
+    primaryPointerIdRef.current = e.pointerId;
+    handlePointerDown(e);
+
+    // Press and hold a part (without moving) to open its properties
+    const pressedId = draggedCompIdRef.current;
+    if (pressedId && pressedId !== placingComponentId && onLongPressComponent) {
+      longPressRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        timer: setTimeout(() => {
+          longPressRef.current = null;
+          abandonSingleFingerAction();
+          // A short haptic tick where allowed (only after the user has interacted with the page)
+          if ((navigator as any).userActivation?.hasBeenActive) navigator.vibrate?.(15);
+          onLongPressComponent(pressedId);
+        }, 550),
+      };
+    }
+  };
+
+  const onGesturePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const tracked = activePointersRef.current.get(e.pointerId);
+    if (!tracked) {
+      if (e.pointerType === 'touch' && Date.now() - penActiveAtRef.current < 800) return;
+      handlePointerMove(e);
+      return;
+    }
+    tracked.x = e.clientX;
+    tracked.y = e.clientY;
+
+    if (pinchRef.current && activePointersRef.current.size >= 2) {
+      const [a, b] = twoPointers();
+      const distance = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+      targetRadiusRef.current = Math.max(30, Math.min(350, (pinchRef.current.startRadius * pinchRef.current.startDistance) / distance));
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      panCameraByPixels(mid.x - pinchRef.current.lastMid.x, mid.y - pinchRef.current.lastMid.y);
+      pinchRef.current.lastMid = mid;
+      return;
+    }
+    if (gestureLockRef.current || e.pointerId !== primaryPointerIdRef.current) return;
+
+    if (longPressRef.current && Math.hypot(e.clientX - longPressRef.current.x, e.clientY - longPressRef.current.y) > 10) {
+      cancelLongPress();
+    }
+    handlePointerMove(e);
+  };
+
+  const onGesturePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!activePointersRef.current.has(e.pointerId)) {
+      if (e.pointerType === 'touch' && Date.now() - penActiveAtRef.current < 800) return;
+      handlePointerUp();
+      return;
+    }
+    activePointersRef.current.delete(e.pointerId);
+    if (activePointersRef.current.size < 2) pinchRef.current = null;
+    if (e.pointerId === primaryPointerIdRef.current) {
+      primaryPointerIdRef.current = null;
+      cancelLongPress();
+      handlePointerUp();
+    }
+    if (activePointersRef.current.size === 0) gestureLockRef.current = false;
+  };
+
+  useEffect(() => () => cancelLongPress(), []);
+
   // Interactive Pointer Events (Selection, Dragging, Wiring, Switch Toggling, Board Resize, Cut Tool)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button === 2) {
@@ -1092,16 +1289,23 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     // 1. Check Pin clicks (ONLY intercept in Wiring Mode so Select Mode can drag components freely)
     const pinIntersects = raycasterRef.current.intersectObjects(componentsGroupRef.current.children, true);
     const hitPin = pinIntersects.find((hit) => hit.object.userData?.isPin);
+    // Pins are a few pixels wide: a finger or pen lands on the nearest pin within reach
+    const nearPin =
+      isWiringMode && !hitPin && e.pointerType !== 'mouse'
+        ? findNearestPin(e.clientX, e.clientY, rect, e.pointerType === 'pen' ? 16 : 28)
+        : null;
 
-    if (isWiringMode && hitPin) {
-      const { componentId, pinId } = hitPin.object.userData;
+    if (isWiringMode && (hitPin || nearPin)) {
+      const { componentId, pinId } = hitPin ? hitPin.object.userData : nearPin!;
 
       const targetComp = document.components.find((c) => c.instanceId === componentId);
       const targetDef = targetComp ? COMPONENT_DEFINITION_MAP.get(targetComp.definitionId) : null;
       const targetPinDef = targetDef?.pins.find((p) => p.id === pinId);
       const worldPos: Vector3D = (targetComp && targetPinDef)
         ? calculatePinWorldPosition(targetComp, targetPinDef.localOffset)
-        : { x: hitPin.point.x, y: hitPin.point.y, z: hitPin.point.z };
+        : hitPin
+        ? { x: hitPin.point.x, y: hitPin.point.y, z: hitPin.point.z }
+        : nearPin!.worldPos;
 
       if (wiringStartPin) {
         // Second pin clicked
@@ -1566,12 +1770,20 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     <div
       ref={containerRef}
       className="relative w-full h-full select-none cursor-grab active:cursor-grabbing overflow-hidden bg-slate-950"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
+      // The canvas handles every touch gesture itself: no page scroll, no browser zoom
+      style={{ touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none' } as React.CSSProperties}
+      onPointerDown={onGesturePointerDown}
+      onPointerMove={onGesturePointerMove}
+      onPointerUp={onGesturePointerEnd}
+      onPointerCancel={onGesturePointerEnd}
       onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
     >
+      {isContextLost && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/80 text-slate-200 text-sm" role="status">
+          {language === 'vi' ? 'Đang khôi phục đồ họa 3D… Dự án của bạn vẫn được giữ nguyên.' : 'Restoring 3D graphics… your project is unchanged.'}
+        </div>
+      )}
       {/* View Presets Quick Bar (Centered horizontally at top of 3D viewport) */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md p-1 rounded-xl border border-slate-200/80 dark:border-cyan-800/40 shadow-xl text-xs select-none">
         <button

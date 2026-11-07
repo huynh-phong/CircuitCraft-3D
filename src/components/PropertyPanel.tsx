@@ -76,7 +76,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
   const panelTitle = language === 'vi' ? 'Thông tin & chỉ số' : 'Info & Parameters';
 
   return (
-    <aside className="absolute top-4 right-4 bottom-14 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 dark:border-cyan-900/60 bg-white/95 dark:bg-[#0c1424]/95 backdrop-blur-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-200 select-none">
+    <aside className="absolute top-4 right-4 bottom-14 short:top-2 short:right-2 short:bottom-2 short:w-72 z-20 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 dark:border-cyan-900/60 bg-white/95 dark:bg-[#0c1424]/95 backdrop-blur-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-4 duration-200 select-none">
       {/* Top Universal Panel Header */}
       <div className="px-4 py-2.5 border-b border-[#d7e7f0] dark:border-cyan-950/40 flex items-center justify-between bg-slate-50/50 dark:bg-[#070e1c]/40 shrink-0">
         <div className="flex items-center gap-2">

@@ -163,3 +163,41 @@ Chủ dự án thực hiện bước 1-10 của `docs/DEPLOYMENT.md` trên stagi
 - Test: `serverless_persistence` 51/51 PASS (thêm: chép bảng cũ, đăng nhập OTP tài khoản cũ còn quyền, báo `not_migrated`).
 - Còn lại cho chủ dự án: chạy migration SQL, chạy script chép dữ liệu, Redeploy (chi tiết ở mục "Khắc phục sự cố" trong `docs/DEPLOYMENT.md`). Dự án (`projects`) của tài khoản Supabase Auth vẫn đọc trực tiếp từ bảng cũ như trước, không cần chép.
 
+## M1 — Mobile & Tablet responsive, landscape workspaces (2026-11-07)
+Status: kiểm thử bằng giả lập trình duyệt; **chưa kiểm thử trên thiết bị thật**.
+
+### Đã làm
+- `src/hooks/useDeviceProfile.ts`: nhận diện phone / tablet / desktop theo con trỏ (coarse/fine, hover), số điểm chạm và kích thước màn hình, không dựa vào User-Agent. Cửa sổ desktop hẹp vẫn là desktop. Cập nhật khi resize, xoay, bàn phím ảo (visualViewport), đổi tab; đặt `data-device`, `data-orientation`, `--app-height` lên `<html>`.
+- `src/components/layout/LandscapeGate.tsx`: Workspace 3D, Practice Lab, Theory Learning trên phone/tablet dọc hiện màn hình hướng dẫn **phủ lên trên** (không unmount nên không mất dự án, chat, slide). "Xoay ngang tự động" = fullscreen + `screen.orientation.lock('landscape')` từ thao tác chạm. Bị từ chối (iOS Safari, chính sách trình duyệt) thì hoàn tác fullscreen và hướng dẫn xoay tay. "Tiếp tục ở màn hình dọc" nhớ trong phiên, không lặp. Rời workspace thì unlock và thoát fullscreen do app tạo. Không xoay bằng CSS, không reload.
+- `index.css`: biến thể `short` (cao ≤ 520 px), `coarse` (cảm ứng), `compact` (thấp hoặc hẹp < 900 px); `.app-shell` theo chiều cao thực (dvh / visualViewport); safe-area; vùng chạm 44 px; input 16 px trên cảm ứng (tránh iOS zoom); `.table-scroll`. `index.html`: `viewport-fit=cover`, `interactive-widget=resizes-content`.
+- Workspace / Practice Lab: phone và tablet hẹp (< 900 px) mở với canvas trống, Thư viện linh kiện / Thuộc tính trượt vào theo yêu cầu, mỗi lần một panel; thêm linh kiện thì tự đóng thư viện. Tablet ngang và desktop giữ hai panel như cũ. Toolbar chỉ còn icon (vẫn có tooltip) khi `compact`; banner Practice Lab rút gọn; panel kiểm tra/checklist cao tối đa 42vh khi thấp; Minibot tránh thanh dưới. Không bỏ chức năng nào.
+- `ThreeScene`:
+  - Canvas tự xử lý cử chỉ (`touch-action: none`). Một ngón chọn/kéo/xoay camera như chuột; hai ngón pinch zoom + kéo để pan (ngón thứ hai hủy thao tác kéo linh kiện, không ghi vào lịch sử).
+  - Nhấn giữ 550 ms trên linh kiện để mở Thuộc tính.
+  - Chế độ nối dây: chạm trong bán kính 28 px (bút 16 px) bắt vào chân gần nhất.
+  - Palm rejection: bỏ qua chạm tay trong 800 ms sau khi bút chạm.
+  - Pointer capture; khôi phục khi mất WebGL context (dựng lại cảnh, dữ liệu không đổi).
+  - Chuột/desktop đi đường xử lý cũ.
+- Đồ họa: điện thoại có `deviceMemory ≤ 3 GB` bắt đầu ở chất lượng Low; các thiết bị khác giữ mặc định. Pixel ratio đã giới hạn sẵn theo preset.
+- Theory Learning: ở < 1024 px dùng tab Nội dung / Slide / Trợ giảng (đã có), header và tab gọn khi thấp; vuốt ngang để chuyển slide (cuộn dọc vẫn hoạt động). Tablet ngang/desktop: nút thu gọn cột Đề cương và cột Trợ giảng. Chiều cao app theo bàn phím ảo nên ô chat không bị che.
+- Admin: trên điện thoại menu bên trái thành dải tab cuộn ngang (trước đây menu 256 px chỉ để lại ~100 px cho nội dung); tablet < 1100 px mở với menu thu gọn.
+
+### Kiểm tra (2026-11-07)
+| Kiểm tra | Kết quả |
+|---|---|
+| `npm run lint`, `npm run build`, `npm test` (12 script) | PASS (30, 15, 56, 41, 51, 29 + các test cũ) |
+| Tràn ngang ở 375×812 (trang chủ, dự án, khóa học, của tôi, cửa hàng, gói, Creator, Admin, tài khoản) | PASS bằng đo phần tử; Admin đã sửa (nội dung 370/375 px, bảng có khung cuộn riêng) |
+| Workspace 740×360 (phone ngang, giả lập) | PASS: canvas 78% màn hình, panel đóng sẵn, mọi nút Toolbar trong màn hình, một panel mỗi lần |
+| Cử chỉ (pointer event giả lập): nhấn giữ R1 mở Thuộc tính; pinch; bút + chạm tay | PASS, không lỗi console |
+| Xoay dọc ở editor: màn hình hướng dẫn; canvas cùng phần tử (không remount); xoay tự động bị trình duyệt giả lập từ chối → thông báo, thoát fullscreen; "Tiếp tục dọc" | PASS |
+| Theory 740×360: slide 74% màn hình; vuốt chuyển slide; chat + slide giữ khi đổi tab và khi xoay dọc rồi ngang | PASS |
+| Tablet dọc 767×1024 (giả lập cảm ứng): nhận `tablet`, canvas toàn màn hình, Toolbar vừa | PASS |
+| Desktop 1024×768: hai panel, nhãn Toolbar đầy đủ, không overlay; Theory thu gọn/mở cột (slide 416 → 1024 px) | PASS |
+| iPhone/iPad Safari, Android Chrome, S Pen, Apple Pencil trên thiết bị thật; tablet ngang cảm ứng (giả lập ≥ 768 px không có cảm ứng); Firefox | NOT RUN |
+| Đo FPS/GPU trên thiết bị yếu | NOT RUN |
+
+### Giới hạn đã biết
+- iOS Safari không có API khóa hướng màn hình, và iPhone không cho trang web vào fullscreen: người dùng phải tự xoay.
+- Android Chrome chỉ khóa hướng khi ở fullscreen và sau một lần chạm. Vuốt thoát fullscreen thì khóa cũng mất.
+- Vòng render 3D vẫn chạy liên tục khi trang đang hiển thị (trình duyệt tự dừng khi ẩn tab). Chưa làm render theo yêu cầu.
+

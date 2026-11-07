@@ -77,7 +77,7 @@ export const MinibotWidget: React.FC<MinibotWidgetProps> = ({
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 select-none">
+    <div className="fixed bottom-5 right-5 short:bottom-12 short:right-2 z-50 select-none" style={{ marginBottom: 'env(safe-area-inset-bottom)', marginRight: 'env(safe-area-inset-right)' }}>
       {/* 1. Floating Action Trigger Button (identical animation & style as homepage chatbot) */}
       <AnimatePresence>
         {!isOpen && (
@@ -141,7 +141,7 @@ export const MinibotWidget: React.FC<MinibotWidgetProps> = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 30 }}
             transition={{ type: 'spring', damping: 25, stiffness: 280 }}
-            className="fixed inset-x-3 bottom-3 sm:inset-auto sm:bottom-5 sm:right-5 w-auto sm:w-[420px] h-[590px] max-h-[88vh] rounded-[26px] bg-white/95 dark:bg-[#071324]/95 border border-[#bfe3f7] dark:border-cyan-500/40 shadow-[0_20px_60px_rgba(6,182,212,0.22),_0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_25px_70px_rgba(0,0,0,0.9),_0_0_40px_rgba(6,182,212,0.25)] backdrop-blur-2xl flex flex-col overflow-hidden z-50 text-slate-800 dark:text-slate-100"
+            className="fixed inset-x-3 bottom-3 sm:inset-auto sm:bottom-5 sm:right-5 w-auto sm:w-[420px] short:w-[min(420px,60vw)] h-[590px] max-h-[88vh] short:max-h-[calc(var(--app-height,100dvh)-1rem)] rounded-[26px] bg-white/95 dark:bg-[#071324]/95 border border-[#bfe3f7] dark:border-cyan-500/40 shadow-[0_20px_60px_rgba(6,182,212,0.22),_0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_25px_70px_rgba(0,0,0,0.9),_0_0_40px_rgba(6,182,212,0.25)] backdrop-blur-2xl flex flex-col overflow-hidden z-50 text-slate-800 dark:text-slate-100"
           >
             {/* Header */}
             <div className="px-4 sm:px-5 py-3.5 border-b border-[#e0f2fe] dark:border-cyan-900/50 bg-gradient-to-r from-cyan-50/80 via-white to-sky-50/60 dark:from-[#091b30] dark:via-[#071526] dark:to-[#08182b] flex items-center justify-between shrink-0">

@@ -103,9 +103,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   ];
 
   return (
-    <div className="h-13 border-b border-[#d7e7f0] dark:border-cyan-950/40 bg-white/90 dark:bg-[#0c1422]/90 backdrop-blur-md px-4 py-1.5 flex items-center justify-between gap-3 z-20 select-none overflow-x-auto transition-colors shadow-xs">
+    <div className="h-13 compact:h-11 border-b border-[#d7e7f0] dark:border-cyan-950/40 bg-white/90 dark:bg-[#0c1422]/90 backdrop-blur-md px-4 compact:px-2 py-1.5 compact:py-1 flex items-center justify-between gap-3 z-20 select-none overflow-x-auto transition-colors shadow-xs">
       {/* Left: Project title & History */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 compact:gap-1 shrink-0">
         {onBackToProjectSelect && (
           <button
             onClick={onBackToProjectSelect}
@@ -113,13 +113,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             title={t('editor.changeProject')}
           >
             <ArrowLeft className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-            <span className="hidden sm:inline">{t('editor.changeProject')}</span>
+            <span className="hidden sm:inline compact:sr-only">{t('editor.changeProject')}</span>
           </button>
         )}
 
         <button
           onClick={onRenameProject}
-          className="text-xs font-bold text-slate-800 dark:text-slate-100 hover:text-cyan-600 dark:hover:text-cyan-400 max-w-[180px] truncate px-2.5 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
+          className="text-xs font-bold text-slate-800 dark:text-slate-100 hover:text-cyan-600 dark:hover:text-cyan-400 max-w-[180px] compact:max-w-[96px] truncate px-2.5 compact:px-1.5 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition text-left"
           title={t('project.rename')}
         >
           {projectName || t('editor.untitledProject')}
@@ -161,11 +161,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       {/* Middle: Key Mode Actions (Wiring, Simulating, Presentation) */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 compact:gap-1 shrink-0">
         {/* Wiring Mode Toggle */}
         <button
           onClick={onToggleWiringMode}
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+          className={`flex items-center gap-2 px-3.5 compact:px-2 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
             isWiringMode
               ? 'tech-btn-3d shadow-[0_6px_18px_rgba(6,182,212,0.4)]'
               : 'tech-btn-control'
@@ -173,12 +173,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           title={`${t('wiring.wire')} (W)`}
         >
           <Cable className="w-3.5 h-3.5" />
-          <span>{isWiringMode ? t('wiring.cancel') : t('wiring.wire')}</span>
+          <span className="compact:sr-only">{isWiringMode ? t('wiring.cancel') : t('wiring.wire')}</span>
         </button>
 
         {/* Quick Wire Color Palette when Wiring Mode is active */}
         {isWiringMode && onChangeWireColor && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white dark:bg-[#0c1320] border border-[#d7e7f0] dark:border-cyan-950 shadow-xs">
+          <div className="flex items-center gap-1.5 compact:gap-1 px-2.5 compact:px-1.5 py-1 rounded-xl bg-white dark:bg-[#0c1320] border border-[#d7e7f0] dark:border-cyan-950 shadow-xs">
             <span className="text-[10px] text-slate-500 dark:text-slate-400 mr-0.5 hidden xl:inline font-medium">
               {language === 'vi' ? 'Màu dây:' : 'Wire:'}
             </span>
@@ -203,7 +203,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         {onToggleCutMode && (
           <button
             onClick={onToggleCutMode}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+            className={`flex items-center gap-1.5 px-3 compact:px-2 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
               isCutMode
                 ? 'tech-btn-3d-rose shadow-md shadow-rose-500/25'
                 : 'tech-btn-control'
@@ -211,14 +211,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             title={t('cut.title')}
           >
             <Scissors className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
-            <span>{isCutMode ? t('cut.cancel') : t('cut.title')}</span>
+            <span className="compact:sr-only">{isCutMode ? t('cut.cancel') : t('cut.title')}</span>
           </button>
         )}
 
         {/* Behavioral Simulation Play/Stop with 3D green button */}
         <button
           onClick={onToggleSimulation}
-          className={`flex items-center gap-2 px-4 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+          className={`flex items-center gap-2 px-4 compact:px-2 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
             isSimulating
               ? 'bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/30 border-t border-amber-200 border-b-2 border-amber-700 animate-pulse'
               : 'tech-btn-3d-green shadow-[0_6px_18px_rgba(16,185,129,0.35)]'
@@ -226,13 +226,13 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           title={isSimulating ? t('editor.stop') : t('editor.run')}
         >
           {isSimulating ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-          <span>{isSimulating ? t('editor.stop') : t('editor.simulation')}</span>
+          <span className="compact:sr-only">{isSimulating ? t('editor.stop') : t('editor.simulation')}</span>
         </button>
 
         {/* Presentation / Exploded Mode */}
         <button
           onClick={onTogglePresentation}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+          className={`flex items-center gap-1.5 px-3 compact:px-2 py-1.5 rounded-xl text-xs font-semibold transition-all ${
             isPresentationMode
               ? 'bg-gradient-to-b from-indigo-500 via-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-600/30 border-t border-indigo-300 border-b-2 border-indigo-900 font-bold'
               : 'tech-btn-control'
@@ -240,12 +240,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           title={t('editor.presentation')}
         >
           <Layers className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
-          <span>{t('editor.presentation')}</span>
+          <span className="compact:sr-only">{t('editor.presentation')}</span>
         </button>
       </div>
 
       {/* Right: File Ops, Grid, Quality */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 compact:gap-1 shrink-0">
         <button
           onClick={onToggleGrid}
           className={`tech-btn-control p-1.5 ${
@@ -275,7 +275,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         <button
           onClick={onSave}
           disabled={isSaving}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all rounded-xl cursor-pointer shadow-xs ${
+          className={`flex items-center gap-1.5 px-3 compact:px-2 py-1.5 text-xs font-bold transition-all rounded-xl cursor-pointer shadow-xs ${
             saveSuccess
               ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 border border-emerald-400 dark:border-emerald-500 shadow-[0_2px_10px_rgba(16,185,129,0.25)]'
               : 'tech-btn-control text-cyan-700 dark:text-cyan-300 hover:text-cyan-600 dark:hover:text-cyan-400'
@@ -289,7 +289,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           ) : (
             <Save className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
           )}
-          <span className="hidden sm:inline">
+          <span className="hidden sm:inline compact:sr-only">
             {isSaving
               ? language === 'vi'
                 ? 'Đang lưu...'

@@ -50,3 +50,4 @@ Xác định bằng metafile esbuild từ `src/main.tsx` (2026-11-01). **Chưa x
 | Service cũ | `src/services/aiAssistantService.ts`, `src/services/projectRepository.ts`, `src/router/NavigationContext.tsx` | Legacy — thay bằng `src/ai/assistantService.ts`, `src/persistence/*`, `src/router/routes.ts` |
 | Chỉ type | `*/types.ts`, `src/vite-env.d.ts` | Đang dùng (bị xóa khi biên dịch) |
 | Hàm không có caller | `courseService.purchaseCourse` (chỉ ghi localStorage) | Dead code — không ảnh hưởng quyền phía server |
+- Responsive: `useDeviceProfile` (phone/tablet/desktop theo khả năng con trỏ và kích thước màn hình), `LandscapeGate` cho Workspace/Practice Lab/Theory (hướng dẫn xoay phủ lên trên, không unmount), biến thể Tailwind `short`/`coarse`/`compact`. Cử chỉ cảm ứng nằm trong `ThreeScene` (pinch, pan hai ngón, nhấn giữ, chạm gần chân, palm rejection).

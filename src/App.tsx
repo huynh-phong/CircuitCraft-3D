@@ -65,6 +65,8 @@ import { GraduationCap, CheckCircle2, PanelLeftOpen, PanelRightOpen, AlertTriang
 import { useI18n } from './i18n/context';
 import { AnimatePresence } from 'motion/react';
 import { PageTransition, RouteFallback } from './components/ui/PageTransition';
+import { LandscapeGate } from './components/layout/LandscapeGate';
+import { useDeviceProfile } from './hooks/useDeviceProfile';
 
 // Route-level code splitting: each page and the 3D editor load on demand
 const AuthModal = lazy(() => import('./components/AuthModal').then((m) => ({ default: m.AuthModal })));
@@ -113,8 +115,26 @@ export const App: React.FC = () => {
   // Snapshot of last saved project state (to detect dirty changes on exit)
   const lastSavedSnapshotRef = useRef<string>(JSON.stringify(SAMPLE_PROJECTS[0]));
   // Collapsible panels state for 3D workspace
-  const [isLeftLibraryCollapsed, setIsLeftLibraryCollapsed] = useState(false);
-  const [isRightInspectorCollapsed, setIsRightInspectorCollapsed] = useState(false);
+  const deviceProfile = useDeviceProfile();
+  // Phones and narrow tablets (portrait, Split View): two 320px panels would cover the canvas
+  const isNarrowWorkspace = deviceProfile.device !== 'desktop' && deviceProfile.width < 900;
+  const isPhone = isNarrowWorkspace;
+  // They open the workspace with the canvas free; panels slide in on demand, one at a time.
+  // Tablets in landscape and desktops keep both panels, as before.
+  const [isLeftLibraryCollapsed, setIsLeftLibraryCollapsed] = useState(() => isNarrowWorkspace);
+  const [isRightInspectorCollapsed, setIsRightInspectorCollapsed] = useState(() => isNarrowWorkspace);
+  const openLibraryPanel = useCallback(() => {
+    setIsLeftLibraryCollapsed(false);
+    if (isNarrowWorkspace) setIsRightInspectorCollapsed(true);
+  }, [isNarrowWorkspace]);
+  const openInspectorPanel = useCallback(() => {
+    setIsRightInspectorCollapsed(false);
+    if (isNarrowWorkspace) setIsLeftLibraryCollapsed(true);
+  }, [isNarrowWorkspace]);
+  // Rotating to a narrow layout with both panels open: keep only the inspector
+  useEffect(() => {
+    if (isNarrowWorkspace && !isLeftLibraryCollapsed && !isRightInspectorCollapsed) setIsLeftLibraryCollapsed(true);
+  }, [isNarrowWorkspace]); // eslint-disable-line react-hooks/exhaustive-deps
   const [placingComponentId, setPlacingComponentId] = useState<string | null>(null);
   // Unsaved changes exit confirmation modal
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
@@ -247,7 +267,11 @@ export const App: React.FC = () => {
   const [isExplodedView, setIsExplodedView] = useState(false);
 
   // 7. Graphics Quality & Grid
-  const [qualityPreset, setQualityPreset] = useState<'low' | 'balanced' | 'high'>('balanced');
+  // Phones with little memory start at Low (no shadows, no antialiasing); everything else as before
+  const [qualityPreset, setQualityPreset] = useState<'low' | 'balanced' | 'high'>(() => {
+    const memory = (navigator as any).deviceMemory as number | undefined;
+    return deviceProfile.device === 'phone' && memory !== undefined && memory <= 3 ? 'low' : 'balanced';
+  });
   const [showGrid, setShowGrid] = useState(true);
 
   // 8. AI Assistant & Minibot 3D
@@ -1296,7 +1320,7 @@ export const App: React.FC = () => {
   const selectedConnObj = project.connections.find((c) => c.id === selectedConnectionId) || null;
 
   return (
-    <div className="flex flex-col w-screen h-screen overflow-hidden circuit-bg circuit-traces-overlay font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 relative">
+    <div className="app-shell flex flex-col w-full overflow-hidden circuit-bg circuit-traces-overlay font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 relative">
       {/* 1. Global Navigation Bar (Hidden in 3D design / editor mode and Theory classroom to maximize workspace) */}
       {currentRoute !== 'editor' && currentRoute !== 'theory-learning' && (
         <Navbar
@@ -1384,6 +1408,7 @@ export const App: React.FC = () => {
         {currentRoute === 'theory-learning' && (
           <PageTransition routeKey="theory-learning">
             {activeTheoryContext ? (
+              <LandscapeGate area="theory">
               <TheoryLearningPage
                 course={activeTheoryContext.course}
                 initialLesson={activeTheoryContext.lesson}
@@ -1394,6 +1419,7 @@ export const App: React.FC = () => {
                 }}
                 onSwitchPracticeLab={handleStartPracticeLab}
               />
+              </LandscapeGate>
             ) : (
               <MyCoursesPage
                 currentUser={currentUser}
@@ -1497,14 +1523,15 @@ export const App: React.FC = () => {
 
       {currentRoute === 'editor' && (
         <Suspense fallback={<RouteFallback />}>
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <LandscapeGate area={activeCourse ? 'practice' : 'workspace'}>
+        <div className="flex-1 flex flex-col overflow-hidden relative safe-x">
           {/* Active Course Guidance Banner */}
           {activeCourse && (
-            <div className="h-10 px-4 bg-cyan-950/95 border-b border-cyan-500/40 text-cyan-200 text-xs flex items-center justify-between z-20 shrink-0 shadow-md">
-              <div className="flex items-center gap-2.5 truncate">
-                <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+            <div className="h-10 short:h-8 px-4 short:px-2 bg-cyan-950/95 border-b border-cyan-500/40 text-cyan-200 text-xs flex items-center justify-between gap-2 z-20 shrink-0 shadow-md">
+              <div className="flex items-center gap-2.5 truncate min-w-0">
+                <span className="font-bold text-cyan-300 flex items-center gap-1.5 shrink-0">
                   <GraduationCap className="w-4 h-4 text-cyan-400" />
-                  Đang thực hành Lab:
+                  <span className="short:hidden">Đang thực hành Lab:</span>
                 </span>
                 <span className="truncate font-semibold text-white">
                   {activePracticeItem ? `${activePracticeItem.title} — ` : ''}
@@ -1525,19 +1552,22 @@ export const App: React.FC = () => {
                     }
                     confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
                   }}
-                  className="text-[11px] text-slate-950 font-bold px-2.5 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 transition shadow-sm flex items-center gap-1"
+                  className="text-[11px] text-slate-950 font-bold px-2.5 py-1 coarse:py-1.5 rounded-lg bg-emerald-400 hover:bg-emerald-300 transition shadow-sm flex items-center gap-1 shrink-0"
+                  title="Hoàn thành bài thực hành"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Hoàn thành bài thực hành</span>
+                  <span className="short:hidden">Hoàn thành bài thực hành</span>
+                  <span className="hidden short:inline">Hoàn thành</span>
                 </button>
                 <button
                   onClick={() => {
                     setSelectedMyCourseId(activeCourse.id);
                     handleNavigate('my-courses');
                   }}
-                  className="text-[11px] text-cyan-300 hover:text-white px-2.5 py-1 rounded-lg bg-cyan-900/50 hover:bg-cyan-900/80 border border-cyan-500/20"
+                  className="text-[11px] text-cyan-300 hover:text-white px-2.5 py-1 coarse:py-1.5 rounded-lg bg-cyan-900/50 hover:bg-cyan-900/80 border border-cyan-500/20 shrink-0"
                 >
-                  Về Khóa học của tôi
+                  <span className="short:hidden">Về Khóa học của tôi</span>
+                  <span className="hidden short:inline">Khóa học</span>
                 </button>
               </div>
             </div>
@@ -1545,7 +1575,7 @@ export const App: React.FC = () => {
 
           {/* Personal Project Banner (Dự án cá nhân - Không gian tự do) */}
           {!activeCourse && !activeLesson && !activePracticeItem && (
-            <div className="h-9 px-4 bg-slate-900/95 dark:bg-[#061224]/95 border-b border-slate-700/60 dark:border-cyan-900/50 text-slate-200 text-xs flex items-center justify-between z-20 shrink-0 shadow-xs">
+            <div className="h-9 short:hidden px-4 bg-slate-900/95 dark:bg-[#061224]/95 border-b border-slate-700/60 dark:border-cyan-900/50 text-slate-200 text-xs flex items-center justify-between z-20 shrink-0 shadow-xs">
               <div className="flex items-center gap-2.5 truncate">
                 <span className="px-2 py-0.5 rounded-md bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 font-bold text-[10px] flex items-center gap-1 shadow-xs">
                   <Cpu className="w-3 h-3 text-cyan-400" />
@@ -1654,9 +1684,9 @@ export const App: React.FC = () => {
               }
             }}
             isLeftLibraryCollapsed={isLeftLibraryCollapsed}
-            onToggleLeftLibrary={() => setIsLeftLibraryCollapsed((prev) => !prev)}
+            onToggleLeftLibrary={() => (isLeftLibraryCollapsed ? openLibraryPanel() : setIsLeftLibraryCollapsed(true))}
             isRightInspectorCollapsed={isRightInspectorCollapsed}
-            onToggleRightInspector={() => setIsRightInspectorCollapsed((prev) => !prev)}
+            onToggleRightInspector={() => (isRightInspectorCollapsed ? openInspectorPanel() : setIsRightInspectorCollapsed(true))}
           />
 
           {/* Middle 3D Viewport with Floating Overlays */}
@@ -1699,7 +1729,13 @@ export const App: React.FC = () => {
                 showGrid={showGrid}
                 activeWireColor={activeWireColor}
                 isRightInspectorCollapsed={isRightInspectorCollapsed}
-                onToggleRightInspector={() => setIsRightInspectorCollapsed((prev) => !prev)}
+                onToggleRightInspector={() => (isRightInspectorCollapsed ? openInspectorPanel() : setIsRightInspectorCollapsed(true))}
+                onLongPressComponent={(id) => {
+                  // Touch: press and hold a part to edit it
+                  setSelectedComponentId(id);
+                  setSelectedConnectionId(null);
+                  openInspectorPanel();
+                }}
                 placingComponentId={placingComponentId}
                 onPlacedComponent={() => setPlacingComponentId(null)}
               />
@@ -1720,7 +1756,11 @@ export const App: React.FC = () => {
             {/* Left Component Library Floating Panel (Hidden in presentation mode or when collapsed) */}
             {!isPresentationMode && (
               <ComponentLibrary
-                onAddComponent={handleAddComponent}
+                onAddComponent={(defId) => {
+                  handleAddComponent(defId);
+                  // On a phone the library would cover where the part is being placed
+                  if (isPhone) setIsLeftLibraryCollapsed(true);
+                }}
                 isCollapsed={isLeftLibraryCollapsed}
                 onToggleCollapse={() => setIsLeftLibraryCollapsed(true)}
               />
@@ -1728,31 +1768,33 @@ export const App: React.FC = () => {
 
             {/* Floating Reopen Button for Left Library when collapsed */}
             {!isPresentationMode && isLeftLibraryCollapsed && (
-              <div className="absolute top-4 left-4 z-20 flex items-center bg-white/85 dark:bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-lg text-xs">
+              <div className="absolute top-4 left-4 short:top-2 short:left-2 z-20 flex items-center bg-white/85 dark:bg-slate-900/80 backdrop-blur-md p-1.5 short:p-1 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-lg text-xs">
                 <button
-                  onClick={() => setIsLeftLibraryCollapsed(false)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/60 font-semibold transition cursor-pointer hover:border-cyan-400 hover:scale-105 active:scale-95 shadow-xs"
+                  onClick={openLibraryPanel}
+                  className="touch-target flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/60 font-semibold transition cursor-pointer hover:border-cyan-400 hover:scale-105 active:scale-95 shadow-xs"
                   title={language === 'vi' ? 'Mở Thư viện linh kiện' : 'Open Component Library'}
                 >
                   <PanelLeftOpen className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
-                  <span className="font-semibold">
+                  <span className="font-semibold short:hidden">
                     {language === 'vi' ? 'Thư viện linh kiện' : 'Component Library'}
                   </span>
+                  <span className="font-semibold hidden short:inline">{language === 'vi' ? 'Linh kiện' : 'Parts'}</span>
                 </button>
               </div>
             )}
 
             {/* Floating Reopen Button for Right Inspector when collapsed */}
             {!isPresentationMode && isRightInspectorCollapsed && (
-              <div className="absolute top-4 right-4 z-20 flex items-center bg-white/85 dark:bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-lg text-xs">
+              <div className="absolute top-4 right-4 short:top-2 short:right-2 z-20 flex items-center bg-white/85 dark:bg-slate-900/80 backdrop-blur-md p-1.5 short:p-1 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-lg text-xs">
                 <button
-                  onClick={() => setIsRightInspectorCollapsed(false)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/60 font-semibold transition cursor-pointer hover:border-cyan-400 hover:scale-105 active:scale-95 shadow-xs"
+                  onClick={openInspectorPanel}
+                  className="touch-target flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-950/70 text-cyan-700 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800/60 font-semibold transition cursor-pointer hover:border-cyan-400 hover:scale-105 active:scale-95 shadow-xs"
                   title={language === 'vi' ? 'Mở Thông tin & chỉ số' : 'Open Info & Parameters'}
                 >
-                  <span className="font-semibold">
+                  <span className="font-semibold short:hidden">
                     {language === 'vi' ? 'Thông tin & chỉ số' : 'Info & Parameters'}
                   </span>
+                  <span className="font-semibold hidden short:inline">{language === 'vi' ? 'Thuộc tính' : 'Properties'}</span>
                   <PanelRightOpen className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
                 </button>
               </div>
@@ -1969,6 +2011,7 @@ export const App: React.FC = () => {
             </div>
           )}
         </div>
+        </LandscapeGate>
         </Suspense>
       )}
 

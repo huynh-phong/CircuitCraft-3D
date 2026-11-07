@@ -1,6 +1,19 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* Short screens: phones held sideways, tablets with the keyboard open */
+@custom-variant short (@media (max-height: 520px));
+/* Touch-first screens (fingers, not a mouse) */
+@custom-variant coarse (@media (pointer: coarse));
+/* Short or narrow: phone landscape, tablet portrait, Split View, small windows */
+@custom-variant compact {
+  @media (max-height: 520px) {
+    @slot;
+  }
+  @media (max-width: 899px) {
+    @slot;
+  }
+}
 
 :root {
   --background: #f4f8fb;
@@ -597,4 +610,55 @@
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Mobile & tablet foundations                                         */
+/* ------------------------------------------------------------------ */
+/* The app shell follows the visible height (dynamic toolbars, on-screen keyboard) */
+.app-shell {
+  height: var(--app-height, 100dvh);
+}
+@supports not (height: 100dvh) {
+  .app-shell {
+    height: var(--app-height, 100vh);
+  }
+}
 
+/* Keep controls clear of notches, rounded corners and the home indicator */
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Fingers need bigger targets than a mouse, without changing the desktop look */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* No double-tap zoom delay on controls; the 3D canvas handles its own gestures */
+  button,
+  a,
+  [role='button'],
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+  /* iOS zooms into inputs with text under 16px: keep form fields at 16px on touch screens */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Wide tables scroll inside their own box instead of widening the page */
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}

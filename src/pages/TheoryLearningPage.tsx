@@ -17,6 +17,8 @@ import {
   Sparkles,
   Video,
   PanelLeft,
+  PanelLeftClose,
+  PanelRightClose,
   MessageSquare,
 } from 'lucide-react';
 import { Course, CourseSlide, CourseSyllabusItem } from '../domain/courses/types';
@@ -54,6 +56,10 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
 
   // Responsive mobile view tab switcher ('content' = Bảng trái, 'slides' = Ở giữa, 'tutor' = Bảng phải)
   const [mobileActiveTab, setMobileActiveTab] = useState<'content' | 'slides' | 'tutor'>('slides');
+  // Wide screens (tablet landscape, desktop): side columns can be folded to give the slide more room
+  const [showSyllabusColumn, setShowSyllabusColumn] = useState(true);
+  const [showTutorColumn, setShowTutorColumn] = useState(true);
+  const swipeStartRef = useRef<{ x: number; y: number; id: number } | null>(null);
 
   // Dedicated AI Theory Tutor State (completely independent from homepage & 3D workspace AI)
   const [tutorMessages, setTutorMessages] = useState<TheoryTutorMessage[]>([]);
@@ -155,6 +161,21 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [slides.length]);
+
+  // Touch / pen: swipe the slide left or right to change slides (vertical moves still scroll)
+  const handleSlidePointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse') return;
+    swipeStartRef.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+  };
+  const handleSlidePointerUp = (e: React.PointerEvent) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || start.id !== e.pointerId) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    setCurrentSlideIdx((prev) => (dx < 0 ? Math.min(slides.length - 1, prev + 1) : Math.max(0, prev - 1)));
+  };
 
   const handleSelectLesson = (item: CourseSyllabusItem) => {
     if (item.sectionType === 'practice' || item.isPracticalLab) {
@@ -267,7 +288,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full w-full overflow-hidden bg-slate-100/70 dark:bg-[#050d1a] text-slate-800 dark:text-slate-100 select-none">
       {/* 1. TOP HEADER BAR: Back Button + Lesson Info + Completion Progress */}
-      <div className="h-14 px-4 sm:px-6 bg-white/95 dark:bg-[#071426]/95 border-b border-slate-200 dark:border-cyan-900/50 flex items-center justify-between gap-4 shrink-0 z-20">
+      <div className="h-14 short:h-11 px-4 sm:px-6 short:px-2 bg-white/95 dark:bg-[#071426]/95 border-b border-slate-200 dark:border-cyan-900/50 flex items-center justify-between gap-4 shrink-0 z-20 safe-x">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBackToMyCourse}
@@ -286,7 +307,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
                 {activeLesson.title}
               </h1>
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate short:hidden">
               Khóa học: {course.title}
             </p>
           </div>
@@ -294,6 +315,26 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
 
         {/* Completion Status Bar */}
         <div className="flex items-center gap-3 shrink-0">
+          <div className="hidden lg:flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowSyllabusColumn((v) => !v)}
+              className="touch-target p-2 rounded-lg border border-slate-200 dark:border-cyan-900/60 text-slate-500 hover:text-cyan-600 dark:hover:text-cyan-300"
+              title={showSyllabusColumn ? 'Thu gọn đề cương' : 'Mở đề cương'}
+              aria-pressed={showSyllabusColumn}
+            >
+              {showSyllabusColumn ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeft className="w-4 h-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowTutorColumn((v) => !v)}
+              className="touch-target p-2 rounded-lg border border-slate-200 dark:border-cyan-900/60 text-slate-500 hover:text-cyan-600 dark:hover:text-cyan-300"
+              title={showTutorColumn ? 'Thu gọn Trợ giảng AI' : 'Mở Trợ giảng AI'}
+              aria-pressed={showTutorColumn}
+            >
+              {showTutorColumn ? <PanelRightClose className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+            </button>
+          </div>
           <div className="hidden sm:flex flex-col items-end">
             <div className="flex items-center gap-2 text-[11px] font-bold">
               <span className="text-slate-500 dark:text-slate-400">
@@ -327,10 +368,10 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
       </div>
 
       {/* Mobile Segment Switcher (< lg screens only) */}
-      <div className="lg:hidden flex items-center bg-white dark:bg-[#071629] border-b border-slate-200 dark:border-cyan-900/50 p-1.5 shrink-0 justify-around text-xs font-bold">
+      <div className="lg:hidden flex items-center gap-1 bg-white dark:bg-[#071629] border-b border-slate-200 dark:border-cyan-900/50 p-1.5 short:p-1 shrink-0 justify-around text-xs font-bold safe-x">
         <button
           onClick={() => setMobileActiveTab('content')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+          className={`flex-1 py-1.5 short:py-1 coarse:min-h-10 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
             mobileActiveTab === 'content'
               ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border border-cyan-500/40'
               : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
@@ -341,7 +382,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
         </button>
         <button
           onClick={() => setMobileActiveTab('slides')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+          className={`flex-1 py-1.5 short:py-1 coarse:min-h-10 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
             mobileActiveTab === 'slides'
               ? 'bg-cyan-600 text-white'
               : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
@@ -352,7 +393,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
         </button>
         <button
           onClick={() => setMobileActiveTab('tutor')}
-          className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
+          className={`flex-1 py-1.5 short:py-1 coarse:min-h-10 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer ${
             mobileActiveTab === 'tutor'
               ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/40'
               : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
@@ -372,8 +413,8 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
         {/* ========================================================================= */}
         <aside
           className={`w-full lg:w-72 xl:w-80 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-cyan-900/50 bg-white/95 dark:bg-[#061222]/95 flex flex-col shrink-0 overflow-hidden ${
-            mobileActiveTab === 'content' ? 'flex flex-1' : 'hidden lg:flex'
-          }`}
+            mobileActiveTab === 'content' ? 'flex flex-1' : 'hidden'
+          } ${showSyllabusColumn ? 'lg:flex lg:flex-none' : 'lg:hidden'}`}
         >
           {/* Progress Header */}
           <div className="p-3.5 bg-slate-50 dark:bg-[#08192e] border-b border-slate-200 dark:border-cyan-900/40 space-y-2 shrink-0">
@@ -534,7 +575,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
         {/* Ở GIỮA: TRÌNH CHIẾU SLIDE BÀI GIẢNG (READ-ONLY SLIDE VIEWER & CONTROLS)   */}
         {/* ========================================================================= */}
         <main
-          className={`flex-1 flex flex-col overflow-y-auto p-3 sm:p-5 lg:p-6 justify-between gap-4 ${
+          className={`flex-1 flex flex-col overflow-y-auto p-3 sm:p-5 lg:p-6 short:p-2 justify-between gap-4 short:gap-2 ${
             mobileActiveTab === 'slides' ? 'flex flex-1' : 'hidden lg:flex'
           }`}
         >
@@ -618,8 +659,14 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
             </div>
           ) : (
             /* Large Read-Only Slide Presentation Canvas */
-            <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col justify-center">
-              <div className="relative w-full min-h-[380px] sm:min-h-[440px] rounded-[28px] bg-white dark:bg-[#08172b] border-2 border-cyan-500/30 shadow-[0_20px_60px_rgba(6,182,212,0.12)] p-6 sm:p-10 flex flex-col justify-between overflow-hidden">
+            <div
+              className="max-w-4xl mx-auto w-full flex-1 flex flex-col justify-center"
+              style={{ touchAction: 'pan-y' }}
+              onPointerDown={handleSlidePointerDown}
+              onPointerUp={handleSlidePointerUp}
+              onPointerCancel={() => (swipeStartRef.current = null)}
+            >
+              <div className="relative w-full min-h-[380px] sm:min-h-[440px] short:min-h-0 short:p-4 rounded-[28px] bg-white dark:bg-[#08172b] border-2 border-cyan-500/30 shadow-[0_20px_60px_rgba(6,182,212,0.12)] p-6 sm:p-10 flex flex-col justify-between overflow-hidden">
                 {/* Top Accent Gradient Bar */}
                 <div className="absolute top-0 inset-x-0 h-2 bg-gradient-to-r from-cyan-500 via-sky-500 to-teal-400" />
 
@@ -744,8 +791,8 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
         {/* ========================================================================= */}
         <aside
           className={`w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-cyan-900/50 bg-white/95 dark:bg-[#061222]/95 flex flex-col shrink-0 overflow-hidden ${
-            mobileActiveTab === 'tutor' ? 'flex flex-1' : 'hidden lg:flex'
-          }`}
+            mobileActiveTab === 'tutor' ? 'flex flex-1' : 'hidden'
+          } ${showTutorColumn ? 'lg:flex lg:flex-none' : 'lg:hidden'}`}
         >
           {/* AI Tutor Header */}
           <div className="px-3.5 py-3 border-b border-slate-200 dark:border-cyan-900/50 flex items-center justify-between shrink-0 bg-slate-50/80 dark:bg-[#08182d]">

@@ -215,7 +215,7 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({
   return (
     <div className="border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-20 shrink-0 select-none transition-all">
       {/* Tab Header Bar */}
-      <div className="h-10 px-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80 overflow-x-auto">
+      <div className="h-10 short:h-9 px-4 short:px-2 flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80 overflow-x-auto safe-x">
         <div className="flex items-center gap-2">
           {/* ONLY DISPLAY PRACTICE TABS WHEN practiceContext EXISTS (In a Course Practice Lab) */}
           {practiceContext && (
@@ -378,7 +378,7 @@ export const ValidationPanel: React.FC<ValidationPanelProps> = ({
 
       {/* Expanded Content Drawer */}
       {isExpanded && (
-        <div className="h-56 overflow-y-auto p-3.5 text-xs">
+        <div className="h-56 short:h-[42vh] overflow-y-auto p-3.5 short:p-2 text-xs">
           {/* TAB 1: NỘI DUNG THỰC HÀNH */}
           {activeTab === 'practice_content' && (
             !practiceContext ? (

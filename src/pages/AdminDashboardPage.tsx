@@ -64,7 +64,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 }) => {
   const { language, formatCurrency } = useI18n();
   const [activeTab, setActiveTab] = useState<AdminTabId>('overview');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Tablets in portrait start with the icon-only sidebar so tables keep their width
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1100);
 
   // Server verification state
   const [isVerifying, setIsVerifying] = useState(true);
@@ -448,7 +449,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   );
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-transparent text-slate-900 dark:text-slate-100 select-none transition-colors">
+    <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-transparent text-slate-900 dark:text-slate-100 select-none transition-colors">
       {/* Toast Notification */}
       {actionToast && (
         <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-cyan-950 border border-cyan-500/40 text-white text-xs font-semibold shadow-xl flex items-center gap-2">
@@ -459,13 +460,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
       {/* Left Collapsible Admin Sidebar */}
       <aside
-        className={`${
-          sidebarCollapsed ? 'w-16' : 'w-64'
-        } bg-white/95 dark:bg-[#0c1424]/95 backdrop-blur-md border-r border-[#d7e7f0] dark:border-cyan-950/50 flex flex-col justify-between shrink-0 transition-all duration-200 z-20 shadow-sm`}
+        className={`w-full ${
+          sidebarCollapsed ? 'md:w-16' : 'md:w-64'
+        } bg-white/95 dark:bg-[#0c1424]/95 backdrop-blur-md border-b md:border-b-0 md:border-r border-[#d7e7f0] dark:border-cyan-950/50 flex flex-col justify-between shrink-0 transition-all duration-200 z-20 shadow-sm`}
       >
-        <div className="p-3.5 space-y-4 overflow-y-auto">
-          {/* Sidebar Header */}
-          <div className="flex items-center justify-between px-2 py-1.5 border-b border-[#d7e7f0] dark:border-cyan-950/50">
+        <div className="p-2 md:p-3.5 md:space-y-4 overflow-y-auto">
+          {/* Sidebar Header (phones show the sections as a scrollable tab bar instead) */}
+          <div className="hidden md:flex items-center justify-between px-2 py-1.5 border-b border-[#d7e7f0] dark:border-cyan-950/50">
             {!sidebarCollapsed && (
               <div className="flex items-center gap-2.5 truncate">
                 <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-teal-500 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs shadow-cyan-500/20">
@@ -491,7 +492,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
           </div>
 
           {/* 10 Navigation Items */}
-          <nav className="space-y-1">
+          <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible md:space-y-0 snap-x" aria-label="Admin sections">
             {sidebarItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -501,16 +502,17 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   title={sidebarCollapsed ? label : undefined}
-                  className={`w-full flex items-center ${
-                    sidebarCollapsed ? 'justify-center px-2' : 'justify-start px-3'
-                  } py-2.5 rounded-xl text-xs font-semibold transition-all gap-3 ${
+                  aria-current={isActive ? 'page' : undefined}
+                  className={`shrink-0 md:w-full snap-start flex items-center whitespace-nowrap px-3 ${
+                    sidebarCollapsed ? 'md:justify-center md:px-2' : 'md:justify-start md:px-3'
+                  } py-2.5 coarse:min-h-11 rounded-xl text-xs font-semibold transition-all gap-3 ${
                     isActive
                       ? 'tech-btn-primary'
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
                   }`}
                 >
                   <Icon className="w-4 h-4 shrink-0 drop-shadow-xs" />
-                  {!sidebarCollapsed && <span className="truncate">{label}</span>}
+                  <span className={`truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>{label}</span>
                 </button>
               );
             })}
@@ -518,7 +520,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         </div>
 
         {/* Footer Security Badge */}
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800">
+        <div className="hidden md:block p-3 border-t border-slate-200 dark:border-slate-800">
           {!sidebarCollapsed ? (
             <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
               <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -538,7 +540,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       </aside>
 
       {/* Main Dashboard Content Area */}
-      <main className="flex-1 overflow-y-auto p-5 md:p-7 space-y-6">
+      <main className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-5 md:p-7 space-y-6 pb-24 md:pb-7">
         {/* Top Bar with Active Section Title & Refresh */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
