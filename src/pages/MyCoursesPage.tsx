@@ -162,7 +162,7 @@ export const MyCoursesPage: React.FC<MyCoursesPageProps> = ({
                     {theoryLessons.map((lesson, idx) => {
                       const isCompleted = enrollment.completedLessons.includes(lesson.id);
                       const viewedSlides = courseService.getViewedSlides(course.id, lesson.id);
-                      const totalSlides = lesson.slides?.length || 0;
+                      const totalSlides = lesson.slideCount ?? lesson.slides?.length ?? 0;
 
                       return (
                         <div
@@ -210,7 +210,7 @@ export const MyCoursesPage: React.FC<MyCoursesPageProps> = ({
                                 <FileSpreadsheet className="w-3.5 h-3.5" />
                                 {totalSlides} slide ({viewedSlides.length}/{totalSlides} đã xem)
                               </span>
-                              {lesson.videoUrl && (
+                              {(lesson.hasVideo || lesson.videoUrl) && (
                                 <span className="flex items-center gap-1 text-indigo-500 font-semibold">
                                   <Video className="w-3.5 h-3.5" />
                                   Có Video
@@ -266,8 +266,8 @@ export const MyCoursesPage: React.FC<MyCoursesPageProps> = ({
                   <div className="space-y-3">
                     {practiceLessons.map((lab, idx) => {
                       const isCompleted = enrollment.completedLessons.includes(lab.id);
-                      const compCount = lab.practiceProjectSnapshot?.components?.length || 0;
-                      const wireCount = lab.practiceProjectSnapshot?.connections?.length || 0;
+                      const compCount = lab.practiceComponentCount ?? lab.practiceProjectSnapshot?.components?.length ?? 0;
+                      const wireCount = lab.practiceConnectionCount ?? lab.practiceProjectSnapshot?.connections?.length ?? 0;
 
                       return (
                         <div

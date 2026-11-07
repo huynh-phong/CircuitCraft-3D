@@ -89,7 +89,7 @@
 ### 7. 🛡️ Bảo mật Đa kênh & Cổng Thanh toán VietQR
 - Đăng nhập linh hoạt: Email/Password, Mã xác thực OTP 6 số qua Email (tích hợp chuẩn **Brevo HTTPS API** và Nodemailer SMTP) hoặc SMS.
 - Phân quyền người dùng 3 cấp: Học viên (User), Giảng viên (Creator) và Quản trị viên (Admin).
-- Tích hợp tạo mã **VietQR (Napas 24/7)** động tự động kích hoạt các gói thành viên VIP (FREE, PRO, ENTERPRISE).
+- Tạo mã **VietQR** động cho đơn hàng gói thành viên (Free, Student, Creator Pro), khóa học và sản phẩm. Xác nhận thanh toán hiện là **Thanh toán mô phỏng (Mock Payment)** dùng để kiểm thử luồng cấp quyền — chưa tích hợp xác nhận ngân hàng tự động (xem `docs/CONTRACTS.md`).
 
 ---
 

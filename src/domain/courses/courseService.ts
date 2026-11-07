@@ -6,7 +6,9 @@ import { authService } from '../../persistence/authService';
 import { getSupabase } from '../../persistence/supabaseClient';
 import { createDefaultProjectDocument } from '../project/document';
 
-const DYNAMIC_COURSES_STORAGE_KEY = 'cc3d_dynamic_courses_v3';
+const DYNAMIC_COURSES_STORAGE_KEY = 'cc3d_dynamic_courses_v4';
+/** Signed media links last 6 hours: content older than this is fetched again. */
+const CONTENT_MAX_AGE_MS = 5 * 60 * 60 * 1000;
 const LEGACY_COURSE_IDS = new Set([
   'course-uno-r3-basic',
   'course-intro-stem-3d',
@@ -24,7 +26,7 @@ const LEGACY_COURSE_IDS = new Set([
 export function normalizeToFrontendCourse(raw: any): Course {
   // If raw is our built-in complete course, preserve its full syllabus and slides
   const builtInMatch = COURSES.find((c) => c.id === raw.id);
-  if (builtInMatch && (!Array.isArray(raw.syllabus) || raw.syllabus.length === 0)) {
+  if (builtInMatch && (raw.contentRestricted || !Array.isArray(raw.syllabus) || raw.syllabus.length === 0)) {
     return builtInMatch;
   }
 
@@ -42,6 +44,10 @@ export function normalizeToFrontendCourse(raw: any): Course {
       const proj = item.practiceProjectSnapshot || item.practiceProject;
       const sum = item.summary || item.shortDescription || item.description || item.desc || '';
       return {
+        slideCount: item.slideCount ?? (Array.isArray(item.slides) ? item.slides.length : 0),
+        hasVideo: item.hasVideo ?? Boolean(item.videoUrl),
+        practiceComponentCount: item.practiceComponentCount ?? proj?.components?.length ?? 0,
+        practiceConnectionCount: item.practiceConnectionCount ?? proj?.connections?.length ?? 0,
         id: item.id || `syl-${idx + 1}`,
         title: item.title || `Bài ${idx + 1}`,
         duration: item.duration || (isPractice ? '45 phút' : '30 phút'),
@@ -75,6 +81,10 @@ export function normalizeToFrontendCourse(raw: any): Course {
           );
           const sum = les.summary || les.shortDescription || les.content || '';
           syllabus.push({
+            slideCount: Array.isArray(les.slides) ? les.slides.length : 0,
+            hasVideo: Boolean(les.videoUrl),
+            practiceComponentCount: proj?.components?.length ?? 0,
+            practiceConnectionCount: proj?.connections?.length ?? 0,
             id: les.id || `les-${syllabus.length + 1}`,
             title: les.title || `Bài ${syllabus.length + 1}`,
             duration: les.duration || '35 phút',
@@ -109,6 +119,7 @@ export function normalizeToFrontendCourse(raw: any): Course {
 
   return {
     id: raw.id,
+    contentLoaded: !raw.contentRestricted,
     title: raw.title || 'Khóa học thiết kế mạch',
     slug:
       raw.slug ||
@@ -155,17 +166,42 @@ export function normalizeToFrontendCourse(raw: any): Course {
   };
 }
 
+/** Only the outline is kept: lessons of paid courses must not stay on a shared browser. */
+function withoutLessonContent(course: Course): Course {
+  return {
+    ...course,
+    contentLoaded: false,
+    syllabus: course.syllabus.map((item) => ({
+      id: item.id,
+      title: item.title,
+      duration: item.duration,
+      summary: item.summary,
+      shortDescription: item.shortDescription,
+      sectionType: item.sectionType,
+      isPracticalLab: item.isPracticalLab,
+      isLab: item.isLab,
+      slideCount: item.slideCount,
+      hasVideo: item.hasVideo,
+      practiceProjectName: item.practiceProjectName,
+      practiceComponentCount: item.practiceComponentCount,
+      practiceConnectionCount: item.practiceConnectionCount,
+    })),
+  };
+}
+
 class CourseService {
   private memoryEnrollments: Record<string, UserCourseEnrollment> | null = null;
   private dynamicCourses: Course[] = [];
   private currentUserId: string | null = null;
   private listeners: Array<() => void> = [];
+  private contentLoadedAt = new Map<string, number>();
 
   constructor() {
     purgeLegacyGlobalStorage();
     try {
       localStorage.removeItem('cc3d_dynamic_courses_v2');
       localStorage.removeItem('cc3d_dynamic_courses_v1');
+      localStorage.removeItem('cc3d_dynamic_courses_v3');
     } catch {}
     this.loadDynamicCoursesFromLocal();
     this.fetchPublishedCoursesFromServer();
@@ -177,6 +213,9 @@ class CourseService {
       const newUserId = user?.id || null;
       if (newUserId !== this.currentUserId) {
         this.currentUserId = newUserId;
+        // Lessons loaded for the previous account do not carry over to this one
+        this.dynamicCourses = this.dynamicCourses.map(withoutLessonContent);
+        this.contentLoadedAt.clear();
         this.memoryEnrollments = null;
         this.loadEnrollments();
         this.notify();
@@ -192,7 +231,7 @@ class CourseService {
         if (Array.isArray(parsed)) {
           this.dynamicCourses = parsed
             .filter((c) => c && c.id && !LEGACY_COURSE_IDS.has(c.id))
-            .map(normalizeToFrontendCourse);
+            .map((c) => withoutLessonContent(normalizeToFrontendCourse(c)));
         }
       }
     } catch {}
@@ -200,7 +239,7 @@ class CourseService {
 
   private saveDynamicCoursesToLocal(): void {
     try {
-      localStorage.setItem(DYNAMIC_COURSES_STORAGE_KEY, JSON.stringify(this.dynamicCourses));
+      localStorage.setItem(DYNAMIC_COURSES_STORAGE_KEY, JSON.stringify(this.dynamicCourses.map(withoutLessonContent)));
     } catch {}
   }
 
@@ -214,24 +253,15 @@ class CourseService {
             .filter((c: any) => c && c.id && !LEGACY_COURSE_IDS.has(c.id))
             .map(normalizeToFrontendCourse);
 
-          // Merge with local courses (preferring latest syllabus data)
+          // The server list is complete. Lessons already loaded in this session stay available.
           const map = new Map<string, Course>();
-          for (const lc of this.dynamicCourses) {
-            if (!LEGACY_COURSE_IDS.has(lc.id)) {
-              map.set(lc.id, lc);
-            }
-          }
           for (const sc of serverCourses) {
-            const existing = map.get(sc.id);
-            if (existing && existing.syllabus.length >= sc.syllabus.length) {
-              // Merge keeping rich local slides/snapshots if server truncated anything
-              map.set(sc.id, {
-                ...sc,
-                syllabus: sc.syllabus.length > 0 ? sc.syllabus : existing.syllabus,
-              });
-            } else {
-              map.set(sc.id, sc);
-            }
+            const existing = this.dynamicCourses.find((c) => c.id === sc.id);
+            map.set(sc.id, existing?.contentLoaded ? { ...sc, syllabus: existing.syllabus, contentLoaded: true } : sc);
+          }
+          // A creator's new course can be missing from a list fetched just before it was published
+          for (const lc of this.dynamicCourses) {
+            if (!map.has(lc.id) && !LEGACY_COURSE_IDS.has(lc.id) && lc.contentLoaded) map.set(lc.id, lc);
           }
 
           this.dynamicCourses = Array.from(map.values());
@@ -262,8 +292,35 @@ class CourseService {
     return this.getCourses().find((c) => c.id === courseId);
   }
 
+  /**
+   * Loads the lessons of a course. The server decides who may read them (free, purchased, owner or
+   * admin); it throws an error with `code: 'PAYMENT_REQUIRED'` otherwise.
+   */
+  public async ensureCourseContent(courseId: string): Promise<Course | undefined> {
+    const existing = this.getCourseById(courseId);
+    if (!existing || existing.contentLoaded === undefined) return existing; // built-in course
+    const loadedAt = this.contentLoadedAt.get(courseId);
+    if (existing.contentLoaded && loadedAt && Date.now() - loadedAt < CONTENT_MAX_AGE_MS) return existing;
+
+    const res = await fetch(`/api/courses/${encodeURIComponent(courseId)}/content`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.course) {
+      const error: Error & { code?: string } = new Error(data.error || 'Không thể tải nội dung khóa học.');
+      error.code = data.code;
+      throw error;
+    }
+    const loaded = { ...normalizeToFrontendCourse(data.course), contentLoaded: true };
+    const idx = this.dynamicCourses.findIndex((c) => c.id === courseId);
+    if (idx >= 0) this.dynamicCourses[idx] = loaded;
+    else this.dynamicCourses.unshift(loaded);
+    this.contentLoadedAt.set(courseId, Date.now());
+    this.notify();
+    return loaded;
+  }
+
   public registerCreatedCourse(rawCourse: any): Course {
-    const normalized = normalizeToFrontendCourse(rawCourse);
+    // Media links in this response are unsigned: opening the course loads its signed content
+    const normalized = { ...normalizeToFrontendCourse(rawCourse), contentLoaded: false };
     const idx = this.dynamicCourses.findIndex((c) => c.id === normalized.id);
     if (idx >= 0) {
       this.dynamicCourses[idx] = normalized;

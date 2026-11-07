@@ -63,6 +63,11 @@ export interface CourseSyllabusItem {
   practiceSummary?: string;
   labGoal?: string;
   labLessonId?: string;
+  // Tóm tắt công khai khi nội dung bài học chưa được tải
+  slideCount?: number;
+  hasVideo?: boolean;
+  practiceComponentCount?: number;
+  practiceConnectionCount?: number;
 }
 
 export interface CourseAuthor {
@@ -75,6 +80,8 @@ export interface CourseAuthor {
 
 export interface Course {
   id: string;
+  /** false: only the public outline is here; ensureCourseContent loads the lessons if allowed. */
+  contentLoaded?: boolean;
   title: string;
   slug: string;
   tagline: string;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import {
   X,
   Eye,
@@ -15,12 +15,15 @@ import {
   ExternalLink,
   CheckCircle2,
 } from 'lucide-react';
-import { ThreeScene } from '../scene/ThreeScene';
+import { RouteFallback } from './ui/PageTransition';
 import { ProjectDocument } from '../domain/project/types';
 import { useI18n } from '../i18n/context';
+import { fetchProductDesign, ProductDesignError } from '../marketplace/designService';
 import { paymentService } from '../billing/paymentService';
 import { projectRepositoryManager } from '../persistence/repositoryManager';
 import { Portal } from './ui/Portal';
+
+const ThreeScene = lazy(() => import('../scene/ThreeScene').then((m) => ({ default: m.ThreeScene })));
 
 interface Product3DViewerModalProps {
   productId: string;
@@ -58,14 +61,25 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [versionText, setVersionText] = useState('1.0.0');
+  const [isLimitedPreview, setIsLimitedPreview] = useState(false);
 
   const handleSaveAndOpenInEditor = async () => {
     if (!currentUser && onOpenAuthModal) {
       onOpenAuthModal();
       return;
     }
-    const docToOpen = previewDoc || fallbackProject;
-    if (!docToOpen) return;
+    // What goes to the editor is the complete design from the server, never the public preview
+    let docToOpen: ProjectDocument;
+    try {
+      docToOpen = fallbackProject || (await fetchProductDesign(productId));
+    } catch (err) {
+      if (err instanceof ProductDesignError && err.code === 'PAYMENT_REQUIRED' && onBuy) {
+        onBuy();
+      } else {
+        setError(err instanceof Error ? err.message : 'Không thể tải bản thiết kế.');
+      }
+      return;
+    }
     try {
       const repo = projectRepositoryManager.getActiveRepository();
       const newDoc: ProjectDocument = {
@@ -108,6 +122,7 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
       .then((data) => {
         if (data.preview && Array.isArray(data.preview.components) && data.preview.components.length > 0) {
           setVersionText(data.version || '1.0.0');
+          setIsLimitedPreview(Boolean(data.preview.limitedPreview));
           // Format as ProjectDocument for ThreeScene
           const doc: ProjectDocument = {
             projectId: `preview-${productId}`,
@@ -148,77 +163,9 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
           setPreviewDoc(fallbackProject);
           return;
         }
-        // Fallback default demonstration circuit
-        setPreviewDoc({
-          projectId: `preview-${productId}`,
-          name: productTitle,
-          schemaVersion: 1,
-          revision: 1,
-          units: 'mm',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          board: {
-            width: 140,
-            depth: 90,
-            solderMaskColor: '#0f766e',
-            thickness: 1.6,
-            copperLayerCount: 2,
-            gridSpacing: 2.54,
-          },
-          wireRoutes: [],
-          components: [
-            {
-              instanceId: 'cmp-p1',
-              definitionId: 'dc-source',
-              name: 'Nguồn DC 5V',
-              position: { x: -35, y: 0, z: 0 },
-              rotation: { x: 0, y: 0, z: 0 },
-              parameters: { voltage: 5.0 },
-            },
-            {
-              instanceId: 'cmp-p2',
-              definitionId: 'resistor',
-              name: 'Điện trở 220Ω',
-              position: { x: -5, y: 0, z: 0 },
-              rotation: { x: 0, y: 0, z: 0 },
-              parameters: { resistance: 220 },
-            },
-            {
-              instanceId: 'cmp-p3',
-              definitionId: 'led',
-              name: 'LED Xanh',
-              position: { x: 25, y: 0, z: 0 },
-              rotation: { x: 0, y: 0, z: 0 },
-              parameters: { color: 'green' },
-            },
-          ],
-          connections: [
-            {
-              id: 'c1',
-              fromComponentId: 'cmp-p1',
-              fromPinId: 'vcc',
-              toComponentId: 'cmp-p2',
-              toPinId: 'pin1',
-              wireColor: '#ef4444',
-            },
-            {
-              id: 'c2',
-              fromComponentId: 'cmp-p2',
-              fromPinId: 'pin2',
-              toComponentId: 'cmp-p3',
-              toPinId: 'anode',
-              wireColor: '#ef4444',
-            },
-            {
-              id: 'c3',
-              fromComponentId: 'cmp-p1',
-              fromPinId: 'gnd',
-              toComponentId: 'cmp-p3',
-              toPinId: 'cathode',
-              wireColor: '#10b981',
-            },
-          ],
-        });
+        // Never show an invented circuit in place of the product
+        setPreviewDoc(null);
+        setError('Không thể tải bản xem trước 3D của sản phẩm này.');
       })
       .finally(() => setIsLoading(false));
   }, [isOpen, productId, productTitle, fallbackProject]);
@@ -312,6 +259,15 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
               </span>
             </div>
           ) : previewDoc ? (
+            <>
+            {isLimitedPreview && !isOwned && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none max-w-[90%] text-center px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-700 text-[11px] text-slate-200">
+                {language === 'vi'
+                  ? 'Bản xem trước: chỉ hiện vị trí linh kiện. Dây nối và thông số có sau khi mua.'
+                  : 'Preview: part placement only. Wiring and values are included after purchase.'}
+              </div>
+            )}
+            <Suspense fallback={<RouteFallback />}>
             <ThreeScene
               document={previewDoc}
               selectedComponentId={null}
@@ -330,6 +286,8 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
               qualityPreset="balanced"
               showGrid={true}
             />
+            </Suspense>
+            </>
           ) : null}
 
           {/* Interaction Guidance Banner */}

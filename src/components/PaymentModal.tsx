@@ -56,6 +56,22 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const [isVerifying, setIsVerifying] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'verifying' | 'paid' | 'error'>('pending');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Payment mode is decided by the server; the client only reads it to label the checkout
+  const [paymentMode, setPaymentMode] = useState<'mock' | 'real' | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    fetch('/api/payments/config')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (!cancelled && cfg && (cfg.mode === 'mock' || cfg.mode === 'real')) setPaymentMode(cfg.mode);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (order && isOpen) {
@@ -109,8 +125,16 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             onPaymentSuccess(order);
           }
         }, 1400);
+      } else if (paymentMode === 'real' || data.paymentMode === 'real') {
+        // Real payment mode: only a server-confirmed payment unlocks the purchase
+        setPaymentStatus('pending');
+        setErrorMessage(
+          language === 'vi'
+            ? 'Hệ thống chưa ghi nhận tiền vào tài khoản. Vui lòng kiểm tra lại nội dung chuyển khoản hoặc thử lại sau 30 giây.'
+            : 'Payment not detected yet. Please ensure exact transfer content or retry in 30 seconds.'
+        );
       } else {
-        // Mock verification for local/demo test if server is pending
+        // Mock mode (server-controlled): simulate a successful transfer, no real money moves
         const mockVerify = await fetch('/api/orders/mock-verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -182,6 +206,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                 <ShieldCheck className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
                 <span>{language === 'vi' ? 'Cổng thanh toán VietQR' : 'VietQR Gateway'}</span>
               </div>
+              {paymentMode === 'mock' && (
+                <div
+                  className="inline-flex items-center gap-1 ml-1.5 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 border border-amber-300/70 dark:border-amber-500/40 text-[10px] font-bold tracking-wider uppercase mb-0.5"
+                  title={
+                    language === 'vi'
+                      ? 'Môi trường kiểm thử: giao dịch được giả lập, không có tiền thật được chuyển.'
+                      : 'Test environment: the transaction is simulated, no real money is transferred.'
+                  }
+                >
+                  <span>{language === 'vi' ? 'Thanh toán mô phỏng' : 'Simulated payment'}</span>
+                </div>
+              )}
               <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
                 {language === 'vi' ? 'Thanh toán chuyển khoản ngân hàng' : 'Bank Transfer Payment'}
               </h2>
@@ -264,19 +300,24 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               "
             >
               <div className="relative p-2 rounded-xl bg-white border border-slate-100 shadow-inner">
-                <img
-                  src={order.bankDetails.qrUrl}
-                  alt="VietQR Code"
-                  className="w-40 h-40 object-contain block"
-                  crossOrigin="anonymous"
-                />
+                {order.bankDetails.qrUrl ? (
+                  <img src={order.bankDetails.qrUrl} alt="VietQR Code" className="w-40 h-40 object-contain block" />
+                ) : (
+                  <div className="w-40 h-40 flex items-center justify-center text-center text-xs font-semibold text-slate-500 p-3">
+                    {language === 'vi' ? 'Thanh toán mô phỏng: không có mã QR và không chuyển tiền thật' : 'Simulated payment: no QR code, no real money'}
+                  </div>
+                )}
               </div>
-              <p className="text-[11px] font-semibold text-slate-700 text-center mt-2.5">
-                {language === 'vi' ? 'Quét mã VietQR tự động điền' : 'Scan VietQR to auto-fill'}
-              </p>
-              <span className="text-[10px] text-slate-400 text-center">
-                {language === 'vi' ? 'Hỗ trợ tất cả app Ngân hàng & MoMo' : 'Supports all banking apps & MoMo'}
-              </span>
+              {order.bankDetails.qrUrl && (
+                <>
+                  <p className="text-[11px] font-semibold text-slate-700 text-center mt-2.5">
+                    {language === 'vi' ? 'Quét mã VietQR tự động điền' : 'Scan VietQR to auto-fill'}
+                  </p>
+                  <span className="text-[10px] text-slate-400 text-center">
+                    {language === 'vi' ? 'Hỗ trợ tất cả app Ngân hàng & MoMo' : 'Supports all banking apps & MoMo'}
+                  </span>
+                </>
+              )}
             </div>
 
             {/* Right: Bank Details in elevated tiles */}

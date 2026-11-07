@@ -4,9 +4,18 @@ import crypto from 'crypto';
 import dns from 'dns';
 import dotenv from 'dotenv';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { readJsonFile, writeJsonAtomic } from './atomicJson.ts';
+import {
+  isRemotePersistence,
+  getPersistenceMode,
+  registerCollection,
+  saveCollection,
+  trackBackgroundWork,
+  RemoteRow,
+} from './persistence.ts';
 
 // Always load environment variables for standalone or server-side usage
-dotenv.config({ override: true });
+dotenv.config({ override: true, quiet: true } as any);
 
 const dnsPromises = dns.promises;
 
@@ -22,6 +31,10 @@ export interface RegisteredUser {
   createdAt: string;
   verifiedAt?: string;
   lastActiveAt?: string;
+  /** Incremented on "log out everywhere" / password reset to revoke previously issued session tokens. */
+  sessionVersion?: number;
+  /** The current tier came from a simulated checkout: it grants nothing in real payment mode. */
+  tierGrantedByMock?: boolean;
 }
 
 export interface SyncedProjectRecord {
@@ -124,16 +137,55 @@ let systemSettings: SystemSettingsRecord = {
 // Domain DNS existence cache (10-minute TTL)
 const domainDnsCache = new Map<string, { exists: boolean; expiresAt: number; reason?: string }>();
 
-// Password hash helper
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
+// Password hashing: salted scrypt (memory-hard KDF from Node's crypto module).
+// Format: scrypt$N$r$p$<salt b64url>$<key b64url>
+// Legacy accounts stored an unsalted SHA-256 hex digest; those are still accepted once and
+// transparently upgraded to scrypt on the next successful login.
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 32;
+
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(password, salt, SCRYPT_KEYLEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P });
+  return `scrypt$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64url')}$${key.toString('base64url')}`;
+}
+
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const ba = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+
+export function verifyPasswordHash(password: string, stored: string): { ok: boolean; needsRehash: boolean } {
+  if (!stored) return { ok: false, needsRehash: false };
+  if (stored.startsWith('scrypt$')) {
+    const parts = stored.split('$');
+    if (parts.length !== 6) return { ok: false, needsRehash: false };
+    const [, nStr, rStr, pStr, saltB64, keyB64] = parts;
+    const expected = Buffer.from(keyB64, 'base64url');
+    const derived = crypto.scryptSync(password, Buffer.from(saltB64, 'base64url'), expected.length, {
+      N: Number(nStr),
+      r: Number(rStr),
+      p: Number(pStr),
+    });
+    const ok = derived.length === expected.length && crypto.timingSafeEqual(derived, expected);
+    return { ok, needsRehash: ok && Number(nStr) < SCRYPT_N };
+  }
+  if (/^[0-9a-f]{64}$/i.test(stored)) {
+    const legacy = crypto.createHash('sha256').update(password).digest('hex');
+    const ok = timingSafeEqualStr(legacy, stored.toLowerCase());
+    return { ok, needsRehash: ok };
+  }
+  return { ok: false, needsRehash: false };
 }
 
 // Supabase admin client for database sync
 let cachedSupabaseAdmin: SupabaseClient | null = null;
 function getSupabaseAdmin(): SupabaseClient | null {
   if (cachedSupabaseAdmin) return cachedSupabaseAdmin;
-  dotenv.config({ override: true });
+  dotenv.config({ override: true, quiet: true } as any);
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRole) return null;
@@ -163,6 +215,12 @@ const DISPOSABLE_EMAIL_DOMAINS = new Set([
   'mohmal.com',
 ]);
 
+function archiveRemovedUser(user: RegisteredUser) {
+  const archiveFile = path.join(DATA_DIR, 'removed_users_archive.json');
+  const archive = readJsonFile<any[]>(archiveFile);
+  writeJsonAtomic(archiveFile, [...(Array.isArray(archive) ? archive : []), { ...user, removedAt: new Date().toISOString() }]);
+}
+
 // Ensure data folder and load users
 function initUserStore() {
   try {
@@ -170,15 +228,16 @@ function initUserStore() {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
-    if (fs.existsSync(USERS_FILE)) {
-      const raw = fs.readFileSync(USERS_FILE, 'utf-8');
-      const list: RegisteredUser[] = JSON.parse(raw);
+    const storedUsers = readJsonFile<RegisteredUser[]>(USERS_FILE);
+    if (Array.isArray(storedUsers)) {
+      const list = storedUsers;
       let mutated = false;
       for (const u of list) {
         if (!u.email) continue;
         const clean = u.email.trim().toLowerCase();
-        // Purge legacy placeholder fake admin account
+        // The legacy placeholder admin account is not loaded; it is archived so nothing is lost
         if (clean === 'admin@circuitcraft3d.com') {
+          archiveRemovedUser(u);
           mutated = true;
           continue;
         }
@@ -200,47 +259,37 @@ function initUserStore() {
       }
     }
 
-    if (fs.existsSync(PROJECTS_FILE)) {
-      const list: SyncedProjectRecord[] = JSON.parse(fs.readFileSync(PROJECTS_FILE, 'utf-8'));
-      if (Array.isArray(list)) {
-        for (const p of list) {
-          if (p && p.id) projectsById.set(p.id, p);
-        }
+    const storedProjects = readJsonFile<SyncedProjectRecord[]>(PROJECTS_FILE);
+    if (Array.isArray(storedProjects)) {
+      for (const p of storedProjects) {
+        if (p && p.id) projectsById.set(p.id, p);
       }
     }
 
-    if (fs.existsSync(PROJECT_VERSIONS_FILE)) {
-      const list: SyncedProjectVersionRecord[] = JSON.parse(fs.readFileSync(PROJECT_VERSIONS_FILE, 'utf-8'));
-      if (Array.isArray(list)) {
-        projectVersionsList.push(...list);
+    const storedVersions = readJsonFile<SyncedProjectVersionRecord[]>(PROJECT_VERSIONS_FILE);
+    if (Array.isArray(storedVersions)) {
+      projectVersionsList.push(...storedVersions);
+    }
+
+    const storedEnrollments = readJsonFile<CourseEnrollmentRecord[]>(ENROLLMENTS_FILE);
+    if (Array.isArray(storedEnrollments)) {
+      for (const e of storedEnrollments) {
+        if (e && e.id) enrollmentsById.set(e.id, e);
       }
     }
 
-    if (fs.existsSync(ENROLLMENTS_FILE)) {
-      const list: CourseEnrollmentRecord[] = JSON.parse(fs.readFileSync(ENROLLMENTS_FILE, 'utf-8'));
-      if (Array.isArray(list)) {
-        for (const e of list) {
-          if (e && e.id) enrollmentsById.set(e.id, e);
-        }
-      }
+    const storedLogs = readJsonFile<SystemLogRecord[]>(LOGS_FILE);
+    if (Array.isArray(storedLogs)) {
+      systemLogsList.push(...storedLogs);
     }
 
-    if (fs.existsSync(LOGS_FILE)) {
-      const list: SystemLogRecord[] = JSON.parse(fs.readFileSync(LOGS_FILE, 'utf-8'));
-      if (Array.isArray(list)) {
-        systemLogsList.push(...list);
-      }
-    }
-
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const parsed = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
-      if (parsed && typeof parsed === 'object') {
-        systemSettings = {
-          ...systemSettings,
-          ...parsed,
-          adminEmail: getAdminEmail(),
-        };
-      }
+    const storedSettings = readJsonFile<Partial<SystemSettingsRecord>>(SETTINGS_FILE);
+    if (storedSettings && typeof storedSettings === 'object') {
+      systemSettings = {
+        ...systemSettings,
+        ...storedSettings,
+        adminEmail: getAdminEmail(),
+      };
     }
   } catch (err) {
     console.warn('[UserStore] Error loading data files:', err);
@@ -248,20 +297,51 @@ function initUserStore() {
 }
 
 function saveUsersToDisk() {
+  if (isRemotePersistence()) {
+    saveCollection('users', usersByEmail.entries());
+    return;
+  }
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     const list = Array.from(usersByEmail.values());
-    fs.writeFileSync(USERS_FILE, JSON.stringify(list, null, 2), 'utf-8');
+    writeJsonAtomic(USERS_FILE, list);
   } catch (err) {
     console.warn('[UserStore] Error saving users file:', err);
   }
 }
 
-// Initialize on module load
-initUserStore();
-syncUsersFromSupabase().catch(() => {});
+function applyToMap<T>(map: Map<string, T>, rows: RemoteRow[]) {
+  for (const row of rows) {
+    if (row.deleted) map.delete(row.id);
+    else map.set(row.id, row.data);
+  }
+}
+
+function applyToList<T extends { id: string }>(list: T[], rows: RemoteRow[], sortKey: (item: T) => string) {
+  const byId = new Map(list.map((item) => [item.id, item]));
+  applyToMap(byId as Map<string, T>, rows);
+  const merged = Array.from(byId.values()).sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
+  list.splice(0, list.length, ...merged);
+}
+
+// Initialize on module load. In the cloud the records arrive through the first sync of a request,
+// and users that only exist in Supabase Auth are picked up on demand by isEmailRegistered.
+if (getPersistenceMode() === 'file') {
+  initUserStore();
+  syncUsersFromSupabase().catch(() => {});
+} else {
+  registerCollection('users', (rows) => applyToMap(usersByEmail, rows));
+  registerCollection('projects', (rows) => applyToMap(projectsById, rows), { onConflict: 'reject' });
+  registerCollection('project_versions', (rows) => applyToList(projectVersionsList, rows, (v) => v.createdAt));
+  registerCollection('enrollments', (rows) => applyToMap(enrollmentsById, rows));
+  registerCollection('logs', (rows) => applyToList(systemLogsList, rows, (l) => l.timestamp));
+  registerCollection('settings', (rows) => {
+    const row = rows.find((r) => r.id === 'settings' && !r.deleted);
+    if (row) systemSettings = { ...systemSettings, ...row.data, adminEmail: getAdminEmail() };
+  });
+}
 
 /**
  * Syncs users from Supabase Auth & Profiles table into local store on startup or on-demand
@@ -679,11 +759,12 @@ export function getUserById(userId: string): RegisteredUser | undefined {
 /**
  * Updates a user's subscription tier (e.g. 'creator')
  */
-export function updateUserTier(userId: string, tier: 'free' | 'student' | 'creator'): boolean {
+export function updateUserTier(userId: string, tier: 'free' | 'student' | 'creator', options?: { mock?: boolean }): boolean {
   let user = getUserById(userId);
   if (!user) user = getUserByEmail(userId);
   if (!user) return false;
   user.tier = tier;
+  user.tierGrantedByMock = Boolean(options?.mock);
   if (isVerifiedAdminEmail(user.email, Boolean(user.verifiedAt))) {
     user.role = 'admin';
   } else {
@@ -735,8 +816,13 @@ export async function verifyUserPassword(email: string, passwordAttempt: string)
   let user = getUserByEmail(cleanEmail);
 
   if (user && user.passwordHash) {
-    const hash = hashPassword(passwordAttempt);
-    if (user.passwordHash === hash) {
+    const check = verifyPasswordHash(passwordAttempt, user.passwordHash);
+    if (check.ok) {
+      if (check.needsRehash) {
+        user.passwordHash = hashPassword(passwordAttempt);
+        usersByEmail.set(cleanEmail, user);
+        saveUsersToDisk();
+      }
       return true;
     }
   }
@@ -745,7 +831,7 @@ export async function verifyUserPassword(email: string, passwordAttempt: string)
   const supabase = getSupabaseAdmin();
   if (supabase) {
     try {
-      dotenv.config({ override: true });
+      dotenv.config({ override: true, quiet: true } as any);
       const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
       const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
       if (url && anonKey) {
@@ -882,6 +968,8 @@ export async function updateUserPassword(
   }
 
   user.passwordHash = hashPassword(newPassword);
+  // Revoke every session issued before the password change
+  user.sessionVersion = (user.sessionVersion || 0) + 1;
   usersByEmail.set(user.email.toLowerCase(), user);
   saveUsersToDisk();
 
@@ -920,6 +1008,19 @@ export async function registerNewUser(params: {
   phone?: string;
 }): Promise<RegisteredUser> {
   const cleanEmail = params.email.trim().toLowerCase();
+
+  // Never overwrite an existing account (id, role, tier and ownership links must be preserved)
+  const existingUser = usersByEmail.get(cleanEmail);
+  if (existingUser) {
+    if (!existingUser.passwordHash && params.password) {
+      existingUser.passwordHash = hashPassword(params.password);
+    }
+    if (!existingUser.verifiedAt) existingUser.verifiedAt = new Date().toISOString();
+    usersByEmail.set(cleanEmail, existingUser);
+    saveUsersToDisk();
+    return existingUser;
+  }
+
   const id = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const fullName = params.fullName?.trim() || cleanEmail.split('@')[0] || 'Kỹ sư CircuitCraft';
   const phone = params.phone ? normalizePhoneNumber(params.phone) : undefined;
@@ -990,18 +1091,28 @@ export function listAllUsers(): RegisteredUser[] {
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+/** lastActiveAt is advisory: refreshing it at most every 5 minutes avoids a file write per request. */
+const LAST_ACTIVE_WRITE_INTERVAL_MS = 5 * 60 * 1000;
+
+function refreshLastActive(user: RegisteredUser): boolean {
+  const previous = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : 0;
+  if (Date.now() - previous < LAST_ACTIVE_WRITE_INTERVAL_MS) return false;
+  user.lastActiveAt = new Date().toISOString();
+  return true;
+}
+
 /**
  * Updates lastActiveAt timestamp for a user
  */
 export function touchUserActivity(emailOrId: string): void {
-  let user = getUserByEmail(emailOrId) || getUserById(emailOrId);
+  const user = getUserByEmail(emailOrId) || getUserById(emailOrId);
   if (!user) return;
-  user.lastActiveAt = new Date().toISOString();
-  if (isVerifiedAdminEmail(user.email, Boolean(user.verifiedAt))) {
+  let changed = refreshLastActive(user);
+  if (isVerifiedAdminEmail(user.email, Boolean(user.verifiedAt)) && user.role !== 'admin') {
     user.role = 'admin';
+    changed = true;
   }
-  usersByEmail.set(user.email.toLowerCase(), user);
-  saveUsersToDisk();
+  if (changed) saveUsersToDisk();
 }
 
 /**
@@ -1016,20 +1127,22 @@ export function ensureAuthenticatedUserRecord(params: {
   const cleanEmail = params.email.trim().toLowerCase();
   let existing = usersByEmail.get(cleanEmail);
   const nowIso = new Date().toISOString();
-  const isAdmin = isVerifiedAdminEmail(cleanEmail, params.verified ?? true);
+  const isAdmin = isVerifiedAdminEmail(cleanEmail, params.verified ?? false);
 
   if (existing) {
+    let changed = refreshLastActive(existing);
     if (isAdmin && existing.role !== 'admin') {
       existing.role = 'admin';
+      changed = true;
     } else if (!isAdmin && existing.role === 'admin') {
       existing.role = existing.tier === 'creator' ? 'creator' : existing.tier === 'student' ? 'pro' : 'user';
+      changed = true;
     }
-    existing.lastActiveAt = nowIso;
     if (params.verified && !existing.verifiedAt) {
       existing.verifiedAt = nowIso;
+      changed = true;
     }
-    usersByEmail.set(cleanEmail, existing);
-    saveUsersToDisk();
+    if (changed) saveUsersToDisk();
     return existing;
   }
 
@@ -1042,12 +1155,24 @@ export function ensureAuthenticatedUserRecord(params: {
     tier: 'free',
     status: 'active',
     createdAt: nowIso,
-    verifiedAt: (params.verified ?? true) ? nowIso : undefined,
+    verifiedAt: params.verified ? nowIso : undefined,
     lastActiveAt: nowIso,
   };
   usersByEmail.set(cleanEmail, newUser);
   saveUsersToDisk();
   return newUser;
+}
+
+/**
+ * Revokes all sessions of a user by bumping their session version.
+ */
+export function bumpSessionVersion(userIdOrEmail: string): boolean {
+  const user = getUserById(userIdOrEmail) || getUserByEmail(userIdOrEmail);
+  if (!user) return false;
+  user.sessionVersion = (user.sessionVersion || 0) + 1;
+  usersByEmail.set(user.email.toLowerCase(), user);
+  saveUsersToDisk();
+  return true;
 }
 
 /**
@@ -1076,6 +1201,7 @@ export function adminUpdateUserRecord(
   }
   if (updates.tier !== undefined) {
     user.tier = updates.tier;
+    user.tierGrantedByMock = false;
     if (!isVerifiedAdminEmail(user.email, Boolean(user.verifiedAt))) {
       user.role = updates.tier === 'creator' ? 'creator' : updates.tier === 'student' ? 'pro' : 'user';
     }
@@ -1101,40 +1227,60 @@ export function adminUpdateUserRecord(
 // ============================================================================
 
 function saveProjectsToDisk() {
+  if (isRemotePersistence()) {
+    saveCollection('projects', projectsById.entries());
+    return;
+  }
   try {
-    fs.writeFileSync(PROJECTS_FILE, JSON.stringify(Array.from(projectsById.values()), null, 2), 'utf-8');
+    writeJsonAtomic(PROJECTS_FILE, Array.from(projectsById.values()));
   } catch (err) {
     console.warn('[UserStore] Error saving projects file:', err);
   }
 }
 
 function saveProjectVersionsToDisk() {
+  if (isRemotePersistence()) {
+    saveCollection('project_versions', projectVersionsList.slice(0, 500).map((v) => [v.id, v] as [string, unknown]));
+    return;
+  }
   try {
-    fs.writeFileSync(PROJECT_VERSIONS_FILE, JSON.stringify(projectVersionsList.slice(0, 500), null, 2), 'utf-8');
+    writeJsonAtomic(PROJECT_VERSIONS_FILE, projectVersionsList.slice(0, 500));
   } catch (err) {
     console.warn('[UserStore] Error saving project versions file:', err);
   }
 }
 
 function saveEnrollmentsToDisk() {
+  if (isRemotePersistence()) {
+    saveCollection('enrollments', enrollmentsById.entries());
+    return;
+  }
   try {
-    fs.writeFileSync(ENROLLMENTS_FILE, JSON.stringify(Array.from(enrollmentsById.values()), null, 2), 'utf-8');
+    writeJsonAtomic(ENROLLMENTS_FILE, Array.from(enrollmentsById.values()));
   } catch (err) {
     console.warn('[UserStore] Error saving enrollments file:', err);
   }
 }
 
 function saveLogsToDisk() {
+  if (isRemotePersistence()) {
+    saveCollection('logs', systemLogsList.slice(0, 1000).map((l) => [l.id, l] as [string, unknown]));
+    return;
+  }
   try {
-    fs.writeFileSync(LOGS_FILE, JSON.stringify(systemLogsList.slice(0, 1000), null, 2), 'utf-8');
+    writeJsonAtomic(LOGS_FILE, systemLogsList.slice(0, 1000));
   } catch (err) {
     console.warn('[UserStore] Error saving logs file:', err);
   }
 }
 
 function saveSettingsToDisk() {
+  if (isRemotePersistence()) {
+    saveCollection('settings', [['settings', systemSettings]] as Array<[string, unknown]>);
+    return;
+  }
   try {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(systemSettings, null, 2), 'utf-8');
+    writeJsonAtomic(SETTINGS_FILE, systemSettings);
   } catch (err) {
     console.warn('[UserStore] Error saving settings file:', err);
   }
@@ -1188,9 +1334,11 @@ export function syncPersonalProject(params: {
   try {
     const supabase = getSupabaseAdmin();
     if (supabase) {
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      // Only mirror projects whose owner has a real Supabase Auth UUID; never attribute
+      // a project to another account as a fallback.
       const supaOwnerId =
-        (user?.id && user.id.includes('-') ? user.id : null) ||
-        (ownerId && ownerId.includes('-') ? ownerId : '3c6c5edd-3780-4451-9525-f9e7f2250035');
+        (user?.id && uuidRe.test(user.id) ? user.id : null) || (uuidRe.test(ownerId) ? ownerId : null);
 
       const supaPayload = {
         id: record.id,
@@ -1207,7 +1355,7 @@ export function syncPersonalProject(params: {
         updated_at: record.updatedAt,
       };
 
-      (async () => {
+      if (supaOwnerId) trackBackgroundWork((async () => {
         try {
           const { error: supaErr } = await supabase.from('projects').upsert(supaPayload, { onConflict: 'id' });
           if (supaErr) {
@@ -1216,7 +1364,7 @@ export function syncPersonalProject(params: {
         } catch (err) {
           console.warn('[UserStore] Supabase sync error:', err);
         }
-      })();
+      })());
     }
   } catch (supaEx) {
     console.warn('[UserStore] Supabase sync exception:', supaEx);

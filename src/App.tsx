@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import {
   ProjectDocument,
@@ -45,36 +45,16 @@ import { AIChatMessage, AIProposal } from './ai/types';
 import { assistantService } from './ai/assistantService';
 import { minibotChatService } from './ai/minibotChatService';
 import { paymentService } from './billing/paymentService';
-import { MinibotState } from './scene/minibot3D';
+import type { MinibotState } from './scene/minibot3D';
 import { calculatePinWorldPosition } from './domain/project/coordinates';
 import { COMPONENT_DEFINITION_MAP } from './domain/components/definitions';
 
 // UI Components
 import { Navbar } from './components/Navbar';
-import { Toolbar } from './components/Toolbar';
-import { ComponentLibrary } from './components/ComponentLibrary';
-import { PropertyPanel } from './components/PropertyPanel';
-import { ValidationPanel } from './components/ValidationPanel';
-import { MinibotWidget } from './components/MinibotWidget';
-import { AIProposalModal } from './components/AIProposalModal';
-import { PresentationControls } from './components/PresentationControls';
-import { ThreeScene } from './scene/ThreeScene';
-import { AuthModal } from './components/AuthModal';
+import { validateAIProposal } from './domain/ai/proposalValidation';
 import { ConcurrencyConflictModal } from './components/ConcurrencyConflictModal';
 
 // Pages
-import { LandingPage } from './pages/LandingPage';
-import { ProjectsPage } from './pages/ProjectsPage';
-import { CoursesPage } from './pages/CoursesPage';
-import { LessonsPage } from './pages/LessonsPage';
-import { MarketplacePage } from './pages/MarketplacePage';
-import { MembershipPage } from './pages/MembershipPage';
-import { AccountPage } from './pages/AccountPage';
-import { CreatorDashboardPage } from './pages/CreatorDashboardPage';
-import { AdminDashboardPage } from './pages/AdminDashboardPage';
-import { NotFoundPage } from './pages/NotFoundPage';
-import { MyCoursesPage } from './pages/MyCoursesPage';
-import { TheoryLearningPage } from './pages/TheoryLearningPage';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { RouteKey, resolveRouteFromUrl, syncBrowserUrl } from './router/routes';
 
@@ -84,7 +64,30 @@ import { buildDeterministicPracticeStages } from './domain/courses/pptxAndPracti
 import { GraduationCap, CheckCircle2, PanelLeftOpen, PanelRightOpen, AlertTriangle, Cpu, FolderOpen } from 'lucide-react';
 import { useI18n } from './i18n/context';
 import { AnimatePresence } from 'motion/react';
-import { PageTransition } from './components/ui/PageTransition';
+import { PageTransition, RouteFallback } from './components/ui/PageTransition';
+
+// Route-level code splitting: each page and the 3D editor load on demand
+const AuthModal = lazy(() => import('./components/AuthModal').then((m) => ({ default: m.AuthModal })));
+const LandingPage = lazy(() => import('./pages/LandingPage').then((m) => ({ default: m.LandingPage })));
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
+const CoursesPage = lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
+const LessonsPage = lazy(() => import('./pages/LessonsPage').then((m) => ({ default: m.LessonsPage })));
+const MarketplacePage = lazy(() => import('./pages/MarketplacePage').then((m) => ({ default: m.MarketplacePage })));
+const MembershipPage = lazy(() => import('./pages/MembershipPage').then((m) => ({ default: m.MembershipPage })));
+const AccountPage = lazy(() => import('./pages/AccountPage').then((m) => ({ default: m.AccountPage })));
+const CreatorDashboardPage = lazy(() => import('./pages/CreatorDashboardPage').then((m) => ({ default: m.CreatorDashboardPage })));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
+const MyCoursesPage = lazy(() => import('./pages/MyCoursesPage').then((m) => ({ default: m.MyCoursesPage })));
+const TheoryLearningPage = lazy(() => import('./pages/TheoryLearningPage').then((m) => ({ default: m.TheoryLearningPage })));
+const Toolbar = lazy(() => import('./components/Toolbar').then((m) => ({ default: m.Toolbar })));
+const ComponentLibrary = lazy(() => import('./components/ComponentLibrary').then((m) => ({ default: m.ComponentLibrary })));
+const PropertyPanel = lazy(() => import('./components/PropertyPanel').then((m) => ({ default: m.PropertyPanel })));
+const ValidationPanel = lazy(() => import('./components/ValidationPanel').then((m) => ({ default: m.ValidationPanel })));
+const MinibotWidget = lazy(() => import('./components/MinibotWidget').then((m) => ({ default: m.MinibotWidget })));
+const AIProposalModal = lazy(() => import('./components/AIProposalModal').then((m) => ({ default: m.AIProposalModal })));
+const PresentationControls = lazy(() => import('./components/PresentationControls').then((m) => ({ default: m.PresentationControls })));
+const ThreeScene = lazy(() => import('./scene/ThreeScene').then((m) => ({ default: m.ThreeScene })));
 
 export const App: React.FC = () => {
   const { language, t } = useI18n();
@@ -118,8 +121,22 @@ export const App: React.FC = () => {
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<any>(null);
+  // Protected routes wait for the stored session, so refreshing /projects does not bounce to the landing page
+  const [isAuthRestored, setIsAuthRestored] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    authService.ready.finally(() => {
+      if (!cancelled) setIsAuthRestored(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [currentProfile, setCurrentProfile] = useState<UserProfile | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  // Loaded on first use, then kept mounted so a half-filled form survives closing the dialog
+  const authModalMountedRef = useRef(false);
+  if (isAuthModalOpen) authModalMountedRef.current = true;
 
   // Active commercial course lab & theory classroom state
   const [activeCourse, setActiveCourse] = useState<Course | null>(null);
@@ -781,19 +798,34 @@ export const App: React.FC = () => {
         locale: language,
       });
 
+      // AI output is untrusted: validate against the live document before any preview
+      let replyText = result.text;
+      let safeProposal: AIProposal | undefined;
+      if (result.proposal) {
+        const check = validateAIProposal(result.proposal, project);
+        if (check.valid && check.proposal) {
+          safeProposal = check.proposal as AIProposal;
+          if (check.warnings.length > 0) {
+            replyText += `\n\n⚠️ Lưu ý khi kiểm tra đề xuất:\n- ${check.warnings.join('\n- ')}`;
+          }
+        } else {
+          replyText += `\n\n❌ Đề xuất không hợp lệ nên không được hiển thị/áp dụng:\n- ${check.errors.slice(0, 6).join('\n- ')}`;
+        }
+      }
+
       const botMsg: AIChatMessage = {
         id: `msg-b-${Date.now()}`,
         role: 'assistant',
-        content: result.text,
+        content: replyText,
         timestamp: new Date().toISOString(),
-        proposal: result.proposal,
+        proposal: safeProposal,
       };
 
       await minibotChatService.addMessage(botMsg);
       paymentService.recordAiQuery();
 
-      if (result.proposal) {
-        setActiveProposal(result.proposal);
+      if (safeProposal) {
+        setActiveProposal(safeProposal);
       }
       setMinibotState('idle');
     } catch (err) {
@@ -811,18 +843,31 @@ export const App: React.FC = () => {
 
   // Apply AI Proposal atomically into project history
   const handleApplyProposal = (proposal: AIProposal) => {
+    // Re-validate against the CURRENT document (it may have changed since the preview opened)
+    const check = validateAIProposal(proposal, project);
+    if (!check.valid || !check.proposal) {
+      alert(`Không thể áp dụng đề xuất vì không còn hợp lệ với mạch hiện tại:\n- ${check.errors.slice(0, 6).join('\n- ')}`);
+      return;
+    }
+    const safe = check.proposal;
     const commands: any[] = [];
-    for (const comp of proposal.componentsToAdd) {
+    for (const comp of safe.componentsToAdd) {
       commands.push(new AddComponentCommand(comp));
     }
-    for (const conn of proposal.connectionsToAdd) {
+    for (const conn of safe.connectionsToAdd) {
       commands.push(new CreateConnectionCommand(conn));
     }
 
-    const batch = new BatchCommand(proposal.explanation, commands);
+    // One BatchCommand = one Undo step; CommandHistory keeps the document untouched if it throws
+    const before = historyRef.current.currentDocument;
+    const batch = new BatchCommand(safe.explanation || 'Áp dụng đề xuất AI', commands);
     executeCommand(batch);
     setActiveProposal(null);
-    alert('Đề xuất thiết kế của AI đã được áp dụng thành công vào bo mạch!');
+    if (historyRef.current.currentDocument === before) {
+      alert('Áp dụng đề xuất thất bại; mạch được giữ nguyên.');
+      return;
+    }
+    alert('Đề xuất thiết kế đã được áp dụng vào bo mạch! Nhấn Undo để hoàn tác toàn bộ đề xuất.');
   };
 
   // Open Project from Projects Page or Marketplace
@@ -866,6 +911,19 @@ export const App: React.FC = () => {
       setActivePracticeItem(matchedItem || null);
       if (matchedCourse) {
         setSelectedMyCourseId(matchedCourse.id);
+        if (matchedItem) {
+          // Reopened lab: the instructor's target circuit comes with the lesson content
+          courseService
+            .ensureCourseContent(matchedCourse.id)
+            .then((full) => {
+              const fullItem = full?.syllabus.find((s) => s.id === matchedItem.id);
+              if (full && fullItem) {
+                setActiveCourse(full);
+                setActivePracticeItem(fullItem);
+              }
+            })
+            .catch(() => undefined);
+        }
       }
     } else {
       // Real Personal Project (Dự án cá nhân thật):
@@ -897,13 +955,34 @@ export const App: React.FC = () => {
     handleNavigate('editor', { projectId: doc.projectId });
   };
 
+  // Lessons are loaded when opened: the server checks that this user may read them
+  const loadCourseLesson = async (
+    course: Course,
+    lesson: CourseSyllabusItem
+  ): Promise<{ course: Course; lesson: CourseSyllabusItem } | null> => {
+    try {
+      const full = (await courseService.ensureCourseContent(course.id)) || course;
+      return { course: full, lesson: full.syllabus.find((item) => item.id === lesson.id) || lesson };
+    } catch (err: any) {
+      alert(
+        err?.code === 'PAYMENT_REQUIRED'
+          ? 'Bạn cần mua khóa học này để mở bài học.'
+          : err?.message || 'Không thể tải nội dung khóa học. Vui lòng thử lại.'
+      );
+      return null;
+    }
+  };
+
   // Open Theory Classroom for a Course Lesson
-  const handleOpenTheoryLesson = (course: Course, lesson: CourseSyllabusItem) => {
+  const handleOpenTheoryLesson = async (outlineCourse: Course, outlineLesson: CourseSyllabusItem) => {
     if (!currentUser) {
       setAuthModalTab('signin');
       setIsAuthModalOpen(true);
       return;
     }
+    const loaded = await loadCourseLesson(outlineCourse, outlineLesson);
+    if (!loaded) return;
+    const { course, lesson } = loaded;
     setActiveCourse(course);
     setSelectedMyCourseId(course.id);
     setActiveTheoryContext({ course, lesson });
@@ -911,12 +990,15 @@ export const App: React.FC = () => {
   };
 
   // Start Practice Lab in 3D Workspace (always starts with an EMPTY workspace per Requirement 2.3)
-  const handleStartPracticeLab = async (course: Course, practiceItem: CourseSyllabusItem) => {
+  const handleStartPracticeLab = async (outlineCourse: Course, outlineItem: CourseSyllabusItem) => {
     if (!currentUser) {
       setAuthModalTab('signin');
       setIsAuthModalOpen(true);
       return;
     }
+    const loaded = await loadCourseLesson(outlineCourse, outlineItem);
+    if (!loaded) return;
+    const { course, lesson: practiceItem } = loaded;
 
     // Create a completely empty 3D board workspace so the student builds the circuit across the 3 stages
     const emptyLabDoc = createDefaultProjectDocument(
@@ -1048,10 +1130,12 @@ export const App: React.FC = () => {
       }
 
       // Route Guards & Permissions
+      // Callers may hold this callback from an earlier render, so also ask the auth service directly
+      const signedInUser = currentUser || authService.getCurrentUser();
       if (targetRoute === 'admin') {
         const isAdmin = authService.isAdmin();
         if (!isAdmin) {
-          if (!currentUser) {
+          if (!signedInUser) {
             setAuthModalTab('signin');
             setIsAuthModalOpen(true);
           } else {
@@ -1062,7 +1146,7 @@ export const App: React.FC = () => {
       }
 
       if (targetRoute === 'creator') {
-        if (!currentUser) {
+        if (!signedInUser) {
           setAuthModalTab('signin');
           setIsAuthModalOpen(true);
           return;
@@ -1078,13 +1162,14 @@ export const App: React.FC = () => {
         }
       }
 
-      if ((targetRoute === 'projects' || targetRoute === 'editor') && !currentUser) {
+      if ((targetRoute === 'projects' || targetRoute === 'editor') && !signedInUser) {
         setAuthModalTab('signin');
         setIsAuthModalOpen(true);
         return;
       }
 
-      if (targetRoute === 'editor' && !activeProjectId) {
+      // An explicit project id wins: callers may hold this callback from before their own state update
+      if (targetRoute === 'editor' && !activeProjectId && !targetProjectId) {
         setActiveProjectId(project.projectId);
         targetProjectId = project.projectId;
       }
@@ -1134,12 +1219,18 @@ export const App: React.FC = () => {
       setIsAuthModalOpen(true);
     }
     if (initial.projectId && initial.projectId !== activeProjectId) {
-      const repo = projectRepositoryManager.getActiveRepository();
-      repo.getProject(initial.projectId).then((loaded) => {
-        if (loaded) {
-          handleOpenProject(loaded);
-        }
-      });
+      // The repository depends on the signed-in user, so wait for the stored session first
+      authService.ready
+        .catch(() => undefined)
+        .then(() => projectRepositoryManager.getActiveRepository().getProject(initial.projectId!))
+        .then((loaded) => {
+          if (loaded) {
+            handleOpenProject(loaded);
+          } else {
+            handleNavigate('projects', { replace: true });
+          }
+        })
+        .catch(() => handleNavigate('projects', { replace: true }));
     }
   }, []);
 
@@ -1154,17 +1245,18 @@ export const App: React.FC = () => {
 
   // Route protection: Editor 3D requires an activeProjectId. Without it, redirect to project selection.
   useEffect(() => {
-    if (currentRoute === 'editor' && !activeProjectId) {
+    // A project id in the URL is being restored by the mount effect above (e.g. after pressing F5)
+    if (currentRoute === 'editor' && !activeProjectId && !resolveRouteFromUrl().projectId) {
       handleNavigate('projects');
     }
   }, [currentRoute, activeProjectId, handleNavigate]);
 
   // Guest mode route protection: do not allow guests into 3D editor or personal projects
   useEffect(() => {
-    if (!currentUser && (currentRoute === 'editor' || currentRoute === 'projects')) {
+    if (isAuthRestored && !currentUser && (currentRoute === 'editor' || currentRoute === 'projects')) {
       handleNavigate('landing');
     }
-  }, [currentUser, currentRoute, handleNavigate]);
+  }, [isAuthRestored, currentUser, currentRoute, handleNavigate]);
 
   // Export JSON
   const handleExportJson = () => {
@@ -1404,6 +1496,7 @@ export const App: React.FC = () => {
       </AnimatePresence>
 
       {currentRoute === 'editor' && (
+        <Suspense fallback={<RouteFallback />}>
         <div className="flex-1 flex flex-col overflow-hidden relative">
           {/* Active Course Guidance Banner */}
           {activeCourse && (
@@ -1876,6 +1969,7 @@ export const App: React.FC = () => {
             </div>
           )}
         </div>
+        </Suspense>
       )}
 
       {/* Mobile Bottom Navigation Bar (Phones / Small Screens) */}
@@ -1890,25 +1984,29 @@ export const App: React.FC = () => {
       />
 
       {/* Global Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        initialTab={authModalTab}
-        onClose={() => {
-          setIsAuthModalOpen(false);
-          // If user landed on an auth route like /login, sync address bar cleanly
-          if (typeof window !== 'undefined') {
-            const p = window.location.pathname.toLowerCase();
-            if (p === '/login' || p === '/register' || p === '/forgot-password' || p === '/signin' || p === '/signup') {
-              syncBrowserUrl(currentRoute);
-            }
-          }
-        }}
-        currentUser={currentUser}
-        currentProfile={currentProfile}
-        onSuccess={() => {
-          setSaveStatusText(projectRepositoryManager.isCloudMode() ? 'Đã lưu Cloud' : 'Đã lưu');
-        }}
-      />
+      {authModalMountedRef.current && (
+        <Suspense fallback={null}>
+          <AuthModal
+            isOpen={isAuthModalOpen}
+            initialTab={authModalTab}
+            onClose={() => {
+              setIsAuthModalOpen(false);
+              // If user landed on an auth route like /login, sync address bar cleanly
+              if (typeof window !== 'undefined') {
+                const p = window.location.pathname.toLowerCase();
+                if (p === '/login' || p === '/register' || p === '/forgot-password' || p === '/signin' || p === '/signup') {
+                  syncBrowserUrl(currentRoute);
+                }
+              }
+            }}
+            currentUser={currentUser}
+            currentProfile={currentProfile}
+            onSuccess={() => {
+              setSaveStatusText(projectRepositoryManager.isCloudMode() ? 'Đã lưu Cloud' : 'Đã lưu');
+            }}
+          />
+        </Suspense>
+      )}
 
       {concurrencyConflict && (
         <ConcurrencyConflictModal

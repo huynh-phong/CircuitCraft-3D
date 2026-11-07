@@ -1,5 +1,3 @@
-import { ProjectDocument } from '../domain/project/types';
-
 export interface CatalogProduct {
   id: string;
   name: string;
@@ -14,7 +12,6 @@ export interface CatalogProduct {
   tags: string[];
   componentsSummary: string[];
   isFree: boolean;
-  projectTemplate: () => ProjectDocument;
   rating: number;
   reviewsCount: number;
   downloadsCount: number;

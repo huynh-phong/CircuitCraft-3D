@@ -30,8 +30,11 @@ export class AuthService {
   private serverVerifiedAdmin: boolean = false;
   private authListeners: Array<(user: User | null, profile: UserProfile | null) => void> = [];
 
+  /** Resolves once a stored session (local or Supabase) has been restored. */
+  public readonly ready: Promise<void>;
+
   constructor() {
-    this.init();
+    this.ready = this.init();
   }
 
   private async init(): Promise<void> {
@@ -139,19 +142,41 @@ export class AuthService {
     await this.syncSessionWithBackend();
   }
 
+  /**
+   * Exchanges a verified credential for a CircuitCraft session token.
+   * The server only trusts the Bearer token (a Supabase access token verified by Supabase Auth,
+   * or a previously issued CircuitCraft session token); e-mail / role are never sent as proof.
+   */
   public async syncSessionWithBackend(): Promise<void> {
     if (!this.currentProfile || !this.currentProfile.email) return;
+    const supabaseToken = this.currentSession?.access_token || null;
+    let savedToken: string | null = this.sessionToken;
+    try {
+      savedToken = savedToken || localStorage.getItem('circuitcraft_session_token');
+    } catch {}
+    const credential = supabaseToken || savedToken;
+    if (!credential) {
+      this.clearLocalSession();
+      return;
+    }
     try {
       const res = await fetch('/api/auth/session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${credential}`,
+        },
         body: JSON.stringify({
-          id: this.currentProfile.id,
-          email: this.currentProfile.email,
           fullName: this.currentProfile.fullName,
-          isVerified: true,
+          // Lets the server keep this device's session id when exchanging a Supabase token
+          previousSessionToken: supabaseToken ? savedToken : undefined,
         }),
       });
+      if (res.status === 401) {
+        // Expired, revoked or untrusted (legacy) session: require a fresh sign-in
+        this.clearLocalSession();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         if (data.sessionToken) {
@@ -178,6 +203,23 @@ export class AuthService {
     }
   }
 
+  /** Drops a locally cached session that the server no longer accepts. */
+  private clearLocalSession(): void {
+    try {
+      localStorage.removeItem('circuitcraft_session_token');
+      if (!this.currentSession) localStorage.removeItem('circuitcraft_custom_user');
+    } catch {}
+    this.sessionToken = null;
+    this.serverVerifiedAdmin = false;
+    if (!this.currentSession) {
+      this.currentUser = null;
+      this.currentProfile = null;
+    } else if (this.currentProfile) {
+      this.currentProfile = { ...this.currentProfile, role: this.currentProfile.role === 'admin' ? 'user' : this.currentProfile.role };
+    }
+    this.notifyListeners();
+  }
+
   public getSessionToken(): string | null {
     if (this.sessionToken) return this.sessionToken;
     try {
@@ -198,12 +240,7 @@ export class AuthService {
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    if (this.currentProfile?.email) {
-      headers['X-User-Email'] = this.currentProfile.email;
-    }
-    if (this.currentProfile?.id) {
-      headers['X-User-Id'] = this.currentProfile.id;
-    }
+    // Identity is proven only by the Bearer token; X-User-* headers are no longer sent.
     return headers;
   }
 
@@ -1005,10 +1042,22 @@ export class AuthService {
   }
 
   public async signOut(): Promise<void> {
+    // Revoke server-side sessions issued for this account
+    const token = this.getSessionToken();
+    if (token) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        });
+      } catch {}
+    }
+
     const supabase = getSupabase();
     if (supabase) {
       try {
-        await supabase.auth.signOut();
+        // Only this device: signing out everywhere is a separate, explicit action
+        await supabase.auth.signOut({ scope: 'local' });
       } catch (err) {
         console.warn('Sign out error:', err);
       }

@@ -28,3 +28,25 @@ Thumbs.db
 
 # Tài liệu kiến trúc nội bộ (Không đẩy lên GitHub theo yêu cầu người dùng)
 SYSTEM_ARCHITECTURE_DETAILED.md
+
+# Local data backups (never commit)
+.backups/
+
+# Server runtime data: may contain personal data, password hashes and secrets.
+# (Files already tracked in git are NOT affected by these rules; see docs/PROGRESS.md.)
+data/.session_secret
+data/synced_projects.json
+data/synced_project_versions.json
+data/course_enrollments.json
+data/entitlements_store.json
+data/system_settings.json
+
+# Server runtime files
+data/revoked_sessions.json
+data/course-media/
+data/*.corrupt-*
+data/*.tmp
+data/removed_users_archive.json
+
+# Vercel link and build output
+.vercel

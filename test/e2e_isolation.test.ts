@@ -68,10 +68,11 @@ async function runE2EIsolationTest() {
   // Account A saves a project
   const projectAId = `proj-cloud-a-${Date.now()}`;
   const saveARes = await supabaseProjectRepository.saveProject({
+    schemaVersion: 1,
     projectId: projectAId,
     name: 'Mạch của Account A',
     units: 'mm',
-    board: { width: 100, height: 80, thickness: 1.6 },
+    board: { width: 100, depth: 80, thickness: 1.6, solderMaskColor: '#114a36', copperLayerCount: 2, gridSpacing: 2.54 },
     components: [],
     connections: [],
     wireRoutes: [],

@@ -141,12 +141,13 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
       const sls: any[] = sData?.sales || [];
       setSales(sls);
 
-      // Calculate aggregated metrics
-      const gross = sls.reduce((sum, item) => sum + (item.creatorEarnings ? item.creatorEarnings / 0.85 : item.amount || 0), 0);
-      const net = sls.reduce((sum, item) => sum + (item.creatorEarnings || 0), 0);
+      // Calculate aggregated metrics (simulated checkouts are excluded from real revenue)
+      const realSales = sls.filter((item) => !item.isMock);
+      const gross = realSales.reduce((sum, item) => sum + (item.creatorEarnings ? item.creatorEarnings / 0.85 : item.amount || 0), 0);
+      const net = realSales.reduce((sum, item) => sum + (item.creatorEarnings || 0), 0);
       setMetrics({
         grossRevenue: gross,
-        netRevenue: net || gross * 0.85,
+        netRevenue: net,
         totalSalesCount: sls.length,
         productsCount: prods.length,
         coursesCount: crss.length,
@@ -533,9 +534,15 @@ export const CreatorDashboardPage: React.FC<CreatorDashboardPageProps> = ({
                               {formatCurrency(s.creatorEarnings)}
                             </td>
                             <td className="py-3">
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800/80">
-                                {language === 'vi' ? 'Đã nhận tiền' : 'Completed'}
-                              </span>
+                              {s.isMock ? (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-800/80">
+                                  {language === 'vi' ? 'Mô phỏng' : 'Simulated'}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-800/80">
+                                  {language === 'vi' ? 'Đã nhận tiền' : 'Completed'}
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}

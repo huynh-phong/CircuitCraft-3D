@@ -2,9 +2,14 @@ import { ValidationIssue } from './types';
 import { ProjectDocument } from '../project/types';
 import { isInsideBoard } from '../project/coordinates';
 import { COMPONENT_DEFINITION_MAP } from '../components/definitions';
+import { toCanonicalDocument } from '../components/aliases';
+import { computeBreadboardPlugs } from '../simulation/engine';
 
-export function validateProjectDocument(doc: ProjectDocument): ValidationIssue[] {
+export function validateProjectDocument(inputDoc: ProjectDocument): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
+  // Legacy component / pin ids are resolved to the canonical schema for analysis only
+  // (instance and connection ids are preserved, the stored document is not modified).
+  const doc = toCanonicalDocument(inputDoc);
   const { board, components, connections } = doc;
 
   if (components.length === 0) {
@@ -91,7 +96,8 @@ export function validateProjectDocument(doc: ProjectDocument): ValidationIssue[]
 
   // 4. Pin Connectivity & Dangling Pins
   const pinConnectedMap = new Map<string, number>();
-  for (const conn of connections) {
+  // Pins resting in breadboard holes are electrically connected (same rule as the simulator)
+  for (const conn of [...connections, ...computeBreadboardPlugs(doc)]) {
     const fromKey = `${conn.fromComponentId}:${conn.fromPinId}`;
     const toKey = `${conn.toComponentId}:${conn.toPinId}`;
     pinConnectedMap.set(fromKey, (pinConnectedMap.get(fromKey) || 0) + 1);

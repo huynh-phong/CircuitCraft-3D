@@ -2,6 +2,7 @@ import React from 'react';
 import { ShoppingBag, Star, Download, Box, ArrowRight, UserCheck } from 'lucide-react';
 import { useI18n } from '../../i18n/context';
 import { CATALOG_PRODUCTS } from '../../marketplace/catalogData';
+import { fetchProductDesign } from '../../marketplace/designService';
 
 export interface MarketplaceShowcaseSectionProps {
   onExploreMarketplace?: () => void;
@@ -107,12 +108,17 @@ export const MarketplaceShowcaseSection: React.FC<MarketplaceShowcaseSectionProp
               </div>
 
               <button
-                onClick={() => {
-                  if (onOpenProject && prod.projectTemplate) {
-                    onOpenProject(prod.projectTemplate());
-                  } else if (onExploreMarketplace) {
-                    onExploreMarketplace();
+                onClick={async () => {
+                  // Paid designs are only delivered after purchase: those go to the Marketplace
+                  if (onOpenProject && prod.isFree) {
+                    try {
+                      onOpenProject(await fetchProductDesign(prod.id));
+                      return;
+                    } catch (err) {
+                      console.warn('Could not load design:', err);
+                    }
                   }
+                  onExploreMarketplace?.();
                 }}
                 className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-extrabold text-xs transition flex items-center gap-1.5 shadow-md shadow-cyan-600/20 cursor-pointer"
               >

@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import { CourseSlide, PracticeStage, PracticeStageChecklistItem } from './types';
 import { ProjectDocument } from '../project/types';
 import { COMPONENT_DEFINITION_MAP } from '../components/definitions';
@@ -34,6 +33,7 @@ export function getFriendlyComponentName(definitionId: string, fallbackName?: st
 export async function parsePptxFileToSlides(file: File): Promise<CourseSlide[]> {
   try {
     const arrayBuffer = await file.arrayBuffer();
+    const { default: JSZip } = await import('jszip');
     const zip = await JSZip.loadAsync(arrayBuffer);
 
     // Find all ppt/slides/slideN.xml files
@@ -164,8 +164,8 @@ export async function parsePptxFileToSlides(file: File): Promise<CourseSlide[]> 
               const imgFile = zip.file(normalizedPath);
               if (imgFile) {
                 const uint8 = await imgFile.async('uint8array');
-                // Keep embedded image reasonable (< 450KB) for fast storage
-                if (uint8.byteLength < 450 * 1024) {
+                // Same limit as the server's slide image storage (MAX_SLIDE_IMAGE_BYTES)
+                if (uint8.byteLength <= 1.5 * 1024 * 1024) {
                   const base64 = await imgFile.async('base64');
                   const ext = normalizedPath.split('.').pop()?.toLowerCase() || 'png';
                   const mime =

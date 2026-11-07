@@ -1,15 +1,18 @@
 import nodemailer from 'nodemailer';
 import tls from 'tls';
+import crypto from 'crypto';
+import { isDevPreviewEnabled } from './security.ts';
+import { deleteOtp, putOtp, verifyOtp } from './sharedState.ts';
 import dotenv from 'dotenv';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Always keep .env updated
-dotenv.config({ override: true });
+dotenv.config({ override: true, quiet: true } as any);
 
 // Supabase Cloud instance derived directly from .env
 let serverSupabaseInstance: SupabaseClient | null = null;
 export function getSupabaseAdmin(): SupabaseClient | null {
-  dotenv.config({ override: true });
+  dotenv.config({ override: true, quiet: true } as any);
   const url = process.env.VITE_SUPABASE_URL?.trim();
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY)?.trim();
   if (!url || !serviceKey) return null;
@@ -24,8 +27,19 @@ export function getSupabaseAdmin(): SupabaseClient | null {
   return serverSupabaseInstance;
 }
 
-export interface OtpRecord {
-  code: string;
+/** OTP codes are stored only as SHA-256 digests and compared in constant time. */
+function hashOtp(code: string): string {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+function otpMatches(storedHash: string, inputCode: string): boolean {
+  const a = Buffer.from(storedHash);
+  const b = Buffer.from(hashOtp(inputCode));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+export interface OtpRecordLegacy {
+  codeHash: string;
   email: string;
   fullName?: string;
   createdAt: number;
@@ -45,7 +59,7 @@ export interface DispatchedEmail {
 }
 
 export interface PhoneOtpRecord {
-  code: string;
+  codeHash: string;
   phone: string;
   email?: string;
   createdAt: number;
@@ -62,9 +76,10 @@ export interface DispatchedSms {
   provider: 'twilio' | 'simulated';
 }
 
-// In-memory OTP storage
-const activeOtps = new Map<string, OtpRecord>();
-const activePhoneOtps = new Map<string, PhoneOtpRecord>();
+const emailOtpKey = (email: string) => `email:${email}`;
+const phoneOtpKey = (phone: string) => `phone:${phone}`;
+const MAX_OTP_ATTEMPTS = 5;
+export type OtpPurpose = 'auth' | 'recovery';
 
 // In-memory recent dispatched emails and SMS for inspection & sandbox preview
 const recentDispatchedEmails = new Map<string, DispatchedEmail>();
@@ -256,7 +271,7 @@ export async function sendOtpEmail(params: {
   fullName?: string;
   intent?: 'signin' | 'signup' | 'recovery';
 }): Promise<{ sent: boolean; simulated: boolean; bounced?: boolean; message: string; previewHtml?: string }> {
-  dotenv.config({ override: true });
+  dotenv.config({ override: true, quiet: true } as any);
   const { email, code, fullName, intent } = params;
   const { html, text, subject, sender } = buildCircuitCraftOtpEmailHtml({
     code,
@@ -346,6 +361,26 @@ export async function sendOtpEmail(params: {
     }
   }
 
+  if (!sent && isDevPreviewEnabled()) {
+    // Isolated development inbox simulator: nothing leaves the machine, the message is only
+    // readable through the dev-only preview endpoint.
+    recentDispatchedEmails.set(email.toLowerCase(), {
+      to: email,
+      from: sender,
+      subject,
+      code,
+      html,
+      sentAt: new Date().toISOString(),
+      status: 'simulated',
+    });
+    return {
+      sent: true,
+      simulated: true,
+      message: '[DEV] Chưa cấu hình dịch vụ email: mã OTP được lưu trong hộp thư mô phỏng.',
+      previewHtml: html,
+    };
+  }
+
   // 2. Dispatch via Supabase Auth from .env (VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY / VITE_SUPABASE_ANON_KEY)
   if (!sent) {
     const supabase = getSupabaseAdmin();
@@ -401,12 +436,11 @@ export async function sendOtpEmail(params: {
       sent: false,
       simulated: false,
       message: `Không thể gửi mã OTP đến email "${email}". Vui lòng kiểm tra thông tin cấu hình trong file .env (Supabase Auth hoặc SMTP).`,
-      previewHtml: html,
     };
   }
 
-  // Store in memory for logs
-  recentDispatchedEmails.set(email.toLowerCase(), {
+  // Keep a copy for the inbox preview only in isolated development mode (it contains the OTP)
+  if (isDevPreviewEnabled()) recentDispatchedEmails.set(email.toLowerCase(), {
     to: email,
     from: sender,
     subject,
@@ -517,8 +551,8 @@ export async function checkEmailDeliveryBounce(targetEmail: string, timeoutMs = 
 /**
  * Revokes any active OTP for an email address
  */
-export function revokeOtp(email: string): void {
-  activeOtps.delete(email.trim().toLowerCase());
+export async function revokeOtp(email: string): Promise<void> {
+  await deleteOtp(emailOtpKey(email.trim().toLowerCase()));
 }
 
 /**
@@ -550,34 +584,25 @@ export async function createAndSendOtp(params: {
     };
   }
 
-  const existing = activeOtps.get(email);
-  const now = Date.now();
-
-  // Enforce 60-second cooldown between requests
-  if (existing && existing.cooldownUntil > now) {
-    const remainingSec = Math.ceil((existing.cooldownUntil - now) / 1000);
+  // Generate 6-digit OTP with a CSPRNG. The store enforces the 60-second resend cooldown atomically.
+  const code = generateSecureOtpCode();
+  const purpose: OtpPurpose = params.intent === 'recovery' ? 'recovery' : 'auth';
+  const stored = await putOtp({
+    key: emailOtpKey(email),
+    codeHash: hashOtp(code),
+    purpose,
+    payload: { fullName: params.fullName },
+    ttlSeconds: 10 * 60,
+    cooldownSeconds: 60,
+  });
+  if (!stored.stored) {
     return {
       success: false,
-      message: `Vui lòng đợi ${remainingSec} giây trước khi yêu cầu mã xác nhận mới.`,
+      message: `Vui lòng đợi ${stored.retryAfterSeconds} giây trước khi yêu cầu mã xác nhận mới.`,
       simulated: false,
-      cooldownSeconds: remainingSec,
+      cooldownSeconds: stored.retryAfterSeconds,
     };
   }
-
-  // Generate 6-digit cryptographic-style OTP
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const expiresAt = now + 10 * 60 * 1000; // 10 minutes
-  const cooldownUntil = now + 60 * 1000; // 60s cooldown
-
-  activeOtps.set(email, {
-    code,
-    email,
-    fullName: params.fullName,
-    createdAt: now,
-    expiresAt,
-    attempts: 0,
-    cooldownUntil,
-  });
 
   const sendResult = await sendOtpEmail({
     email,
@@ -587,7 +612,7 @@ export async function createAndSendOtp(params: {
   });
 
   if (!sendResult.sent) {
-    activeOtps.delete(email);
+    await deleteOtp(emailOtpKey(email));
     return {
       success: false,
       bounced: sendResult.bounced,
@@ -602,17 +627,19 @@ export async function createAndSendOtp(params: {
     message: sendResult.message,
     simulated: false,
     cooldownSeconds: 60,
-    previewHtml: sendResult.previewHtml,
+    // The e-mail HTML contains the OTP: never return it outside isolated development mode
+    previewHtml: isDevPreviewEnabled() ? sendResult.previewHtml : undefined,
   };
 }
 
 /**
  * Validates the 6-digit OTP
  */
-export function verifyOtpCode(params: {
+export async function verifyOtpCode(params: {
   email: string;
   code: string;
-}): {
+  purposes?: OtpPurpose[];
+}): Promise<{
   success: boolean;
   message: string;
   user?: {
@@ -621,48 +648,44 @@ export function verifyOtpCode(params: {
     fullName: string;
     role: 'user';
   };
-} {
+}> {
   const email = params.email.trim().toLowerCase();
   const inputCode = params.code.trim();
 
-  const record = activeOtps.get(email);
-  if (!record) {
-    return {
-      success: false,
-      message: 'Chưa có mã xác nhận nào được gửi cho email này, hoặc mã đã hết hạn. Vui lòng nhấn "Gửi mã".',
-    };
-  }
+  const result = await verifyOtp({
+    key: emailOtpKey(email),
+    codeHash: hashOtp(inputCode),
+    purposes: params.purposes || ['auth'],
+    maxAttempts: MAX_OTP_ATTEMPTS,
+  });
 
-  const now = Date.now();
-  if (now > record.expiresAt) {
-    activeOtps.delete(email);
-    return {
-      success: false,
-      message: 'Mã xác nhận 6 số đã hết hạn (quá 10 phút). Vui lòng yêu cầu mã mới.',
-    };
+  switch (result.status) {
+    case 'missing':
+    case 'wrong_purpose':
+      return {
+        success: false,
+        message: 'Chưa có mã xác nhận nào được gửi cho email này, hoặc mã đã hết hạn. Vui lòng nhấn "Gửi mã".',
+      };
+    case 'expired':
+      return {
+        success: false,
+        message: 'Mã xác nhận 6 số đã hết hạn (quá 10 phút). Vui lòng yêu cầu mã mới.',
+      };
+    case 'locked':
+      return {
+        success: false,
+        message: 'Bạn đã nhập sai mã quá 5 lần. Vì lý do an toàn, mã đã bị vô hiệu hoá. Vui lòng gửi lại mã mới.',
+      };
+    case 'invalid':
+      return {
+        success: false,
+        message: `Mã xác nhận không chính xác. Bạn còn ${result.attemptsLeft} lần thử.`,
+      };
   }
-
-  record.attempts += 1;
-  if (record.attempts > 5) {
-    activeOtps.delete(email);
-    return {
-      success: false,
-      message: 'Bạn đã nhập sai mã quá 5 lần. Vì lý do an toàn, mã đã bị vô hiệu hoá. Vui lòng gửi lại mã mới.',
-    };
-  }
-
-  if (record.code !== inputCode) {
-    return {
-      success: false,
-      message: `Mã xác nhận không chính xác. Bạn còn ${5 - record.attempts} lần thử.`,
-    };
-  }
-
-  // Verification passed! Clean up used OTP
-  activeOtps.delete(email);
 
   const userId = `usr_otp_${Buffer.from(email).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16)}`;
-  const fullName = record.fullName?.trim() || email.split('@')[0] || 'Kỹ sư CircuitCraft';
+  const savedName = typeof result.payload?.fullName === 'string' ? result.payload.fullName : '';
+  const fullName = savedName.trim() || email.split('@')[0] || 'Kỹ sư CircuitCraft';
 
   return {
     success: true,
@@ -682,6 +705,7 @@ export function verifyOtpCode(params: {
 export async function verifyOtpCodeAsync(params: {
   email: string;
   code: string;
+  purposes?: OtpPurpose[];
 }): Promise<{
   success: boolean;
   message: string;
@@ -696,7 +720,7 @@ export async function verifyOtpCodeAsync(params: {
   const cleanCode = params.code.trim();
 
   // 1. Check local OTP (when custom email was dispatched via SMTP)
-  const localRes = verifyOtpCode({ email: cleanEmail, code: cleanCode });
+  const localRes = await verifyOtpCode({ email: cleanEmail, code: cleanCode, purposes: params.purposes });
   if (localRes.success) {
     return localRes;
   }
@@ -724,7 +748,7 @@ export async function verifyOtpCodeAsync(params: {
       }
 
       if (!verifyRes.error && verifyRes.data?.user) {
-        activeOtps.delete(cleanEmail);
+        await deleteOtp(emailOtpKey(cleanEmail));
         const fullName = (verifyRes.data.user.user_metadata?.full_name || cleanEmail.split('@')[0] || 'Kỹ sư CircuitCraft') as string;
         return {
           success: true,
@@ -759,7 +783,7 @@ export function getDispatchedEmail(email: string): DispatchedEmail | null {
  * Generates a secure 6-digit numeric OTP code
  */
 export function generateSecureOtpCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 /**
@@ -781,32 +805,23 @@ export async function createAndSendPhoneOtp(params: {
   const { phone, email, intent = 'signin', fullName } = params;
   const cleanPhone = phone.trim();
 
-  // Cooldown check
-  const existing = activePhoneOtps.get(cleanPhone);
-  const now = Date.now();
-  if (existing && existing.cooldownUntil > now) {
-    const remainingSeconds = Math.ceil((existing.cooldownUntil - now) / 1000);
+  // Generate cryptographic 6-digit OTP code (5 minutes validity, 60 seconds resend cooldown)
+  const code = generateSecureOtpCode();
+  const stored = await putOtp({
+    key: phoneOtpKey(cleanPhone),
+    codeHash: hashOtp(code),
+    purpose: intent === 'recovery' ? 'recovery' : 'auth',
+    payload: { email },
+    ttlSeconds: 5 * 60,
+    cooldownSeconds: 60,
+  });
+  if (!stored.stored) {
     return {
       success: false,
-      message: `Vui lòng đợi ${remainingSeconds} giây trước khi yêu cầu gửi lại mã OTP đến số điện thoại này.`,
-      cooldownSeconds: remainingSeconds,
+      message: `Vui lòng đợi ${stored.retryAfterSeconds} giây trước khi yêu cầu gửi lại mã OTP đến số điện thoại này.`,
+      cooldownSeconds: stored.retryAfterSeconds,
     };
   }
-
-  // Generate cryptographic 6-digit OTP code
-  const code = generateSecureOtpCode();
-  const expiresAt = now + 5 * 60 * 1000; // 5 minutes validity
-  const cooldownUntil = now + 60 * 1000; // 60 seconds resend cooldown
-
-  activePhoneOtps.set(cleanPhone, {
-    code,
-    phone: cleanPhone,
-    email,
-    createdAt: now,
-    expiresAt,
-    attempts: 0,
-    cooldownUntil,
-  });
 
   let smsBody = `[CircuitCraft 3D] Ma OTP xac thuc cua ban la: ${code}. Ma co hieu luc trong 5 phut. Khong chia se ma nay cho bat ky ai.`;
   if (intent === 'signin') {
@@ -862,30 +877,38 @@ export async function createAndSendPhoneOtp(params: {
     }
   }
 
-  // Save in recent dispatched SMS for UI sandbox preview / notification
-  recentDispatchedSms.set(cleanPhone, {
-    phone: cleanPhone,
-    code,
-    message: smsBody,
-    sentAt: new Date().toISOString(),
-    provider: sentRealSms ? 'twilio' : 'simulated',
-  });
+  const devPreview = isDevPreviewEnabled();
 
-  console.log(`\n================== [CIRCUIT CRAFT 3D - SMS OTP DISPATCH] ==================`);
-  console.log(`To Phone Number: ${cleanPhone}`);
-  console.log(`OTP Code       : ${code}`);
-  console.log(`SMS Content    : ${smsBody}`);
-  console.log(`Provider       : ${sentRealSms ? 'Twilio Live SMS' : 'SMS Simulation Gateway'}`);
-  console.log(`===========================================================================\n`);
+  // Without a real SMS gateway the code can only be shown in isolated development mode.
+  if (!sentRealSms && !devPreview) {
+    await deleteOtp(phoneOtpKey(cleanPhone));
+    return {
+      success: false,
+      message: 'Dịch vụ gửi SMS chưa được cấu hình trên máy chủ. Vui lòng khôi phục mật khẩu qua Email.',
+      cooldownSeconds: 0,
+    };
+  }
+
+  if (devPreview) {
+    recentDispatchedSms.set(cleanPhone, {
+      phone: cleanPhone,
+      code,
+      message: smsBody,
+      sentAt: new Date().toISOString(),
+      provider: sentRealSms ? 'twilio' : 'simulated',
+    });
+  }
+
+  console.log(`[SMS Service] OTP dispatched to ${cleanPhone} via ${sentRealSms ? 'Twilio' : 'dev simulation'}`);
 
   return {
     success: true,
     message: sentRealSms
       ? `Đã gửi mã OTP đến số điện thoại ${cleanPhone} qua tin nhắn SMS.`
-      : `Đã gửi mã OTP đến số điện thoại ${cleanPhone}. (Mã OTP: ${code})`,
+      : `[DEV] Mã OTP mô phỏng đã được tạo cho số ${cleanPhone}.`,
     cooldownSeconds: 60,
-    codePreview: code,
-    smsText: smsBody,
+    codePreview: devPreview && !sentRealSms ? code : undefined,
+    smsText: devPreview && !sentRealSms ? smsBody : undefined,
     simulated: !sentRealSms,
   };
 }
@@ -893,54 +916,36 @@ export async function createAndSendPhoneOtp(params: {
 /**
  * Verifies a 6-digit phone OTP code
  */
-export function verifyPhoneOtpCode(params: {
+export async function verifyPhoneOtpCode(params: {
   phone: string;
   code: string;
-}): { success: boolean; message: string } {
-  const { phone, code } = params;
-  const cleanPhone = phone.trim();
-  const inputCode = code.trim();
+}): Promise<{ success: boolean; message: string }> {
+  const cleanPhone = params.phone.trim();
+  const result = await verifyOtp({
+    key: phoneOtpKey(cleanPhone),
+    codeHash: hashOtp(params.code.trim()),
+    purposes: ['recovery', 'auth'],
+    maxAttempts: MAX_OTP_ATTEMPTS,
+  });
 
-  const record = activePhoneOtps.get(cleanPhone);
-  if (!record) {
-    return {
-      success: false,
-      message: 'Chưa có mã OTP nào được gửi đến số điện thoại này hoặc mã đã hết hạn. Vui lòng nhấn "Gửi lại mã".',
-    };
+  switch (result.status) {
+    case 'ok':
+      return { success: true, message: 'Xác thực mã OTP điện thoại thành công!' };
+    case 'expired':
+      return { success: false, message: 'Mã OTP đã hết hạn (quá 5 phút). Vui lòng yêu cầu gửi lại mã mới.' };
+    case 'locked':
+      return {
+        success: false,
+        message: 'Bạn đã nhập sai mã quá 5 lần. Vì lý do an toàn, mã đã bị vô hiệu hoá. Vui lòng gửi lại mã mới.',
+      };
+    case 'invalid':
+      return { success: false, message: `Mã OTP không chính xác. Bạn còn ${result.attemptsLeft} lần thử.` };
+    default:
+      return {
+        success: false,
+        message: 'Chưa có mã OTP nào được gửi đến số điện thoại này hoặc mã đã hết hạn. Vui lòng nhấn "Gửi lại mã".',
+      };
   }
-
-  const now = Date.now();
-  if (now > record.expiresAt) {
-    activePhoneOtps.delete(cleanPhone);
-    return {
-      success: false,
-      message: 'Mã OTP đã hết hạn (quá 5 phút). Vui lòng yêu cầu gửi lại mã mới.',
-    };
-  }
-
-  record.attempts += 1;
-  if (record.attempts > 5) {
-    activePhoneOtps.delete(cleanPhone);
-    return {
-      success: false,
-      message: 'Bạn đã nhập sai mã quá 5 lần. Vì lý do an toàn, mã đã bị vô hiệu hoá. Vui lòng gửi lại mã mới.',
-    };
-  }
-
-  if (record.code !== inputCode) {
-    return {
-      success: false,
-      message: `Mã OTP không chính xác. Bạn còn ${5 - record.attempts} lần thử.`,
-    };
-  }
-
-  // Verification passed! Clean up used phone OTP
-  activePhoneOtps.delete(cleanPhone);
-
-  return {
-    success: true,
-    message: 'Xác thực mã OTP điện thoại thành công!',
-  };
 }
 
 /**

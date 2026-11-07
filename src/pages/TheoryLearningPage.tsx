@@ -204,8 +204,9 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
           lessonTitle: activeLesson.title,
           lessonSummary: activeLesson.summary,
           currentSlideNumber: currentSlide.slideNumber,
-          currentSlide,
-          allSlides: slides,
+          // The tutor works on slide text: images stay out of the request
+          currentSlide: { ...currentSlide, imageDataUrl: undefined },
+          allSlides: slides.map(({ imageDataUrl: _image, ...textOnly }) => textOnly),
           courseSyllabusSummary,
           prompt: q,
           history: nextHistory,

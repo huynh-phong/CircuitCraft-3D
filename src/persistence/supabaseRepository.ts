@@ -4,6 +4,7 @@ import { localProjectRepository } from './localRepository';
 import { getSupabase } from './supabaseClient';
 import { authService } from './authService';
 import { cloneProjectDocument } from '../domain/project/document';
+import { fetchServerProject } from './serverProjects';
 
 /**
  * Row structure for `public.projects` in Supabase PostgreSQL
@@ -115,6 +116,7 @@ export class SupabaseProjectRepository implements ProjectRepository {
         return localProjectRepository.listProjects();
       }
 
+      // Sessions from e-mail OTP have no Supabase Auth identity: their projects come through the API
       if (!data || data.length === 0) {
         const localList = await localProjectRepository.listProjects();
         // Only return local projects if they belong to this authenticated user
@@ -159,12 +161,12 @@ export class SupabaseProjectRepository implements ProjectRepository {
 
       if (error) {
         console.error(`Lỗi khi lấy project ${id} từ Supabase:`, error.message);
-        return localProjectRepository.getProject(id);
+        return (await fetchServerProject(id)) || localProjectRepository.getProject(id);
       }
 
       if (!data) {
-        // Project either doesn't exist or RLS blocked access
-        return null;
+        // Not visible to this client (RLS): the API knows projects of sessions from e-mail OTP
+        return (await fetchServerProject(id)) || localProjectRepository.getProject(id);
       }
 
       return this.rowToDocument(data as SupabaseProjectRow);

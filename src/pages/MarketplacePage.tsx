@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CATALOG_PRODUCTS } from '../marketplace/catalogData';
 import { CatalogProduct } from '../marketplace/types';
+import { fetchProductDesign, ProductDesignError } from '../marketplace/designService';
 import { paymentService } from '../billing/paymentService';
 import { projectRepositoryManager } from '../persistence/repositoryManager';
 import { ProjectDocument } from '../domain/project/types';
@@ -30,6 +31,7 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
   const [activePaymentOrder, setActivePaymentOrder] = useState<PaymentOrderDetails | null>(null);
   const [, setRefreshState] = useState(0);
   const [dynamicProducts, setDynamicProducts] = useState<CatalogProduct[]>([]);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = paymentService.subscribe(() => setRefreshState((v) => v + 1));
@@ -60,45 +62,6 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
             componentsSummary: p.componentsSummary || ['Mạch ứng dụng 3D'],
             prerequisites: p.prerequisites || [],
             learningOutcomes: p.deliverables || ['Kỹ năng thiết kế mạch'],
-            projectTemplate: () => ({
-              projectId: `creator-${p.id}`,
-              name: p.title,
-              schemaVersion: 1,
-              revision: 1,
-              units: 'mm',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              board: p.previewSnapshot?.board ? {
-                width: p.previewSnapshot.board.width || 140,
-                depth: p.previewSnapshot.board.depth || p.previewSnapshot.board.height || 100,
-                solderMaskColor: p.previewSnapshot.board.color || p.previewSnapshot.board.solderMaskColor || '#0f766e',
-                thickness: 1.6,
-                copperLayerCount: 2,
-                gridSpacing: 2.54,
-              } : {
-                width: 140,
-                depth: 100,
-                solderMaskColor: '#0f766e',
-                thickness: 1.6,
-                copperLayerCount: 2,
-                gridSpacing: 2.54,
-              },
-              wireRoutes: [],
-              components: Array.isArray(p.previewSnapshot?.components) && p.previewSnapshot.components.length > 0
-                ? p.previewSnapshot.components
-                : [
-                    { instanceId: 'cmp-1', definitionId: 'dc-source', name: 'Nguồn DC 5V', position: { x: -30, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, parameters: { voltage: 5.0 } },
-                    { instanceId: 'cmp-2', definitionId: 'resistor', name: 'Điện trở 220Ω', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, parameters: { resistance: 220 } },
-                    { instanceId: 'cmp-3', definitionId: 'led', name: 'LED Xanh', position: { x: 30, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, parameters: { color: 'green' } },
-                  ],
-              connections: Array.isArray(p.previewSnapshot?.connections) && p.previewSnapshot.connections.length > 0
-                ? p.previewSnapshot.connections
-                : [
-                    { id: 'c1', fromComponentId: 'cmp-1', fromPinId: 'vcc', toComponentId: 'cmp-2', toPinId: 'pin1', wireColor: '#ef4444' },
-                    { id: 'c2', fromComponentId: 'cmp-2', fromPinId: 'pin2', toComponentId: 'cmp-3', toPinId: 'anode', wireColor: '#ef4444' },
-                    { id: 'c3', fromComponentId: 'cmp-1', fromPinId: 'gnd', toComponentId: 'cmp-3', toPinId: 'cathode', wireColor: '#10b981' },
-                  ],
-            }),
             tags: p.tags || ['Creator', '3D'],
           }));
 
@@ -120,21 +83,34 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
       p.tags.some((t) => t.toLowerCase().includes(search.toLowerCase()))
   );
 
+  const openPurchasedDesign = async (product: CatalogProduct) => {
+    const doc = await fetchProductDesign(product.id);
+    doc.projectId = `proj-${Date.now()}`;
+    if (currentUser?.id) doc.authorId = currentUser.id;
+    const repo = projectRepositoryManager.getActiveRepository();
+    await repo.saveProject(doc, { force: true });
+    onOpenProject(doc);
+  };
+
   const handleAcquireProduct = async (product: CatalogProduct) => {
     if (!currentUser && onOpenAuthModal) {
       onOpenAuthModal();
       return;
     }
 
+    setActionError(null);
     if (product.isFree || paymentService.hasEntitlement(product.id)) {
       // Free or owned -> save into repository and open directly
-      const doc = product.projectTemplate();
-      doc.projectId = `proj-${Date.now()}`;
-      doc.authorId = currentUser?.id || 'guest';
-      const repo = projectRepositoryManager.getActiveRepository();
-      await repo.saveProject(doc, { force: true });
-      onOpenProject(doc);
-      return;
+      try {
+        await openPurchasedDesign(product);
+        return;
+      } catch (err) {
+        // The server has the final word: a purchase it does not know about goes to checkout
+        if (!(err instanceof ProductDesignError && err.code === 'PAYMENT_REQUIRED')) {
+          setActionError(err instanceof Error ? err.message : 'Không thể mở bản thiết kế.');
+          return;
+        }
+      }
     }
 
     // Paid -> Create secure backend order and open VietQR Payment Dialog immediately
@@ -152,73 +128,15 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.order) {
-          setActivePaymentOrder(data.order);
-          return;
-        }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.order) {
+        setActivePaymentOrder(data.order);
+        return;
       }
-
-      // Fallback authoritative VietQR order if backend is slow/offline
-      const bankName = 'MB Bank';
-      const bankId = '970422';
-      const accountNumber = '0988888888';
-      const accountName = 'Huỳnh Phong';
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const cleanCode = product.id.replace(/^(course-|market-|plan-|prod-)/, '').toUpperCase().substring(0, 8);
-      const orderCode = `CC3D_${cleanCode}_${randomSuffix}`;
-      const transferContent = `CC3D ${orderCode}`;
-      const qrUrl = `https://api.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?accountName=${encodeURIComponent(
-        accountName
-      )}&amount=${product.price}&addInfo=${encodeURIComponent(transferContent)}`;
-
-      const fallbackOrder: PaymentOrderDetails = {
-        orderId: `ord-${Date.now()}-${randomSuffix}`,
-        orderCode,
-        productId: product.id,
-        productTitle: product.name,
-        amount: product.price,
-        currency: 'VND',
-        bankDetails: {
-          bankName,
-          accountNumber,
-          accountNumberMasked: '098****888',
-          accountName,
-          orderCode,
-          transferContent,
-          qrUrl,
-        },
-      };
-
-      setActivePaymentOrder(fallbackOrder);
-    } catch (err: any) {
-      console.warn('Backend order creation note, launching client VietQR order:', err);
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const cleanCode = product.id.replace(/^(course-|market-|plan-|prod-)/, '').toUpperCase().substring(0, 8);
-      const orderCode = `CC3D_${cleanCode}_${randomSuffix}`;
-      const transferContent = `CC3D ${orderCode}`;
-      const qrUrl = `https://api.vietqr.io/image/970422-0988888888-compact.jpg?accountName=Hu%E1%BB%B3nh%20Phong&amount=${product.price}&addInfo=${encodeURIComponent(
-        transferContent
-      )}`;
-
-      setActivePaymentOrder({
-        orderId: `ord-${Date.now()}-${randomSuffix}`,
-        orderCode,
-        productId: product.id,
-        productTitle: product.name,
-        amount: product.price,
-        currency: 'VND',
-        bankDetails: {
-          bankName: 'MB Bank',
-          accountNumber: '0988888888',
-          accountNumberMasked: '098****888',
-          accountName: 'Huỳnh Phong',
-          orderCode,
-          transferContent,
-          qrUrl,
-        },
-      });
+      setActionError(data.error || 'Không thể tạo đơn hàng lúc này. Vui lòng thử lại sau.');
+    } catch (err) {
+      console.warn('Could not create order:', err);
+      setActionError('Không kết nối được máy chủ để tạo đơn hàng. Vui lòng thử lại sau.');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -232,22 +150,24 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
       return;
     }
 
-    const doc = prod.projectTemplate();
-    doc.projectId = `proj-${Date.now()}`;
-    if (currentUser?.id) {
-      doc.authorId = currentUser.id;
-    }
-    const repo = projectRepositoryManager.getActiveRepository();
-    await repo.saveProject(doc, { force: true });
-
     setSelectedProduct(null);
     setActivePaymentOrder(null);
-    onOpenProject(doc);
+    try {
+      await openPurchasedDesign(prod);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Thanh toán đã ghi nhận nhưng chưa mở được bản thiết kế. Vui lòng thử lại.');
+    }
   };
 
   return (
     <div className="flex-1 overflow-y-auto bg-transparent p-4 sm:p-6 md:p-8 select-none text-slate-900 dark:text-slate-100 transition-colors">
       <div className="max-w-6xl mx-auto space-y-8">
+        {actionError && (
+          <div role="alert" className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">
+            {actionError}
+          </div>
+        )}
+
         {/* Header Panel */}
         <div className="tech-panel p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -539,7 +459,6 @@ export const MarketplacePage: React.FC<MarketplacePageProps> = ({
           authorName={viewerProduct.author.name}
           price={viewerProduct.price}
           isOpen={Boolean(viewerProduct)}
-          fallbackProject={viewerProduct.projectTemplate()}
           currentUser={currentUser}
           onOpenAuthModal={onOpenAuthModal}
           onClose={() => setViewerProduct(null)}

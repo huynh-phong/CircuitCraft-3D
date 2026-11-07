@@ -42,6 +42,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({
   const [activePaymentOrder, setActivePaymentOrder] = useState<PaymentOrderDetails | null>(null);
   const [, setIsProcessingBuy] = useState(false);
   const [buySuccessMessage, setBuySuccessMessage] = useState<string | null>(null);
+  const [buyError, setBuyError] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>(() => courseService.getCourses());
   const [enrollments, setEnrollments] = useState<Record<string, any>>(() =>
     courseService.getEnrollments()
@@ -88,6 +89,7 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({
 
   const handleOpenBuy = async (course: Course) => {
     setCourseToBuy(course);
+    setBuyError(null);
     setIsProcessingBuy(true);
 
     try {
@@ -104,75 +106,15 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.order) {
-          setActivePaymentOrder(data.order);
-          return;
-        }
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.order) {
+        setActivePaymentOrder(data.order);
+        return;
       }
-
-      const bankName = 'MB Bank';
-      const bankId = '970422';
-      const accountNumber = '0988888888';
-      const accountName = 'Huỳnh Phong';
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const cleanCode = course.id
-        .replace(/^(course-|market-|plan-|prod-)/, '')
-        .toUpperCase()
-        .substring(0, 8);
-      const orderCode = `CC3D_${cleanCode}_${randomSuffix}`;
-      const transferContent = `CC3D ${orderCode}`;
-      const qrUrl = `https://api.vietqr.io/image/${bankId}-${accountNumber}-compact.jpg?accountName=${encodeURIComponent(
-        accountName
-      )}&amount=${course.price}&addInfo=${encodeURIComponent(transferContent)}`;
-
-      setActivePaymentOrder({
-        orderId: `ord-${Date.now()}-${randomSuffix}`,
-        orderCode,
-        productId: course.id,
-        productTitle: course.title,
-        amount: course.price,
-        currency: 'VND',
-        bankDetails: {
-          bankName,
-          accountNumber,
-          accountNumberMasked: '098****888',
-          accountName,
-          orderCode,
-          transferContent,
-          qrUrl,
-        },
-      });
+      setBuyError(data.error || 'Không thể tạo đơn hàng lúc này. Vui lòng thử lại sau.');
     } catch (err) {
-      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-      const cleanCode = course.id
-        .replace(/^(course-|market-|plan-|prod-)/, '')
-        .toUpperCase()
-        .substring(0, 8);
-      const orderCode = `CC3D_${cleanCode}_${randomSuffix}`;
-      const transferContent = `CC3D ${orderCode}`;
-      const qrUrl = `https://api.vietqr.io/image/970422-0988888888-compact.jpg?accountName=Hu%E1%BB%B3nh%20Phong&amount=${course.price}&addInfo=${encodeURIComponent(
-        transferContent
-      )}`;
-
-      setActivePaymentOrder({
-        orderId: `ord-${Date.now()}-${randomSuffix}`,
-        orderCode,
-        productId: course.id,
-        productTitle: course.title,
-        amount: course.price,
-        currency: 'VND',
-        bankDetails: {
-          bankName: 'MB Bank',
-          accountNumber: '0988888888',
-          accountNumberMasked: '098****888',
-          accountName: 'Huỳnh Phong',
-          orderCode,
-          transferContent,
-          qrUrl,
-        },
-      });
+      console.warn('Could not create order:', err);
+      setBuyError('Không kết nối được máy chủ để tạo đơn hàng. Vui lòng thử lại sau.');
     } finally {
       setIsProcessingBuy(false);
     }
@@ -523,9 +465,9 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({
                                 <div className="flex items-center gap-2 mt-1 text-[10px] font-semibold text-cyan-600 dark:text-cyan-400">
                                   <span className="flex items-center gap-1">
                                     <FileSpreadsheet className="w-3 h-3" />
-                                    {item.slides?.length || 0} slide bài giảng
+                                    {item.slideCount ?? item.slides?.length ?? 0} slide bài giảng
                                   </span>
-                                  {item.videoUrl && (
+                                  {(item.hasVideo || item.videoUrl) && (
                                     <span className="flex items-center gap-1 text-indigo-500">
                                       <Video className="w-3 h-3" />
                                       Có video
@@ -651,6 +593,11 @@ export const CoursesPage: React.FC<CoursesPageProps> = ({
         )}
 
         {/* Success Alert */}
+        {buyError && (
+          <div role="alert" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[120] max-w-md p-3 rounded-xl bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300 shadow-lg">
+            {buyError}
+          </div>
+        )}
         {buySuccessMessage && (
           <div className="p-3.5 bg-emerald-50/95 dark:bg-emerald-950/80 border border-emerald-400 dark:border-emerald-500 text-emerald-800 dark:text-emerald-300 text-xs font-semibold rounded-2xl text-center shadow-lg animate-in fade-in transition-all">
             {buySuccessMessage}

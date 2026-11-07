@@ -4,6 +4,7 @@ import { SAMPLE_PROJECTS } from './sampleProjects';
 import { cloneProjectDocument } from '../domain/project/document';
 import { getUserStorageKey, purgeLegacyGlobalStorage } from './storageNamespace';
 import { authService } from './authService';
+import { fetchServerProjects, mergeProjects } from './serverProjects';
 
 export class LocalProjectRepository implements ProjectRepository {
   private explicitUserId: string | null = null;
@@ -64,6 +65,13 @@ export class LocalProjectRepository implements ProjectRepository {
   }
 
   async listProjects(): Promise<ProjectDocument[]> {
+    const local = await this.readLocalProjects();
+    if (!this.getEffectiveUserId()) return local;
+    const server = await fetchServerProjects();
+    return server ? mergeProjects(local, server) : local;
+  }
+
+  private async readLocalProjects(): Promise<ProjectDocument[]> {
     try {
       const effectiveId = this.getEffectiveUserId();
       const key = this.getProjectsStorageKey();
@@ -110,12 +118,12 @@ export class LocalProjectRepository implements ProjectRepository {
 
   async saveProject(
     project: ProjectDocument,
-    _options?: { force?: boolean }
+    options?: { force?: boolean }
   ): Promise<ProjectSaveResult> {
     try {
       const effectiveId = this.getEffectiveUserId();
       const key = this.getProjectsStorageKey();
-      const list = await this.listProjects();
+      const list = await this.readLocalProjects();
       const index = list.findIndex((p) => p.projectId === project.projectId);
       const updatedProject: ProjectDocument = {
         ...project,
@@ -153,16 +161,27 @@ export class LocalProjectRepository implements ProjectRepository {
       if (typeof fetch !== 'undefined') {
         const profile = authService.getCurrentProfile();
         const user = authService.getCurrentUser();
-        fetch('/api/projects/sync', {
+        const syncing = fetch('/api/projects/sync', {
           method: 'POST',
-          headers: authService.getAuthHeaders(),
+          headers: { 'Content-Type': 'application/json', ...authService.getAuthHeaders() },
           body: JSON.stringify({
             project: updatedProject,
+            force: options?.force === true,
             userId: profile?.id || user?.id || updatedProject.authorId,
             userEmail: profile?.email || user?.email,
             userName: profile?.fullName,
           }),
-        }).catch(() => {});
+        });
+        if (effectiveId) {
+          // Signed in: the editor needs to know if a newer version was saved elsewhere
+          const syncRes = await syncing.catch(() => null);
+          if (syncRes?.status === 409) {
+            const conflict = await syncRes.json().catch(() => ({}));
+            return { success: false, conflict: true, remoteRevision: conflict.remoteRevision };
+          }
+        } else {
+          syncing.catch(() => {});
+        }
       }
 
       return { success: true };
@@ -175,7 +194,7 @@ export class LocalProjectRepository implements ProjectRepository {
   async deleteProject(id: string): Promise<boolean> {
     try {
       const key = this.getProjectsStorageKey();
-      const list = await this.listProjects();
+      const list = await this.readLocalProjects();
       const filtered = list.filter((p) => p.projectId !== id);
       localStorage.setItem(key, JSON.stringify(filtered));
       localStorage.removeItem(this.getVersionsStorageKey(id));

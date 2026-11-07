@@ -160,7 +160,7 @@ assert(activeCircuit.connections.length === initialConnCount, 'Connection count 
 
 // Wire route restored
 assert(
-  activeCircuit.wireRoutes?.some((r) => r.connectionId === 'wire_1'),
+  Boolean(activeCircuit.wireRoutes?.some((r) => r.connectionId === 'wire_1')),
   'wireRoute for wire_1 restored with exact waypoints'
 );
 

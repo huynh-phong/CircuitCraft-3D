@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
+import { clearGroup, disposeObjectTree } from './disposal';
+import { ReconcileStats, reconcileChildren } from './sceneReconciler';
 import { ProjectDocument, ComponentInstance, Connection, Vector3D, BoardDefinition } from '../domain/project/types';
 import { COMPONENT_DEFINITION_MAP } from '../domain/components/definitions';
 import { SceneMaterialRegistry } from './materials';
-import { createComponentMesh } from './proceduralModels';
-import { createWireMesh, createPreviewWireMesh } from './wires';
+import { applyComponentTransform, componentVisualSignature, createComponentMesh } from './proceduralModels';
+import { componentLayoutHash, createPreviewWireMesh, createWireMesh, wireVisualSignature } from './wires';
 import { Minibot3D, MinibotState } from './minibot3D';
 import { snapToGrid, calculatePinWorldPosition } from '../domain/project/coordinates';
 import { SimulationResult } from '../domain/simulation/types';
@@ -48,6 +50,21 @@ export interface ThreeSceneProps {
   onPlacedComponent?: () => void;
 }
 
+/** Development aid: how much work the scene did, readable from the browser console. */
+function reportSceneStats(kind: 'components' | 'wires', stats: ReconcileStats, startedAt: number) {
+  if (!import.meta.env.DEV) return;
+  const w = window as any;
+  const totals = (w.__cc3dSceneStats ??= {
+    components: { built: 0, kept: 0, removed: 0, passes: 0, lastMs: 0 },
+    wires: { built: 0, kept: 0, removed: 0, passes: 0, lastMs: 0 },
+  })[kind];
+  totals.built += stats.built;
+  totals.kept += stats.kept;
+  totals.removed += stats.removed;
+  totals.passes += 1;
+  totals.lastMs = performance.now() - startedAt;
+}
+
 export const ThreeScene: React.FC<ThreeSceneProps> = ({
   document,
   selectedComponentId,
@@ -81,6 +98,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 }) => {
   const { effectiveTheme, language } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // The render loop outlives individual renders: it reads the latest props through this ref
+  const latestPropsRef = useRef({ document, simulationResult, isExplodedView });
+  latestPropsRef.current = { document, simulationResult, isExplodedView };
+  const instancesByMeshNameRef = useRef(new Map<string, ComponentInstance>());
 
   // Three.js instances ref
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -446,12 +468,13 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       camera.lookAt(camTarget);
 
       // 2. Smooth Exploded View transition
-      const targetExploded = isExplodedView ? 1 : 0;
+      const latest = latestPropsRef.current;
+      const targetExploded = latest.isExplodedView ? 1 : 0;
       explodedProgressRef.current = THREE.MathUtils.lerp(explodedProgressRef.current, targetExploded, delta * 5);
 
       // Apply vertical elevation to components based on deterministic layer logic
       componentsGroupRef.current.children.forEach((child, index) => {
-        const baseInstance = document.components.find((c) => `comp-${c.instanceId}` === child.name);
+        const baseInstance = instancesByMeshNameRef.current.get(child.name);
         if (baseInstance) {
           const def = COMPONENT_DEFINITION_MAP.get(baseInstance.definitionId);
           const layerOffset = (def?.category === 'power' ? 24 : def?.category === 'passives' ? 14 : 32) + (index % 5) * 2;
@@ -465,7 +488,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const nowMs = performance.now();
         settlingComponentsRef.current.forEach((info, compId) => {
           const child = componentsGroupRef.current.children.find((c) => c.name === `comp-${compId}`);
-          const comp = document.components.find((c) => c.instanceId === compId);
+          const comp = instancesByMeshNameRef.current.get(`comp-${compId}`);
           if (child && comp) {
             const elapsed = (nowMs - info.startTime) / 1000;
             if (elapsed < 0.28) {
@@ -482,7 +505,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       }
 
       // 4. Electrical Current Flow Pulse Animation along connected wires
-      const isCircuitActive = Boolean(simulationResult && simulationResult.status === 'running');
+      const isCircuitActive = Boolean(latest.simulationResult && latest.simulationResult.status === 'running');
       wiresGroupRef.current.children.forEach((wireGroup, wireIdx) => {
         const pulseMesh = wireGroup.children.find((c) => c.name === 'electric-pulse') as THREE.Mesh | undefined;
         if (pulseMesh && pulseMesh.userData?.curve) {
@@ -522,12 +545,28 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
+      // The Minibot is re-created with the scene: release its GPU resources
+      scene.remove(minibot.group);
+      disposeObjectTree(minibot.group);
       if (rendererRef.current && rendererRef.current.domElement) {
         rendererRef.current.domElement.remove();
         rendererRef.current.dispose();
       }
     };
   }, [isPresentationMode, qualityPreset]);
+
+  // Release board / component / wire meshes when the workspace is unmounted
+  useEffect(() => {
+    return () => {
+      clearGroup(boardGroupRef.current);
+      clearGroup(resizeHandlesGroupRef.current);
+      clearGroup(componentsGroupRef.current);
+      clearGroup(wiresGroupRef.current);
+      disposeObjectTree(previewWireRef.current);
+      disposeObjectTree(cutLineMeshRef.current);
+      disposeObjectTree(selectionOutlineRef.current);
+    };
+  }, []);
 
   // Reactively update scene background and workbench without re-creating scene or resetting camera
   useEffect(() => {
@@ -541,9 +580,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   // Build / Update Board PCB Mesh
   useEffect(() => {
     const boardGroup = boardGroupRef.current;
-    while (boardGroup.children.length > 0) {
-      boardGroup.remove(boardGroup.children[0]);
-    }
+    clearGroup(boardGroup);
 
     const { width, depth, thickness, solderMaskColor, shape = 'rectangle' } = document.board;
     const mats = SceneMaterialRegistry.getInstance();
@@ -680,9 +717,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   // Build / Update Board Resize Handles (Corner handles in Select Mode)
   useEffect(() => {
     const handlesGroup = resizeHandlesGroupRef.current;
-    while (handlesGroup.children.length > 0) {
-      handlesGroup.remove(handlesGroup.children[0]);
-    }
+    clearGroup(handlesGroup);
 
     if (isWiringMode || isCutMode || isPresentationMode) {
       return;
@@ -735,6 +770,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     if (!sceneRef.current) return;
     if (cutLineMeshRef.current) {
       sceneRef.current.remove(cutLineMeshRef.current);
+      disposeObjectTree(cutLineMeshRef.current);
       cutLineMeshRef.current = null;
     }
 
@@ -755,6 +791,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     return () => {
       if (cutLineMeshRef.current && sceneRef.current) {
         sceneRef.current.remove(cutLineMeshRef.current);
+        disposeObjectTree(cutLineMeshRef.current);
         cutLineMeshRef.current = null;
       }
     };
@@ -818,54 +855,61 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
   // Build / Update Component Meshes
   useEffect(() => {
-    const compGroup = componentsGroupRef.current;
-    while (compGroup.children.length > 0) {
-      compGroup.remove(compGroup.children[0]);
-    }
+    const started = performance.now();
+    const meshOptions = (inst: ComponentInstance) => ({
+      isSimulationOn: simulationResult?.components?.[inst.instanceId]?.isOn || false,
+      switchClosed: switchStates[inst.instanceId] ?? (inst.state?.open === false),
+    });
 
-    if (selectionOutlineRef.current && sceneRef.current) {
+    instancesByMeshNameRef.current = new Map(document.components.map((c) => [`comp-${c.instanceId}`, c]));
+
+    const items = document.components.flatMap((inst) => {
+      const def = COMPONENT_DEFINITION_MAP.get(inst.definitionId);
+      if (!def) return [];
+      return [{ key: inst.instanceId, signature: componentVisualSignature(inst, def, meshOptions(inst)), data: inst }];
+    });
+
+    const stats = reconcileChildren(
+      componentsGroupRef.current,
+      items,
+      (inst) => createComponentMesh(inst, COMPONENT_DEFINITION_MAP.get(inst.definitionId)!, meshOptions(inst)),
+      (group, inst) => applyComponentTransform(group, inst)
+    );
+    reportSceneStats('components', stats, started);
+  }, [document.components, simulationResult, switchStates]);
+
+  // Selection outline: selecting a component never touches its mesh
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    if (selectionOutlineRef.current) {
       sceneRef.current.remove(selectionOutlineRef.current);
+      disposeObjectTree(selectionOutlineRef.current);
       selectionOutlineRef.current = null;
     }
-
-    for (const inst of document.components) {
-      const def = COMPONENT_DEFINITION_MAP.get(inst.definitionId);
-      if (!def) continue;
-
-      const simState = simulationResult?.components?.[inst.instanceId];
-      const isSwitchClosed = switchStates[inst.instanceId] ?? (inst.state?.open === false);
-
-      const meshGroup = createComponentMesh(inst, def, {
-        isSimulationOn: simState?.isOn || false,
-        switchClosed: isSwitchClosed,
-      });
-
-      compGroup.add(meshGroup);
-
-      // Add selection box helper if selected
-      if (inst.instanceId === selectedComponentId && sceneRef.current) {
-        const box = new THREE.BoxHelper(meshGroup, 0x38bdf8);
-        box.name = 'selection-outline';
-        selectionOutlineRef.current = box;
-        sceneRef.current.add(box);
-      }
+    if (!selectedComponentId) return;
+    const meshGroup = componentsGroupRef.current.children.find((c) => c.name === `comp-${selectedComponentId}`);
+    if (meshGroup) {
+      const box = new THREE.BoxHelper(meshGroup, 0x38bdf8);
+      box.name = 'selection-outline';
+      selectionOutlineRef.current = box;
+      sceneRef.current.add(box);
     }
-  }, [document.components, selectedComponentId, simulationResult, switchStates]);
+  }, [selectedComponentId, document.components, simulationResult, switchStates, isPresentationMode, qualityPreset]);
 
   // Build / Update Wires
   useEffect(() => {
-    const wiresGroup = wiresGroupRef.current;
-    while (wiresGroup.children.length > 0) {
-      wiresGroup.remove(wiresGroup.children[0]);
-    }
-
-    for (const conn of document.connections) {
-      const isSelected = conn.id === selectedConnectionId;
-      const wireMesh = createWireMesh(conn, document.components, isSelected);
-      if (wireMesh) {
-        wiresGroup.add(wireMesh);
-      }
-    }
+    const started = performance.now();
+    const layoutHash = componentLayoutHash(document.components);
+    const stats = reconcileChildren(
+      wiresGroupRef.current,
+      document.connections.map((conn) => ({
+        key: conn.id,
+        signature: wireVisualSignature(conn, document.components, conn.id === selectedConnectionId, layoutHash),
+        data: conn,
+      })),
+      (conn) => createWireMesh(conn, document.components, conn.id === selectedConnectionId)
+    );
+    reportSceneStats('wires', stats, started);
   }, [document.connections, document.components, selectedConnectionId]);
 
   // Update Minibot target
@@ -1011,6 +1055,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             setCutPointsState([]);
             if (cutLineMeshRef.current && sceneRef.current) {
               sceneRef.current.remove(cutLineMeshRef.current);
+              disposeObjectTree(cutLineMeshRef.current);
               cutLineMeshRef.current = null;
             }
             if (onCutPathComplete) {
@@ -1323,15 +1368,25 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           const tempComponents = document.components.map((c) =>
             c.instanceId === draggedId ? { ...c, position: { x: clampedX, y: targetY, z: clampedZ } } : c
           );
+          // Only the dragged component's wires follow the cursor; routes of the other wires are
+          // refreshed when the move is committed to the document
           const wiresGroup = wiresGroupRef.current;
-          while (wiresGroup.children.length > 0) {
-            wiresGroup.remove(wiresGroup.children[0]);
-          }
           for (const conn of document.connections) {
-            const isSelected = conn.id === selectedConnectionId;
-            const wireMesh = createWireMesh(conn, tempComponents, isSelected);
+            if (conn.fromComponentId !== draggedId && conn.toComponentId !== draggedId) continue;
+            const current = wiresGroup.children.find((c) => c.userData?.reconcileKey === conn.id);
+            const index = current ? wiresGroup.children.indexOf(current) : -1;
+            if (current) {
+              wiresGroup.remove(current);
+              disposeObjectTree(current);
+            }
+            const wireMesh = createWireMesh(conn, tempComponents, conn.id === selectedConnectionId);
             if (wireMesh) {
+              wireMesh.userData.reconcileKey = conn.id;
               wiresGroup.add(wireMesh);
+              if (index >= 0) {
+                wiresGroup.children.splice(wiresGroup.children.length - 1, 1);
+                wiresGroup.children.splice(index, 0, wireMesh);
+              }
             }
           }
         }
@@ -1388,6 +1443,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       if (targetPos) {
         if (previewWireRef.current && sceneRef.current) {
           sceneRef.current.remove(previewWireRef.current);
+          disposeObjectTree(previewWireRef.current);
         }
         const parsedHex = activeWireColor ? parseInt(activeWireColor.replace('#', ''), 16) : 0x38bdf8;
         const pw = createPreviewWireMesh(
@@ -1445,6 +1501,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
     if (previewWireRef.current && sceneRef.current && !isWiringMode) {
       sceneRef.current.remove(previewWireRef.current);
+      disposeObjectTree(previewWireRef.current);
       previewWireRef.current = null;
     }
   };
@@ -1453,6 +1510,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   useEffect(() => {
     if (!isWiringMode && previewWireRef.current && sceneRef.current) {
       sceneRef.current.remove(previewWireRef.current);
+      disposeObjectTree(previewWireRef.current);
       previewWireRef.current = null;
     }
   }, [isWiringMode]);
@@ -1472,6 +1530,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           setCutPointsState([]);
           if (cutLineMeshRef.current && sceneRef.current) {
             sceneRef.current.remove(cutLineMeshRef.current);
+            disposeObjectTree(cutLineMeshRef.current);
             cutLineMeshRef.current = null;
           }
           if (onCancelCutMode) onCancelCutMode();
@@ -1479,6 +1538,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         if (isWiringMode) {
           if (previewWireRef.current && sceneRef.current) {
             sceneRef.current.remove(previewWireRef.current);
+            disposeObjectTree(previewWireRef.current);
             previewWireRef.current = null;
           }
           onCancelWiring();
@@ -1627,6 +1687,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
               setCutPointsState([]);
               if (cutLineMeshRef.current && sceneRef.current) {
                 sceneRef.current.remove(cutLineMeshRef.current);
+                disposeObjectTree(cutLineMeshRef.current);
                 cutLineMeshRef.current = null;
               }
               if (onCancelCutMode) onCancelCutMode();

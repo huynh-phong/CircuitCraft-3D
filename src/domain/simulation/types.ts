@@ -7,6 +7,9 @@ export interface ComponentSimulationState {
   currentEstimate?: string;
   voltageDrop?: string;
   note?: string;
+  /** Numeric results (SI units) from the DC solver */
+  currentA?: number;
+  voltageV?: number;
 }
 
 export interface SimulationResult {
@@ -17,4 +20,10 @@ export interface SimulationResult {
   isClosedLoop: boolean;
   issues: string[];
   timestamp: number;
+  /** Solver used: Modified Nodal Analysis, DC steady state */
+  solver?: 'mna-dc';
+  /** Components shown in 3D but without an electrical model (not included in the results) */
+  unsupportedComponents?: string[];
+  /** Node voltages relative to each island's reference (negative terminal of its first source) */
+  nodeVoltages?: Record<string, number>;
 }

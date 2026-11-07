@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { markObjectTreeShared } from './disposal';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 const gltfCache = new Map<string, THREE.Group>();
@@ -97,6 +98,8 @@ export function loadGLBModel(
         url,
         (gltf) => {
           const scene = gltf.scene;
+          // Clones share geometry/material/texture with the cached original
+          markObjectTreeShared(scene);
           gltfCache.set(url, scene);
           resolve(scene);
         },

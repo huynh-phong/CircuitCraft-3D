@@ -335,6 +335,65 @@ export const CreateCourseModal: React.FC<CreateCourseModalProps> = ({
     setPracticeStagesPreview([]);
   };
 
+  /** Stores slide images as files on the server so the course document only references them. */
+  // A video picked from disk only exists in this browser tab until it is uploaded to Storage
+  const uploadLessonVideos = async (items: CourseSyllabusItem[]): Promise<CourseSyllabusItem[]> => {
+    const uploaded: CourseSyllabusItem[] = [];
+    for (const item of items) {
+      if (!item.videoUrl?.startsWith('blob:')) {
+        uploaded.push(item);
+        continue;
+      }
+      const file = await (await fetch(item.videoUrl)).blob();
+      const linkRes = await fetch('/api/creator/media/video-upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contentType: file.type, size: file.size }),
+      });
+      const link = await linkRes.json().catch(() => ({}));
+      if (!linkRes.ok || !link.uploadUrl) {
+        throw new Error(link.error || `Không thể tải video của bài "${item.title}" lên.`);
+      }
+      const put = await fetch(link.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      if (!put.ok) throw new Error(`Tải video của bài "${item.title}" lên Storage thất bại.`);
+      uploaded.push({ ...item, videoUrl: link.url });
+    }
+    return uploaded;
+  };
+
+  const uploadSlideImages = async (items: CourseSyllabusItem[]): Promise<CourseSyllabusItem[]> => {
+    const uploaded: CourseSyllabusItem[] = [];
+    for (const item of items) {
+      if (!item.slides?.some((slide) => slide.imageDataUrl?.startsWith('data:'))) {
+        uploaded.push(item);
+        continue;
+      }
+      const slides = [];
+      for (const slide of item.slides) {
+        if (!slide.imageDataUrl?.startsWith('data:')) {
+          slides.push(slide);
+          continue;
+        }
+        const res = await fetch('/api/creator/media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dataUrl: slide.imageDataUrl }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.url) {
+          slides.push({ ...slide, imageDataUrl: data.url });
+        } else if (res.status === 415) {
+          // A format browsers cannot display (e.g. EMF): the slide keeps its text
+          slides.push({ ...slide, imageDataUrl: undefined });
+        } else {
+          throw new Error(data.error || `Không thể tải ảnh của slide ${slide.slideNumber} lên máy chủ.`);
+        }
+      }
+      uploaded.push({ ...item, slides });
+    }
+    return uploaded;
+  };
+
   const handleRemoveTheoryItem = (idx: number) => {
     setTheoryItems(theoryItems.filter((_, i) => i !== idx));
   };
@@ -374,7 +433,7 @@ export const CreateCourseModal: React.FC<CreateCourseModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const combinedSyllabus: CourseSyllabusItem[] = [...theoryItems, ...practiceItems];
+      const combinedSyllabus: CourseSyllabusItem[] = [...(await uploadLessonVideos(await uploadSlideImages(theoryItems))), ...practiceItems];
       const computedDuration = `${theoryItems.length} bài lý thuyết • ${practiceItems.length} bài thực hành`;
 
       const payload = {

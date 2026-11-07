@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { markShared } from './disposal';
 
 export class SceneMaterialRegistry {
   private static instance: SceneMaterialRegistry;
@@ -150,6 +151,15 @@ export class SceneMaterialRegistry {
     });
 
     this.initLedMaterials();
+
+    // Registry materials are shared by many meshes: never dispose them with a mesh
+    for (const value of Object.values(this)) {
+      if (value && (value as THREE.Material).isMaterial) markShared(value as THREE.Material);
+    }
+    for (const pair of this.ledMaterials.values()) {
+      markShared(pair.off);
+      markShared(pair.on);
+    }
   }
 
   private initLedMaterials() {

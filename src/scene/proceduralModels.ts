@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { disposeObjectTree } from './disposal';
 import { ComponentInstance, ComponentDefinition } from '../domain/project/types';
 import { SceneMaterialRegistry } from './materials';
 import { getResistorColorBands } from '../domain/components/colorCode';
@@ -8,6 +9,48 @@ import { loadGLBModel } from './modelLoader';
  * Creates 3D Procedural Mesh groups for each electronic component type.
  * Y=0 is the PCB top surface plane.
  */
+/** Definitions whose geometry or materials depend on the simulation result */
+const SIMULATION_VISUAL_DEFINITIONS = new Set([
+  'led',
+  'led_basic',
+  'buzzer',
+  'arduino-uno',
+  'arduino_uno',
+  'rgb-led',
+  '7seg-display',
+  'oled-i2c',
+]);
+const SWITCH_VISUAL_DEFINITIONS = new Set(['switch', 'switch_spst']);
+
+/**
+ * Everything createComponentMesh's output depends on, except position and rotation (those are
+ * applied to the existing group). Two equal signatures produce identical meshes.
+ */
+export function componentVisualSignature(
+  instance: ComponentInstance,
+  definition: ComponentDefinition,
+  options?: { isSimulationOn?: boolean; switchClosed?: boolean }
+): string {
+  return JSON.stringify([
+    definition.definitionId,
+    instance.name,
+    instance.parameters,
+    instance.state,
+    // A loaded GLB model does not change with the simulation state
+    !definition.modelUrl && SIMULATION_VISUAL_DEFINITIONS.has(definition.definitionId) ? Boolean(options?.isSimulationOn) : null,
+    SWITCH_VISUAL_DEFINITIONS.has(definition.definitionId) ? Boolean(options?.switchClosed) : null,
+  ]);
+}
+
+export function applyComponentTransform(group: THREE.Object3D, instance: ComponentInstance): void {
+  group.position.set(instance.position.x, instance.position.y, instance.position.z);
+  group.rotation.set(
+    (instance.rotation.x * Math.PI) / 180,
+    (instance.rotation.y * Math.PI) / 180,
+    (instance.rotation.z * Math.PI) / 180
+  );
+}
+
 export function createComponentMesh(
   instance: ComponentInstance,
   definition: ComponentDefinition,
@@ -44,7 +87,10 @@ export function createComponentMesh(
       definition.modelUrl,
       (loadedModel) => {
         const fb = modelContainer.getObjectByName('fallback-model');
-        if (fb) modelContainer.remove(fb);
+        if (fb) {
+          modelContainer.remove(fb);
+          disposeObjectTree(fb);
+        }
 
         loadedModel.name = 'loaded-glb-mesh';
         loadedModel.traverse((child) => {

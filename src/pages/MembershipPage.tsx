@@ -3,6 +3,7 @@ import { paymentService } from '../billing/paymentService';
 import { ShieldCheck, Check, Box, GraduationCap, Crown, ArrowRight } from 'lucide-react';
 import { PaymentModal, PaymentOrderDetails } from '../components/PaymentModal';
 import { useI18n } from '../i18n/context';
+import { MEMBERSHIP_PLAN_PRICES, formatVnd } from '../billing/membershipPlans';
 
 export interface MembershipPageProps {
   onPlanUpdated: () => void;
@@ -232,7 +233,7 @@ export const MembershipPage: React.FC<MembershipPageProps> = ({
     {
       id: 'student',
       name: language === 'vi' ? 'Học viên (Student)' : 'Student Pro',
-      price: '99.000 ₫',
+      price: formatVnd(MEMBERSHIP_PLAN_PRICES.student),
       period: language === 'vi' ? '/ tháng' : '/ month',
       isPopular: true,
       desc:
@@ -262,7 +263,7 @@ export const MembershipPage: React.FC<MembershipPageProps> = ({
     {
       id: 'creator',
       name: language === 'vi' ? 'Nhà sáng tạo (Creator Pro)' : 'Creator Pro',
-      price: '249.000 ₫',
+      price: formatVnd(MEMBERSHIP_PLAN_PRICES.creator),
       period: language === 'vi' ? '/ tháng' : '/ month',
       desc:
         language === 'vi'

@@ -4,6 +4,32 @@ import { calculatePinWorldPosition } from '../domain/project/coordinates';
 import { COMPONENT_DEFINITION_MAP } from '../domain/components/definitions';
 import { computeOrthogonalWireRoute } from '../domain/project/wireRouting';
 
+/** Component layout as seen by the orthogonal wire router (obstacles depend on all of it). */
+export function componentLayoutHash(components: ComponentInstance[]): string {
+  return JSON.stringify(components.map((c) => [c.instanceId, c.definitionId, c.position, c.rotation]));
+}
+
+/** Everything createWireMesh's output depends on. */
+export function wireVisualSignature(
+  connection: Connection,
+  components: ComponentInstance[],
+  isSelected: boolean,
+  layoutHash: string
+): string {
+  const endpoint = (id: string) => {
+    const comp = components.find((c) => c.instanceId === id);
+    return comp ? [comp.definitionId, comp.position, comp.rotation] : null;
+  };
+  const isOrthogonal = (connection.wireStyle || 'orthogonal') === 'orthogonal';
+  return JSON.stringify([
+    connection,
+    isSelected,
+    endpoint(connection.fromComponentId),
+    endpoint(connection.toComponentId),
+    isOrthogonal ? layoutHash : null,
+  ]);
+}
+
 export function createWireMesh(
   connection: Connection,
   components: ComponentInstance[],

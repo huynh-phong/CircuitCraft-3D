@@ -1,3 +1,5 @@
+import { readJsonFile, writeJsonAtomic } from './atomicJson.ts';
+import { getPersistenceMode, isRemotePersistence, onInitialLoad, registerCollection, saveCollection, RemoteRow } from './persistence.ts';
 import fs from 'fs';
 import path from 'path';
 import { FUNDAMENTAL_ELECTRONICS_COURSE } from '../domain/courses/coursesData';
@@ -126,6 +128,8 @@ export interface CreatorSaleItem {
   unitPrice: number; // Integer VND
   currency: 'VND';
   type: 'project' | 'course';
+  /** Simulated (mock) checkout sale: never counted as real revenue */
+  isMock?: boolean;
   createdAt: string;
 }
 
@@ -150,9 +154,32 @@ class CreatorStore {
   };
 
   constructor() {
-    this.ensureDirectory();
-    this.loadFromDisk();
-    this.seedDefaultsIfEmpty();
+    if (getPersistenceMode() === 'file') {
+      this.ensureDirectory();
+      this.loadFromDisk();
+      this.seedDefaultsIfEmpty();
+      return;
+    }
+    const applyTo = (target: Record<string, any>) => (rows: RemoteRow[]) => {
+      for (const row of rows) {
+        if (row.deleted) delete target[row.id];
+        else target[row.id] = row.data;
+      }
+    };
+    registerCollection('creator_profiles', applyTo(this.data.profiles));
+    registerCollection('creator_products', applyTo(this.data.products));
+    registerCollection('creator_versions', applyTo(this.data.versions));
+    registerCollection('creator_courses', applyTo(this.data.courses));
+    registerCollection('creator_sales', (rows) => {
+      const byId = new Map(this.data.sales.map((sale) => [sale.id, sale]));
+      for (const row of rows) {
+        if (row.deleted) byId.delete(row.id);
+        else byId.set(row.id, row.data);
+      }
+      this.data.sales = Array.from(byId.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    });
+    // Inserts only what is missing, so an instance starting up writes nothing in the normal case
+    onInitialLoad(() => this.seedDefaultsIfEmpty());
   }
 
   private ensureDirectory() {
@@ -166,10 +193,9 @@ class CreatorStore {
   }
 
   private loadFromDisk() {
-    if (fs.existsSync(STORE_FILE)) {
+    const parsed = readJsonFile<any>(STORE_FILE);
+    if (parsed && typeof parsed === 'object') {
       try {
-        const raw = fs.readFileSync(STORE_FILE, 'utf-8');
-        const parsed = JSON.parse(raw);
         const realSales = Array.isArray(parsed.sales)
           ? parsed.sales.filter((s: any) => s && !String(s.id || '').startsWith('sale-seed-') && !['ORD-882194', 'ORD-882195', 'ORD-882196'].includes(s.orderCode))
           : [];
@@ -187,9 +213,17 @@ class CreatorStore {
   }
 
   private saveToDisk() {
+    if (isRemotePersistence()) {
+      saveCollection('creator_profiles', Object.entries(this.data.profiles));
+      saveCollection('creator_products', Object.entries(this.data.products));
+      saveCollection('creator_versions', Object.entries(this.data.versions));
+      saveCollection('creator_courses', Object.entries(this.data.courses));
+      saveCollection('creator_sales', this.data.sales.map((sale) => [sale.id, sale] as [string, unknown]));
+      return;
+    }
     try {
       this.ensureDirectory();
-      fs.writeFileSync(STORE_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
+      writeJsonAtomic(STORE_FILE, this.data);
     } catch (err) {
       console.error('Failed to persist creator_store.json:', err);
     }
@@ -241,8 +275,10 @@ class CreatorStore {
     }
 
     // Seed the single complete course: "Học tập mạch điện tử căn bản"
+    // Idempotent: only inserted when missing, so admin moderation, creator edits and
+    // sales/student counters survive restarts and redeploys.
     const fundId = FUNDAMENTAL_ELECTRONICS_COURSE.id;
-    this.data.courses[fundId] = {
+    if (!this.data.courses[fundId]) this.data.courses[fundId] = {
       id: fundId,
       creatorId: officialCreatorId,
       creatorName: FUNDAMENTAL_ELECTRONICS_COURSE.author.name,
@@ -380,11 +416,8 @@ class CreatorStore {
   }
 
   public listCreatorProducts(creatorId: string): CatalogProductItem[] {
-    const prods = Object.values(this.data.products);
-    const matched = prods.filter((p) => p.creatorId === creatorId);
-    if (matched.length > 0) return matched;
-    // If no products under this specific ID, share the official products for demo/logged-in creator
-    return prods;
+    if (!creatorId) return [];
+    return Object.values(this.data.products).filter((p) => p.creatorId === creatorId);
   }
 
   public getProduct(productId: string): CatalogProductItem | null {
@@ -409,13 +442,30 @@ class CreatorStore {
   public updateProduct(productId: string, creatorId: string, updates: Partial<CatalogProductItem>): CatalogProductItem {
     const product = this.data.products[productId];
     if (!product) throw new Error('Không tìm thấy sản phẩm');
-    if (creatorId && product.creatorId !== creatorId && creatorId !== 'creator-demo') {
-      // allow flexible admin / creator update
+    if (product.creatorId !== creatorId) {
+      throw new Error('Từ chối quyền: Không sở hữu sản phẩm này');
+    }
+
+    // Identity / bookkeeping fields can never be changed through a metadata update
+    const {
+      id: _id,
+      creatorId: _creatorId,
+      creatorName: _creatorName,
+      salesCount: _salesCount,
+      rating: _rating,
+      reviewsCount: _reviewsCount,
+      createdAt: _createdAt,
+      currentVersionId: _currentVersionId,
+      status: _status,
+      ...safeUpdates
+    } = updates;
+    if (safeUpdates.price !== undefined) {
+      safeUpdates.price = Math.max(0, Math.floor(Number(safeUpdates.price) || 0));
     }
 
     const updated: CatalogProductItem = {
       ...product,
-      ...updates,
+      ...safeUpdates,
       updatedAt: new Date().toISOString(),
     };
     this.data.products[productId] = updated;
@@ -435,6 +485,7 @@ class CreatorStore {
   public setProductStatus(productId: string, creatorId: string, status: ProductStatus): CatalogProductItem {
     const product = this.data.products[productId];
     if (!product) throw new Error('Không tìm thấy sản phẩm');
+    if (product.creatorId !== creatorId) throw new Error('Từ chối quyền: Không sở hữu sản phẩm này');
 
     product.status = status;
     product.updatedAt = new Date().toISOString();
@@ -542,10 +593,8 @@ class CreatorStore {
   }
 
   public listCreatorCourses(creatorId: string): CreatorCourse[] {
-    const list = Object.values(this.data.courses);
-    const matched = list.filter((c) => c.creatorId === creatorId);
-    if (matched.length > 0) return matched;
-    return list;
+    if (!creatorId) return [];
+    return Object.values(this.data.courses).filter((c) => c.creatorId === creatorId);
   }
 
   public getCourse(courseId: string): CreatorCourse | null {
@@ -570,10 +619,21 @@ class CreatorStore {
   public updateCourse(courseId: string, creatorId: string, updates: Partial<CreatorCourse>): CreatorCourse {
     const course = this.data.courses[courseId];
     if (!course) throw new Error('Không tìm thấy khóa học');
+    if (course.creatorId !== creatorId) throw new Error('Từ chối quyền: Không sở hữu khóa học');
+
+    const {
+      id: _id,
+      status: _status,
+      salesCount: _salesCount,
+      studentsCount: _studentsCount,
+      rating: _rating,
+      createdAt: _createdAt,
+      ...safeUpdates
+    } = updates;
 
     const updated: CreatorCourse = {
       ...course,
-      ...updates,
+      ...safeUpdates,
       creatorId: course.creatorId, // Immutable author ID
       creatorName: course.creatorName,
       updatedAt: new Date().toISOString(),
@@ -605,16 +665,15 @@ class CreatorStore {
 
   // --- Record Sales & Gross Revenue ---
   public getCreatorSales(creatorId?: string): CreatorSaleItem[] {
-    if (!creatorId || creatorId === 'creator-demo') {
-      return [...this.data.sales];
-    }
-    const matched = this.data.sales.filter((s) => s.creatorId === creatorId);
-    if (matched.length > 0) return matched;
-    return [...this.data.sales];
+    if (!creatorId) return [];
+    return this.data.sales.filter((s) => s.creatorId === creatorId);
   }
 
   public recordSale(sale: Omit<CreatorSaleItem, 'id' | 'createdAt'>): CreatorSaleItem {
-    const id = `sale-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const id = `sale-${sale.orderId}`;
+    if (this.data.sales.some((existing) => existing.id === id)) {
+      return this.data.sales.find((existing) => existing.id === id)!;
+    }
     const now = new Date().toISOString();
     const item: CreatorSaleItem = {
       ...sale,
@@ -640,7 +699,10 @@ class CreatorStore {
   public getCreatorAnalytics(creatorId: string) {
     const creatorProducts = this.listCreatorProducts(creatorId);
     const creatorCourses = this.listCreatorCourses(creatorId);
-    const creatorSales = this.data.sales.filter((s) => s.creatorId === creatorId);
+    const allCreatorSales = this.data.sales.filter((s) => s.creatorId === creatorId);
+    // Simulated checkouts are reported separately and never mixed into real revenue
+    const creatorSales = allCreatorSales.filter((s) => s.isMock === false);
+    const mockSales = allCreatorSales.filter((s) => s.isMock !== false);
 
     const totalProducts = creatorProducts.length + creatorCourses.length;
     const sellingCircuitsCount = creatorProducts.filter((p) => p.status === 'PUBLISHED').length;
@@ -719,7 +781,9 @@ class CreatorStore {
       dailyChartPoints,
       topProducts,
       topCourses,
-      recentSales: creatorSales.slice(-10).reverse(),
+      recentSales: allCreatorSales.slice(-10).reverse(),
+      mockPurchases: mockSales.length,
+      mockRevenue: mockSales.reduce((sum, s) => sum + s.unitPrice, 0),
     };
   }
 
