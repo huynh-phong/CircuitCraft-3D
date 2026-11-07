@@ -181,38 +181,38 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
       <div
         ref={modalRef}
         className={`relative w-full bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col ${
-          isFullscreen ? 'h-full rounded-none' : 'max-w-5xl h-[88vh]'
+          isFullscreen ? 'h-full rounded-none' : 'max-w-5xl h-[88vh] max-h-[calc(var(--app-height,100dvh)-1rem)]'
         }`}
       >
         {/* Top bar */}
-        <div className="h-14 px-4 sm:px-6 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+        <div className="h-14 px-3 sm:px-6 gap-2 bg-slate-950/90 border-b border-slate-800 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 shrink-0 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-cyan-400 max-[400px]:hidden">
               <Box className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white tracking-wide truncate max-w-[260px] sm:max-w-md">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-bold text-white tracking-wide truncate min-w-0 sm:max-w-md">
                   {productTitle}
                 </span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 font-mono">
+                <span className="shrink-0 text-[10px] px-1.5 py-0.2 rounded bg-cyan-900/60 text-cyan-300 border border-cyan-500/30 font-mono">
                   v{versionText}
                 </span>
                 <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
                   {language === 'vi' ? 'Xem trước 3D' : '3D Preview'}
                 </span>
               </div>
-              <div className="text-[11px] text-slate-400">
+              <div className="text-[11px] text-slate-400 truncate">
                 {language === 'vi' ? 'Tác giả:' : 'Author:'}{' '}
                 <span className="text-slate-200 font-medium">{authorName}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => setIsExploded(!isExploded)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              className={`touch-target flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                 isExploded
                   ? 'bg-cyan-600 text-white shadow-xs'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
@@ -233,7 +233,7 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
 
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
+              className="touch-target flex items-center justify-center p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
               title={isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -241,8 +241,9 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
 
             <button
               onClick={onClose}
-              className="p-2 rounded-lg bg-slate-800 hover:bg-rose-900/80 hover:text-rose-200 text-slate-400 border border-slate-700 transition"
+              className="touch-target flex items-center justify-center p-2 rounded-lg bg-slate-800 hover:bg-rose-900/80 hover:text-rose-200 text-slate-400 border border-slate-700 transition"
               title="Đóng"
+              aria-label="Đóng"
             >
               <X className="w-4 h-4" />
             </button>
@@ -291,13 +292,13 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
           ) : null}
 
           {/* Interaction Guidance Banner */}
-          <div className="absolute top-3 left-3 pointer-events-none flex flex-col gap-1.5 z-10">
+          <div className="absolute top-14 sm:top-3 left-3 right-3 sm:right-auto pointer-events-none flex flex-col items-start gap-1.5 z-10">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900/85 backdrop-blur-md border border-slate-700 text-slate-300 text-[11px]">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
               <span>
                 {language === 'vi'
-                  ? 'Kéo chuột để xoay góc nhìn • Cuộn để phóng to/thu nhỏ'
-                  : 'Drag to rotate • Scroll to zoom'}
+                  ? 'Kéo để xoay góc nhìn • Cuộn hoặc chụm 2 ngón để phóng to'
+                  : 'Drag to rotate • Scroll or pinch to zoom'}
               </span>
             </div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/70 backdrop-blur-md border border-amber-500/30 text-amber-300 text-[10px] font-mono">

@@ -47,8 +47,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-3 left-4 right-4 z-40 select-none pb-safe">
-      <div className="h-15 px-3 rounded-2xl bg-white/95 dark:bg-[#071629]/95 border border-cyan-500/30 dark:border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.36),0_0_20px_rgba(6,182,212,0.18)] backdrop-blur-xl flex items-center justify-around">
+    <nav
+      data-bottom-nav="visible"
+      className="md:hidden fixed left-3 right-3 z-40 select-none"
+      style={{ bottom: 'calc(0.75rem + env(safe-area-inset-bottom))', marginLeft: 'env(safe-area-inset-left)', marginRight: 'env(safe-area-inset-right)' }}
+    >
+      <div className="h-15 px-1.5 rounded-2xl bg-white/95 dark:bg-[#071629]/95 border border-cyan-500/30 dark:border-cyan-500/30 shadow-[0_8px_32px_rgba(0,0,0,0.36),0_0_20px_rgba(6,182,212,0.18)] backdrop-blur-xl flex items-center justify-around">
         {items.map((item) => {
           const Icon = item.icon;
           const isActive =
@@ -59,7 +63,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={`flex flex-col items-center justify-center flex-1 py-1 transition-all relative ${
+              className={`flex flex-col items-center justify-center flex-1 min-w-0 py-1 transition-all relative ${
                 isActive
                   ? 'text-cyan-600 dark:text-cyan-400 font-bold scale-105'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
@@ -74,7 +78,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
               </div>
-              <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-[64px]">
+              <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-full">
                 {item.label}
               </span>
               {isActive && (
@@ -88,7 +92,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         {currentUser ? (
           <button
             onClick={() => onNavigate('account')}
-            className={`flex flex-col items-center justify-center flex-1 py-1 transition-all relative ${
+            className={`flex flex-col items-center justify-center flex-1 min-w-0 py-1 transition-all relative ${
               currentRoute === 'account'
                 ? 'text-cyan-600 dark:text-cyan-400 font-bold scale-105'
                 : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
@@ -103,7 +107,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             >
               <User className={`w-4 h-4 ${currentRoute === 'account' ? 'stroke-[2.5]' : 'stroke-[1.8]'}`} />
             </div>
-            <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-[64px]">
+            <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-full">
               {language === 'vi' ? 'Hồ sơ' : 'Profile'}
             </span>
             {currentRoute === 'account' && (
@@ -113,12 +117,12 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         ) : (
           <button
             onClick={onOpenAuthModal}
-            className="flex flex-col items-center justify-center flex-1 py-1 text-slate-500 dark:text-slate-400 hover:text-cyan-500"
+            className="flex flex-col items-center justify-center flex-1 min-w-0 py-1 text-slate-500 dark:text-slate-400 hover:text-cyan-500"
           >
             <div className="w-8 h-8 rounded-xl flex items-center justify-center">
               <LogIn className="w-4 h-4 stroke-[1.8]" />
             </div>
-            <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-[64px]">
+            <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-full">
               {language === 'vi' ? 'Đăng nhập' : 'Sign In'}
             </span>
           </button>

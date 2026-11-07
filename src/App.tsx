@@ -1320,7 +1320,7 @@ export const App: React.FC = () => {
   const selectedConnObj = project.connections.find((c) => c.id === selectedConnectionId) || null;
 
   return (
-    <div className="app-shell flex flex-col w-full overflow-hidden circuit-bg circuit-traces-overlay font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 relative">
+    <div data-has-bottom-nav={currentRoute !== 'editor' && currentRoute !== 'theory-learning' ? 'true' : 'false'} className="app-shell flex flex-col w-full overflow-hidden circuit-bg circuit-traces-overlay font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 relative">
       {/* 1. Global Navigation Bar (Hidden in 3D design / editor mode and Theory classroom to maximize workspace) */}
       {currentRoute !== 'editor' && currentRoute !== 'theory-learning' && (
         <Navbar

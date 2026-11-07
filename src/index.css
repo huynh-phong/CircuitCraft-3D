@@ -662,3 +662,11 @@
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
 }
+
+/* Phones: pages scroll fully above the floating bottom navigation bar */
+@media (max-width: 767px) {
+  [data-has-bottom-nav='true'] .route-page {
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+  }
+}
+

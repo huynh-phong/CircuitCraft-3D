@@ -201,3 +201,30 @@ Status: kiểm thử bằng giả lập trình duyệt; **chưa kiểm thử tr�
 - Android Chrome chỉ khóa hướng khi ở fullscreen và sau một lần chạm. Vuốt thoát fullscreen thì khóa cũng mất.
 - Vòng render 3D vẫn chạy liên tục khi trang đang hiển thị (trình duyệt tự dừng khi ẩn tab). Chưa làm render theo yêu cầu.
 
+## M1b — Sửa lỗi hiển thị trên iPhone thật (2026-11-07)
+- Lỗi do người dùng báo kèm ảnh chụp iPhone:
+  - Nút Đăng nhập trên Navbar bị đẩy ra mép phải, chữ xuống hai dòng.
+  - Nút robot (chatbot hỗ trợ) đè lên thanh điều hướng dưới.
+- Lý do lần đo trước bỏ sót: chỉ đo phần tử làm tràn trang. Bộ đo mới phát hiện thêm nút bị cắt trong khung `overflow: hidden`, nút nằm ngoài màn hình (bỏ qua dải tab/bảng cuộn ngang cố ý), chữ trên nút bị xuống dòng, và các phần tử `fixed` chồng lên nhau. Đã kiểm chứng bộ đo bắt được lỗi chồng lấn khi cố ý đặt nút robot đè lên thanh dưới.
+- Đã sửa:
+  - Navbar gọn ở 320–430 px: logo luôn hiện, chữ "CircuitCraft" từ 440 px, nhãn "3D" từ 520 px; nút Đăng nhập một dòng; nút ngôn ngữ, giao diện và menu không co lại.
+  - Thanh điều hướng dưới theo safe-area, các mục co đều.
+  - Trang có khoảng trống cuối để nội dung không bị thanh dưới che.
+  - Cửa sổ xem 3D sản phẩm: ở 320 px trước đây nút **Đóng** và **Toàn màn hình** nằm ngoài màn hình (không đóng được). Giờ nằm gọn, vùng chạm 44 px.
+  - Thanh góc nhìn 3D chỉ còn icon khi màn hình hẹp hoặc thấp.
+  - Khung chat theo chiều cao thực của màn hình.
+- Mới: `src/hooks/useDraggableFab.ts`. Nút chatbot hỗ trợ và nút Minibot **nhấn giữ ~0,35 s rồi kéo** để di chuyển; chuột kéo trực tiếp; chạm thường vẫn mở chat.
+  - Nút luôn nằm trong màn hình (kể cả safe-area) và luôn cao hơn thanh điều hướng dưới, kể cả sau khi xoay hoặc đổi cỡ.
+  - Vị trí được nhớ.
+  - Mặc định: điện thoại nằm trên thanh dưới; Minibot nằm trên thanh kiểm tra/mô phỏng; desktop giữ nguyên vị trí cũ (20 px, 20 px).
+
+| Kiểm tra (giả lập) | Kết quả |
+|---|---|
+| Bộ đo mới ở 320 / 360 / 390 / 430 px (khách và đã đăng nhập): trang chủ, dự án, khóa học, của tôi, cửa hàng, gói, tài khoản, Creator (6 tab), Admin (10 tab), hộp đăng nhập, hộp thanh toán, cửa sổ 3D | PASS (sau khi sửa) |
+| Tablet dọc 767 px, tất cả trang | PASS |
+| Kéo nút robot: vuốt nhanh không di chuyển; nhấn giữ rồi kéo thì di chuyển và không mở chat; kéo xuống thanh dưới bị chặn ở trên; chạm mở chat; vị trí được lưu | PASS |
+| Minibot trong editor 740×360: không che thanh kiểm tra, không lỗi bố cục | PASS |
+| Desktop 1280×800: bố cục và vị trí nút như cũ | PASS |
+| `npm run lint`, `npm run build`, `npm test` | PASS |
+| Thử lại trên iPhone thật | NOT RUN (chờ người dùng) |
+

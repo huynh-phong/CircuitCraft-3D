@@ -1785,7 +1785,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         </div>
       )}
       {/* View Presets Quick Bar (Centered horizontally at top of 3D viewport) */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md p-1 rounded-xl border border-slate-200/80 dark:border-cyan-800/40 shadow-xl text-xs select-none">
+      <div className="absolute top-4 short:top-2 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-1rem)] flex items-center gap-1 bg-white/90 dark:bg-slate-900/85 backdrop-blur-md p-1 rounded-xl border border-slate-200/80 dark:border-cyan-800/40 shadow-xl text-xs select-none">
         <button
           onClick={() => setView('perspective')}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer active:scale-95 ${
@@ -1796,7 +1796,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           title={language === 'vi' ? 'Góc nhìn phối cảnh 3D' : '3D Perspective view'}
         >
           <Eye className="w-3.5 h-3.5" />
-          <span>{language === 'vi' ? 'Phối cảnh' : 'Perspective'}</span>
+          <span className="compact:sr-only">{language === 'vi' ? 'Phối cảnh' : 'Perspective'}</span>
         </button>
 
         <button
@@ -1809,7 +1809,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           title={language === 'vi' ? 'Nhìn thẳng từ trên xuống (2D PCB View)' : 'Top-down orthogonal view (2D PCB View)'}
         >
           <Compass className="w-3.5 h-3.5" />
-          <span>{language === 'vi' ? 'Mặt trên' : 'Top View'}</span>
+          <span className="compact:sr-only">{language === 'vi' ? 'Mặt trên' : 'Top View'}</span>
         </button>
 
         <button
@@ -1822,7 +1822,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           title={language === 'vi' ? 'Góc nhìn trục lượng (Isometric 35.26°)' : 'Isometric view (35.26°)'}
         >
           <Eye className="w-3.5 h-3.5 rotate-45" />
-          <span>{language === 'vi' ? 'Trục lượng' : 'Isometric'}</span>
+          <span className="compact:sr-only">{language === 'vi' ? 'Trục lượng' : 'Isometric'}</span>
         </button>
 
         <button
@@ -1835,7 +1835,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           title={language === 'vi' ? 'Căn vừa toàn bộ mạch vào màn hình' : 'Fit all components to view'}
         >
           <Maximize2 className="w-3.5 h-3.5" />
-          <span>{language === 'vi' ? 'Toàn cảnh' : 'Fit to View'}</span>
+          <span className="compact:sr-only">{language === 'vi' ? 'Toàn cảnh' : 'Fit to View'}</span>
         </button>
 
         {selectedComponentId && (
@@ -1866,7 +1866,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           title={language === 'vi' ? 'Đặt lại góc quay camera ban đầu' : 'Reset camera'}
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          <span>{language === 'vi' ? 'Đặt lại' : 'Reset'}</span>
+          <span className="compact:sr-only">{language === 'vi' ? 'Đặt lại' : 'Reset'}</span>
         </button>
       </div>
 

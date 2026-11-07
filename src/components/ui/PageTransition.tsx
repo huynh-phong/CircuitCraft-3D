@@ -18,7 +18,7 @@ interface PageTransitionProps {
 export const PageTransition: React.FC<PageTransitionProps> = ({
   children,
   routeKey,
-  className = 'w-full h-full flex-1 overflow-auto',
+  className = 'route-page w-full h-full flex-1 overflow-auto',
 }) => {
   const reducedMotion = isPrefersReducedMotion();
 

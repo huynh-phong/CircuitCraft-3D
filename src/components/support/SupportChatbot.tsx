@@ -14,6 +14,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useI18n } from '../../i18n/context';
+import { useDraggableFab } from '../../hooks/useDraggableFab';
 import {
   SupportChatMessage,
   loadSupportHistory,
@@ -38,6 +39,7 @@ export const SupportChatbot: React.FC<SupportChatbotProps> = ({
   onToggleControlled,
 }) => {
   const { language } = useI18n();
+  const fab = useDraggableFab('cc3d:fab:support');
   const [isOpenInternal, setIsOpenInternal] = useState(false);
   const isOpen = isOpenControlled !== undefined ? isOpenControlled : isOpenInternal;
   const setIsOpen = (next: boolean) => {
@@ -151,8 +153,8 @@ export const SupportChatbot: React.FC<SupportChatbotProps> = ({
   };
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 select-none">
-      {/* 1. Floating Action Trigger Button */}
+    <div className="fixed z-50 select-none" style={fab.containerStyle}>
+      {/* 1. Floating Action Trigger Button (press and hold to move it) */}
       <AnimatePresence>
         {!isOpen && (
           <motion.div
@@ -181,9 +183,10 @@ export const SupportChatbot: React.FC<SupportChatbotProps> = ({
             </AnimatePresence>
 
             <button
-              onClick={() => setIsOpen(true)}
-              aria-label={language === 'vi' ? 'Mở trợ lý hỗ trợ website' : 'Open Support AI'}
-              className="group relative w-14 h-14 rounded-2xl p-[2px] bg-gradient-to-tr from-cyan-500 via-sky-400 to-teal-400 shadow-[0_8px_25px_rgba(6,182,212,0.4)] dark:shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.55)] transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center"
+              {...fab.handleProps}
+              onClick={fab.guardClick(() => setIsOpen(true))}
+              aria-label={language === 'vi' ? 'Mở trợ lý hỗ trợ website (nhấn giữ để di chuyển)' : 'Open Support AI (press and hold to move)'}
+              className={`group relative w-14 h-14 ${fab.isDragging ? 'scale-110 ring-4 ring-cyan-400/40' : ''} rounded-2xl p-[2px] bg-gradient-to-tr from-cyan-500 via-sky-400 to-teal-400 shadow-[0_8px_25px_rgba(6,182,212,0.4)] dark:shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_20px_rgba(6,182,212,0.35)] hover:shadow-[0_12px_32px_rgba(6,182,212,0.55)] transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer flex items-center justify-center`}
             >
               <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#061224] flex items-center justify-center transition-colors group-hover:bg-cyan-50/50 dark:group-hover:bg-[#08182b]">
                 <Bot className="w-6 h-6 text-cyan-600 dark:text-cyan-400 transition-transform group-hover:scale-110 drop-shadow-[0_0_8px_rgba(6,182,212,0.4)]" />
@@ -207,7 +210,7 @@ export const SupportChatbot: React.FC<SupportChatbotProps> = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 30 }}
             transition={{ type: 'spring', damping: 25, stiffness: 280 }}
-            className="fixed inset-x-3 bottom-3 sm:inset-auto sm:bottom-5 sm:right-5 w-auto sm:w-[410px] h-[580px] max-h-[88vh] rounded-[26px] bg-white/95 dark:bg-[#071324]/95 border border-[#bfe3f7] dark:border-cyan-500/40 shadow-[0_20px_60px_rgba(6,182,212,0.22),_0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_25px_70px_rgba(0,0,0,0.9),_0_0_40px_rgba(6,182,212,0.25)] backdrop-blur-2xl flex flex-col overflow-hidden z-50 text-slate-800 dark:text-slate-100"
+            className="fixed inset-x-3 bottom-3 sm:inset-auto sm:bottom-5 sm:right-5 w-auto sm:w-[410px] h-[580px] max-h-[calc(var(--app-height,100dvh)-1.5rem)] rounded-[26px] bg-white/95 dark:bg-[#071324]/95 border border-[#bfe3f7] dark:border-cyan-500/40 shadow-[0_20px_60px_rgba(6,182,212,0.22),_0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_25px_70px_rgba(0,0,0,0.9),_0_0_40px_rgba(6,182,212,0.25)] backdrop-blur-2xl flex flex-col overflow-hidden z-50 text-slate-800 dark:text-slate-100"
           >
             {/* Header */}
             <div className="px-4 sm:px-5 py-3.5 border-b border-[#e0f2fe] dark:border-cyan-900/50 bg-gradient-to-r from-cyan-50/80 via-white to-sky-50/60 dark:from-[#091b30] dark:via-[#071526] dark:to-[#08182b] flex items-center justify-between shrink-0">
