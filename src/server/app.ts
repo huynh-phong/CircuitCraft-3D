@@ -345,7 +345,7 @@ Nhiệm vụ của bạn là:
 - Giải thích các lỗi thiết kế DRC (đoản mạch, LED thiếu điện trở hạn dòng, chân linh kiện chưa được nối) dựa trên TRẠNG THÁI MẠCH được gửi kèm trong tin nhắn.
 - Giữ phong cách sư phạm, khích lệ, dùng tiếng Việt chuẩn mực, ngắn gọn và thực tiễn.
 - Khi người dùng chào hỏi (ví dụ "hello", "chào bạn"), hãy đáp lại thân thiện, tự giới thiệu bạn là Minibot và sẵn sàng hỗ trợ thiết kế mạch 3D.
-- Chỉ nhắc tới linh kiện có trong thư viện: ${supportedList}. Không tự bịa chân linh kiện hoặc khả năng mô phỏng.`) + describePracticeContext(context?.practiceContext) + '\n\n' + answerStyle(locale) +
+- Chỉ nhắc tới linh kiện có trong thư viện: ${supportedList}. Không tự bịa chân linh kiện hoặc khả năng mô phỏng.`) + describePracticeContext(context?.practiceContext) + '\n\n' + answerStyle(locale, 'circuit') +
       (locale === 'en'
         ? '\nThe circuit state is attached to each message for reference: use it when the question is about the circuit, ignore it otherwise.'
         : '\nTrạng thái mạch được gửi kèm mỗi tin nhắn để tham khảo: dùng khi câu hỏi liên quan đến mạch, bỏ qua khi không liên quan.');
@@ -417,7 +417,7 @@ Platform Knowledge:
 Navigation tags: When suggesting a section, you may include actionable tags such as [nav:projects] for 3D Lab, [nav:courses] for Courses, [nav:marketplace] for Marketplace, [nav:membership] for Membership plans.
 Tone: Warm, encouraging, clear, and professional.
 
-${answerStyle('en')}`
+${answerStyle('en', 'support')}`
       : `Bạn là Trợ lý Hỗ trợ & Hướng dẫn chính thức của website CircuitCraft 3D (Website Support AI).
 Nhiệm vụ của bạn là chào đón khách truy cập, hướng dẫn người mới bắt đầu, giải thích tính năng nền tảng và hỗ trợ điều hướng trên website.
 Bạn hoàn toàn ĐỘC LẬP với trợ lý Minibot phân tích mạch bên trong không gian CAD 3D.
@@ -433,7 +433,7 @@ Thông tin về nền tảng CircuitCraft 3D:
 Điều hướng: Khi gợi ý người dùng đến tính năng tương ứng, bạn có thể kèm thẻ điều hướng như [nav:projects] (Vào Thiết kế 3D), [nav:courses] (Xem Khóa học), [nav:marketplace] (Vào Cửa hàng), [nav:membership] (Gói thành viên).
 Phong cách: Thân thiện, chu đáo, dễ hiểu cho người mới bắt đầu.
 
-${answerStyle('vi')}`;
+${answerStyle('vi', 'support')}`;
 
     if (!ai) {
       // Smart offline fallback response
@@ -1673,9 +1673,9 @@ NGUYÊN TẮC TRẢ LỜI CỦA TRỢ GIẢNG AI:
 2. Bạn cũng nắm rõ toàn bộ tất cả các slide trong bài giảng cũng như toàn bộ chương trình của khóa học.
 3. Khi học viên hỏi (ví dụ: "Giải thích slide này", "Ý nghĩa công thức này là gì?", "Tóm tắt bài học"), hãy giải thích rõ ràng, sư phạm, dễ hiểu, có ví dụ thực tế liên hệ trực tiếp với nội dung của Slide hiện tại và liên kết mạch lạc với các slide khác trong bài.
 4. Thân thiện, khích lệ tinh thần học tập.
-5. Học viên có thể hỏi cả những điều ngoài bài giảng: vẫn trả lời đầy đủ, chính xác như một trợ lý AI thông thường, rồi có thể gợi ý quay lại bài học nếu phù hợp.
+5. Khi kéo học viên quay lại bài, hãy gợi ý cụ thể theo slide hiện tại hoặc slide tiếp theo.
 
-${answerStyle('vi')}`;
+${answerStyle('vi', 'tutor')}`;
 
     const userPromptWithSlideContext = `[Học viên đang xem Slide ${currentSlide?.slideNumber || currentSlideNumber || 1}: "${
       currentSlide?.title || ''

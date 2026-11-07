@@ -50,10 +50,19 @@ async function main() {
     assert.equal(roles(buildChatContents(null, 'Hỏi')), 'user');
     assert.equal(roles(buildChatContents([{ foo: 1 }, 'x'], 'Hỏi')), 'user');
   });
-  await check('Lời dặn trả lời mọi câu hỏi và định dạng công thức có cho cả tiếng Việt và tiếng Anh', () => {
-    assert.match(answerStyle('vi'), /MỌI câu hỏi/);
-    assert.match(answerStyle('vi'), /\$\$/);
-    assert.match(answerStyle('en'), /ANY question/);
+  await check('Lời dặn: lạc đề trả lời ngắn rồi quay lại, từ chối khéo yêu cầu lạm dụng, ví dụ công thức đúng', () => {
+    for (const topic of ['support', 'circuit', 'tutor'] as const) {
+      const vi = answerStyle('vi', topic);
+      assert.match(vi, /một đến hai câu/);
+      assert.match(vi, /quay lại chủ đề chính/);
+      assert.match(vi, /Từ chối khéo/);
+      assert.match(vi, /lập trình website/);
+      assert.match(vi, /hack/);
+      // The examples reach the model with their backslashes (a template string would eat them)
+      assert.ok(vi.includes('$I = \\frac{U}{R}$') && vi.includes('$220\\,\\Omega$'), 'LaTeX examples intact');
+      assert.match(answerStyle('en', topic), /Politely decline/);
+    }
+    assert.notEqual(answerStyle('vi', 'support'), answerStyle('vi', 'tutor'));
   });
 
   console.log('\n[2] Model time limits (fake client)');
