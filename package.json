@@ -11,7 +11,7 @@
     "build:vercel": "node scripts/build-vercel.mjs",
     "migrate:supabase": "tsx scripts/migrate-to-supabase.ts",
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
-    "test": "tsx test/verify.ts && tsx test/task_2_1.test.ts && tsx test/task_2_2.test.ts && tsx test/task_2_3.test.ts && tsx test/task_3_1.test.ts && tsx test/e2e_isolation.test.ts && tsx test/domain_simulation_ai.test.ts && tsx test/scene_incremental.test.ts && tsx test/security_payment.integration.test.ts && tsx test/deploy_hardening.integration.test.ts && tsx test/serverless_persistence.integration.test.ts && tsx test/vercel_output.test.ts",
+    "test": "tsx test/verify.ts && tsx test/task_2_1.test.ts && tsx test/task_2_2.test.ts && tsx test/task_2_3.test.ts && tsx test/task_3_1.test.ts && tsx test/e2e_isolation.test.ts && tsx test/domain_simulation_ai.test.ts && tsx test/scene_incremental.test.ts && tsx test/ai_chat.test.ts && tsx test/security_payment.integration.test.ts && tsx test/deploy_hardening.integration.test.ts && tsx test/serverless_persistence.integration.test.ts && tsx test/vercel_output.test.ts",
     "test:supabase-live": "tsx test/user_data_isolation.test.ts"
   },
   "dependencies": {
@@ -26,11 +26,16 @@
     "esbuild": "^0.25.0",
     "express": "^4.21.2",
     "jszip": "^3.10.2",
+    "katex": "^0.16.47",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "nodemailer": "^10.0.10",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "three": "^0.186.0",
     "vite": "^6.2.3"
   },

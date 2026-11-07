@@ -228,3 +228,19 @@ Status: kiểm thử bằng giả lập trình duyệt; **chưa kiểm thử tr�
 | `npm run lint`, `npm run build`, `npm test` | PASS |
 | Thử lại trên iPhone thật | NOT RUN (chờ người dùng) |
 
+## AI-1 — Chatbot trả lời mọi câu hỏi, hiển thị Markdown/công thức (2026-11-07)
+- **Nguyên nhân "tin nhắn cố định"** (đo thực tế trên website): `POST /api/support/chat` chạy 60 giây rồi Vercel trả `504 FUNCTION_INVOCATION_TIMEOUT`, giao diện hiện câu soạn sẵn. Đo bằng khóa của dự án: `gemini-3.8-flash` (model được thử đầu tiên) và `gemini-flash-latest` thường mất 13–40 giây, còn `gemini-2.5-flash` 1–5 giây. Code cũ gọi lần lượt từng model, không giới hạn thời gian. Thêm vào đó, client và server đều có câu trả lời soạn sẵn khi lỗi; lịch sử gửi lặp câu hỏi và có thể chứa hai lượt user liên tiếp.
+- **Đã sửa:**
+  - `src/server/gemini.ts`: thứ tự model mặc định `gemini-2.5-flash`, `gemini-3.5-flash` (đổi bằng `GEMINI_MODELS`); mỗi lần gọi có thời hạn, tổng không quá 45 giây; ưu tiên model vừa trả lời được; `buildChatContents` chuẩn hóa hội thoại.
+  - Lời dặn chung `answerStyle` cho chatbot hỗ trợ, Minibot và Trợ giảng: trả lời mọi câu hỏi như trợ lý AI thực thụ, độ dài vừa câu hỏi, dùng Markdown và LaTeX.
+  - Khi AI không trả lời được thì báo thật và đề nghị gửi lại, không đưa câu soạn sẵn.
+  - Thông tin gói thành viên trong prompt chatbot hỗ trợ được sửa cho đúng bản demo.
+- **Hiển thị:** `ChatMarkdown` (tải khi cần) dùng react-markdown + remark-gfm + remark-math + rehype-katex (KaTeX 0.16.47). Hỗ trợ tiêu đề, danh sách, bảng, code, công thức `$...$`, `$$...$$`, `\(...\)`, `\[...\]`. HTML thô trong câu trả lời không được render. Thẻ `[nav:...]` thay bằng tên mục in đậm, nên câu không còn bị hụt chữ.
+
+| Kiểm tra | Kết quả |
+|---|---|
+| Server cục bộ cách ly + Gemini thật: chatbot hỗ trợ / Minibot / Trợ giảng với câu ngoài trọng tâm, câu nối tiếp lịch sử, câu cần công thức | PASS: trả lời đúng nội dung, 1,7–7 giây |
+| Giao diện (bản build + Supabase giả lập + Gemini thật): câu trả lời có 22 công thức KaTeX, 3 tiêu đề, 7 danh sách, không còn `$$`, `rac`, `###` thô, 0 lỗi KaTeX | PASS |
+| `test/ai_chat.test.ts` (hội thoại, thời hạn model bằng client giả, chuyển đổi công thức, thẻ nav) | 11/11 PASS |
+| Website thật sau deploy | NOT RUN (cần push) |
+

@@ -1,3 +1,4 @@
+import { ChatMarkdown } from '../ui/ChatMarkdown';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -306,7 +307,7 @@ export const MinibotWidget: React.FC<MinibotWidgetProps> = ({
                             : 'bg-slate-100/90 dark:bg-[#0c223a] border border-[#dbeafe] dark:border-cyan-800/40 text-slate-800 dark:text-slate-200 rounded-tl-sm shadow-xs'
                         }`}
                       >
-                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                        {isUser || isSystem ? <div className="whitespace-pre-wrap">{msg.content}</div> : <ChatMarkdown text={msg.content} />}
                       </div>
 
                       {/* Proposal Card if attached */}

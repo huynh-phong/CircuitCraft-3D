@@ -78,6 +78,7 @@ import {
   takeRejectedWrites,
 } from './persistence.ts';
 import { CATALOG_DESIGNS } from './catalogDesigns.ts';
+import { answerStyle, buildChatContents, generateWithGemini, geminiModels } from './gemini.ts';
 import { courseSummary, publicPreviewOnly } from './contentAccess.ts';
 import { getPaymentMode, isMockPaymentAllowed, isMockOrder } from './paymentMode.ts';
 import { normalizeChatRequest, AICircuitContext } from '../ai/circuitContext.ts';
@@ -223,9 +224,6 @@ function jsonLimitFor(req: express.Request): string {
 
 app.use('/api', (req, res, next) => jsonParser(jsonLimitFor(req))(req, res, next));
 
-// List of candidate models in order of priority (using official SDK models)
-const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
-
 // Lazy-initialized Gemini Client with live .env re-check
 let geminiClient: GoogleGenAI | null = null;
 let cachedApiKey: string | null = null;
@@ -241,24 +239,6 @@ function getGemini(): GoogleGenAI | null {
     cachedApiKey = apiKey;
   }
   return geminiClient;
-}
-
-// Helper to execute generation with multi-model fallback
-async function generateWithGemini(ai: GoogleGenAI, request: { contents: any; config?: any }) {
-  let lastError: any = null;
-  for (const model of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        ...request,
-        model,
-      });
-      return response;
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`[Gemini] Model ${model} encountered an issue, trying fallback:`, err?.message || err);
-    }
-  }
-  throw lastError;
 }
 
 // 1. Health check
@@ -296,7 +276,7 @@ app.get('/api/ai/status', (req, res) => {
   res.json({
     status: ai ? 'connected' : 'unconfigured',
     hasKey: Boolean(apiKey),
-    supportedModels: GEMINI_MODELS,
+    supportedModels: geminiModels(),
   });
 });
 
@@ -365,29 +345,13 @@ Nhiệm vụ của bạn là:
 - Giải thích các lỗi thiết kế DRC (đoản mạch, LED thiếu điện trở hạn dòng, chân linh kiện chưa được nối) dựa trên TRẠNG THÁI MẠCH được gửi kèm trong tin nhắn.
 - Giữ phong cách sư phạm, khích lệ, dùng tiếng Việt chuẩn mực, ngắn gọn và thực tiễn.
 - Khi người dùng chào hỏi (ví dụ "hello", "chào bạn"), hãy đáp lại thân thiện, tự giới thiệu bạn là Minibot và sẵn sàng hỗ trợ thiết kế mạch 3D.
-- Chỉ nhắc tới linh kiện có trong thư viện: ${supportedList}. Không tự bịa chân linh kiện hoặc khả năng mô phỏng.`) + describePracticeContext(context?.practiceContext);
-
-    const contents: any[] = [];
-    for (const h of history) {
-      const role = h.role === 'assistant' ? 'model' : 'user';
-      // Ensure conversation starts with user role and alternates (Gemini API requirement)
-      if (contents.length === 0 && role === 'model') continue;
-      const last = contents[contents.length - 1];
-      if (last && last.role === role) {
-        last.parts[0].text += `\n${h.content}`;
-      } else {
-        contents.push({ role, parts: [{ text: h.content }] });
-      }
-    }
+- Chỉ nhắc tới linh kiện có trong thư viện: ${supportedList}. Không tự bịa chân linh kiện hoặc khả năng mô phỏng.`) + describePracticeContext(context?.practiceContext) + '\n\n' + answerStyle(locale) +
+      (locale === 'en'
+        ? '\nThe circuit state is attached to each message for reference: use it when the question is about the circuit, ignore it otherwise.'
+        : '\nTrạng thái mạch được gửi kèm mỗi tin nhắn để tham khảo: dùng khi câu hỏi liên quan đến mạch, bỏ qua khi không liên quan.');
 
     const userText = `${prompt}\n\n${describeCircuitContext(context)}`.trim();
-    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
-      // The latest user message from history is the same prompt: replace it with the enriched version
-      const last = contents[contents.length - 1];
-      last.parts[0].text = last.parts[0].text.endsWith(prompt) ? last.parts[0].text.slice(0, -prompt.length) + userText : `${last.parts[0].text}\n${userText}`;
-    } else {
-      contents.push({ role: 'user', parts: [{ text: userText }] });
-    }
+    const contents = buildChatContents(history, userText);
 
     const response = await generateWithGemini(ai, {
       contents,
@@ -397,14 +361,15 @@ Nhiệm vụ của bạn là:
       },
     });
 
-    const reply = response.text || (locale === 'en' ? 'Hello! I am Minibot. How can I help you design your 3D circuit today?' : 'Chào bạn! Tôi là Minibot. Tôi có thể hỗ trợ gì cho bạn trong việc thiết kế mạch hôm nay?');
+    const reply = response.text?.trim();
+    if (!reply) throw new Error('empty answer');
     res.json({ reply, source: 'gemini' });
   } catch (error: any) {
     console.error('Lỗi Gemini API chat:', error?.message || error);
     res.json({
       reply: locale === 'en'
-        ? `[Minibot]: An issue occurred while connecting to the AI model. Please try again later!`
-        : `[Minibot]: Đã xảy ra sự cố khi kết nối tới mô hình AI. Vui lòng thử lại sau ít phút!`,
+        ? 'The AI model did not answer this time (busy or slow). Please send your question again.'
+        : 'Mô hình AI chưa trả lời được lần này (đang bận hoặc phản hồi chậm). Bạn gửi lại câu hỏi giúp mình nhé.',
       source: 'error',
     });
   }
@@ -446,11 +411,13 @@ Platform Knowledge:
 - 3D Lab / Workspace: Features breadboard 2.54mm grid snapping, Arduino UNO R3, resistors, LEDs, switches, potentiometers, DC voltage sources, smooth Bezier wiring, 360° camera orbit, and Design Rule Checking (DRC) for short circuits.
 - Interactive Courses: The Learning Academy offers structured courses like "UNO R3 - Fundamentals of Electronic Circuits" (8 practical chapters) by Huỳnh Phong, with live 3D labs.
 - Marketplace: A community hub to explore, share, and clone pre-built circuit templates.
-- Membership & Pricing: Free Student tier, Creator tier, and flexible memberships with seamless VietQR automated payment verification.
+- Membership & Pricing: Free tier, Student and Creator plans. Checkout shows VietQR details; the current deployment is a demo where a button confirms the payment (no real money).
 - In-workspace Minibot: A 3D companion dedicated to in-canvas circuit debugging and Ohm's Law calculations.
 
 Navigation tags: When suggesting a section, you may include actionable tags such as [nav:projects] for 3D Lab, [nav:courses] for Courses, [nav:marketplace] for Marketplace, [nav:membership] for Membership plans.
-Tone: Warm, encouraging, clear, and professional. Keep responses concise (under 160 words).`
+Tone: Warm, encouraging, clear, and professional.
+
+${answerStyle('en')}`
       : `Bạn là Trợ lý Hỗ trợ & Hướng dẫn chính thức của website CircuitCraft 3D (Website Support AI).
 Nhiệm vụ của bạn là chào đón khách truy cập, hướng dẫn người mới bắt đầu, giải thích tính năng nền tảng và hỗ trợ điều hướng trên website.
 Bạn hoàn toàn ĐỘC LẬP với trợ lý Minibot phân tích mạch bên trong không gian CAD 3D.
@@ -460,11 +427,13 @@ Thông tin về nền tảng CircuitCraft 3D:
 - Phòng thí nghiệm 3D (3D Lab): Cung cấp breadboard chuẩn 2.54mm, Arduino UNO R3, bóng LED, điện trở, công tắc gạt, chiết áp xoay, nguồn DC, hệ thống dây uốn Bezier mượt mà, xoay camera 360° và bộ kiểm tra luật thiết kế DRC phát hiện đoản mạch tức thì.
 - Học viện Khóa học: Gồm các khóa học tương tác thực hành như "Khóa học UNO R3 - Mạch điện tử cơ bản" (8 chương bài bản) do giảng viên Huỳnh Phong phụ trách, kèm phòng lab 3D trực tiếp.
 - Cửa hàng (Marketplace): Nơi cộng đồng chia sẻ, tải về và mở trực tiếp các bản vẽ mạch mẫu mã nguồn mở.
-- Gói thành viên & Thanh toán: Gói Student miễn phí, gói Creator và các gói nâng cao với cổng thanh toán VietQR quét mã chuyển khoản tự động kích hoạt tức thì.
+- Gói thành viên & Thanh toán: gói miễn phí, gói Student và gói Creator. Hộp thanh toán hiện thông tin VietQR; bản hiện tại là bản demo, bấm nút để xác nhận thanh toán (không chuyển tiền thật).
 - Trợ lý Minibot: Robot 3D trong không gian thiết kế phục vụ gỡ lỗi mạch và hỗ trợ kỹ thuật chuyên sâu.
 
 Điều hướng: Khi gợi ý người dùng đến tính năng tương ứng, bạn có thể kèm thẻ điều hướng như [nav:projects] (Vào Thiết kế 3D), [nav:courses] (Xem Khóa học), [nav:marketplace] (Vào Cửa hàng), [nav:membership] (Gói thành viên).
-Phong cách: Thân thiện, chu đáo, súc tích, dễ hiểu cho người mới bắt đầu (dưới 160 từ).`;
+Phong cách: Thân thiện, chu đáo, dễ hiểu cho người mới bắt đầu.
+
+${answerStyle('vi')}`;
 
     if (!ai) {
       // Smart offline fallback response
@@ -490,27 +459,7 @@ Phong cách: Thân thiện, chu đáo, súc tích, dễ hiểu cho người mớ
       return res.json({ reply: replyText });
     }
 
-    const contents: any[] = [];
-    if (Array.isArray(history)) {
-      for (const h of history) {
-        if (!h.content) continue;
-        const role = h.role === 'assistant' ? 'model' : 'user';
-        if (contents.length === 0 && role === 'model') continue;
-        contents.push({
-          role,
-          parts: [{ text: h.content }],
-        });
-      }
-    }
-
-    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
-      contents[contents.length - 1].parts[0].text += `\n${prompt}`;
-    } else {
-      contents.push({
-        role: 'user',
-        parts: [{ text: prompt }],
-      });
-    }
+    const contents = buildChatContents(history, String(prompt || ''));
 
     const response = await generateWithGemini(ai, {
       contents,
@@ -520,17 +469,16 @@ Phong cách: Thân thiện, chu đáo, súc tích, dễ hiểu cho người mớ
       },
     });
 
-    const reply = response.text || (lang === 'en'
-      ? 'Hello! I am your CircuitCraft Guide. How can I help you explore the platform today?'
-      : 'Chào bạn! Tôi là Trợ lý Hướng dẫn CircuitCraft. Tôi có thể hỗ trợ gì cho bạn hôm nay?');
-
+    const reply = response.text?.trim();
+    if (!reply) throw new Error('empty answer');
     res.json({ reply });
   } catch (error: any) {
     console.error('Lỗi Support AI chat:', error);
     res.json({
       reply: lang === 'en'
-        ? `[CircuitCraft Guide]: I encountered a brief connection issue. You can easily start by clicking [nav:projects] or browsing our [nav:courses]!`
-        : `[Trợ lý Hướng dẫn]: Kết nối AI tạm thời bị gián đoạn. Bạn có thể bắt đầu ngay bằng cách nhấn [nav:projects] để vào Thiết kế 3D hoặc xem [nav:courses] nhé!`,
+        ? 'The AI assistant did not answer this time (busy or slow). Please send your question again.'
+        : 'Trợ lý AI chưa trả lời được lần này (đang bận hoặc phản hồi chậm). Bạn gửi lại câu hỏi giúp mình nhé.',
+      retryable: true,
     });
   }
 });
@@ -1724,33 +1672,15 @@ NGUYÊN TẮC TRẢ LỜI CỦA TRỢ GIẢNG AI:
 1. Bạn luôn biết chính xác học viên đang dừng ở Slide số mấy và nội dung trên slide đó là gì.
 2. Bạn cũng nắm rõ toàn bộ tất cả các slide trong bài giảng cũng như toàn bộ chương trình của khóa học.
 3. Khi học viên hỏi (ví dụ: "Giải thích slide này", "Ý nghĩa công thức này là gì?", "Tóm tắt bài học"), hãy giải thích rõ ràng, sư phạm, dễ hiểu, có ví dụ thực tế liên hệ trực tiếp với nội dung của Slide hiện tại và liên kết mạch lạc với các slide khác trong bài.
-4. Trình bày câu trả lời bằng tiếng Việt súc tích, thân thiện, khích lệ tinh thần học tập.`;
+4. Thân thiện, khích lệ tinh thần học tập.
+5. Học viên có thể hỏi cả những điều ngoài bài giảng: vẫn trả lời đầy đủ, chính xác như một trợ lý AI thông thường, rồi có thể gợi ý quay lại bài học nếu phù hợp.
 
-    const contents: any[] = [];
-    if (Array.isArray(history)) {
-      for (const h of history.slice(-8)) {
-        if (!h.content) continue;
-        const role = h.role === 'assistant' ? 'model' : 'user';
-        if (contents.length === 0 && role === 'model') continue;
-        contents.push({
-          role,
-          parts: [{ text: h.content }],
-        });
-      }
-    }
+${answerStyle('vi')}`;
 
     const userPromptWithSlideContext = `[Học viên đang xem Slide ${currentSlide?.slideNumber || currentSlideNumber || 1}: "${
       currentSlide?.title || ''
     }"]\nCâu hỏi của học viên: ${prompt}`;
-
-    if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
-      contents[contents.length - 1].parts[0].text += `\n${userPromptWithSlideContext}`;
-    } else {
-      contents.push({
-        role: 'user',
-        parts: [{ text: userPromptWithSlideContext }],
-      });
-    }
+    const contents = buildChatContents(history, userPromptWithSlideContext);
 
     const response = await generateWithGemini(ai, {
       contents,
@@ -1760,16 +1690,15 @@ NGUYÊN TẮC TRẢ LỜI CỦA TRỢ GIẢNG AI:
       },
     });
 
-    const reply =
-      response.text ||
-      `Mình đang theo dõi Slide ${currentSlide?.slideNumber || 1} ("${currentSlide?.title || ''}"). Bạn cần mình giải thích chi tiết phần nào trên slide này?`;
+    const reply = response.text?.trim();
+    if (!reply) throw new Error('empty answer');
     res.json({ success: true, reply });
   } catch (err: any) {
+    console.error('[Theory Tutor] AI error:', err?.message || err);
     res.json({
-      success: true,
-      reply: `**[Trợ giảng AI — Slide ${currentSlide?.slideNumber || 1}: ${currentSlide?.title || ''}]**\nNội dung chính của slide: ${(
-        currentSlide?.bullets || []
-      ).join('; ')}. Bạn có thể xem tiếp các slide kế tiếp hoặc đặt câu hỏi cụ thể hơn nhé!`,
+      success: false,
+      retryable: true,
+      reply: 'Trợ giảng AI chưa trả lời được lần này (đang bận hoặc phản hồi chậm). Bạn gửi lại câu hỏi giúp mình nhé.',
     });
   }
 });

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Course, CourseSlide, CourseSyllabusItem } from '../domain/courses/types';
 import { courseService } from '../domain/courses/courseService';
+import { ChatMarkdown } from '../components/ui/ChatMarkdown';
 
 export interface TheoryLearningPageProps {
   course: Course;
@@ -240,9 +241,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
         role: 'assistant',
         content:
           data.reply ||
-          `Mình đang theo dõi Slide ${currentSlide.slideNumber} ("${currentSlide.title}"). Nội dung chính: ${currentSlide.bullets.join(
-            '; '
-          )}`,
+          'Trợ giảng AI chưa trả lời được lần này (đang bận hoặc phản hồi chậm). Bạn gửi lại câu hỏi giúp mình nhé.',
         slideNumber: currentSlide.slideNumber,
         lessonTitle: activeLesson.title,
         timestamp: new Date().toISOString(),
@@ -252,9 +251,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
       const fallbackMsg: TheoryTutorMessage = {
         id: `t-err-${Date.now()}`,
         role: 'assistant',
-        content: `**[Trợ giảng AI — Đang ở ${activeLesson.title} • Slide ${currentSlide.slideNumber}: "${currentSlide.title}"]**\nNội dung chính của slide này:\n${currentSlide.bullets
-          .map((b) => `• ${b}`)
-          .join('\n')}`,
+        content: 'Không kết nối được tới Trợ giảng AI (mất mạng hoặc máy chủ đang bận). Bạn kiểm tra kết nối rồi gửi lại câu hỏi nhé.',
         slideNumber: currentSlide.slideNumber,
         lessonTitle: activeLesson.title,
         timestamp: new Date().toISOString(),
@@ -889,7 +886,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
                     </div>
                   )}
                   <div
-                    className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap ${
+                    className={`max-w-[85%] p-3 rounded-2xl text-xs leading-relaxed ${isUser ? 'whitespace-pre-wrap' : ''} ${
                       isUser
                         ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tr-xs shadow-sm'
                         : 'bg-slate-100 dark:bg-[#0c223a] border border-cyan-200/70 dark:border-cyan-800/50 text-slate-800 dark:text-slate-200 rounded-tl-xs'
@@ -904,7 +901,7 @@ export const TheoryLearningPage: React.FC<TheoryLearningPageProps> = ({
                         [{msg.lessonTitle} • Slide {msg.slideNumber}]
                       </div>
                     )}
-                    {msg.content}
+                    {isUser ? msg.content : <ChatMarkdown text={msg.content} />}
                   </div>
                 </div>
               );

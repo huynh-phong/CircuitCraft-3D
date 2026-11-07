@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../../i18n/context';
 import { useDraggableFab } from '../../hooks/useDraggableFab';
+import { ChatMarkdown } from '../ui/ChatMarkdown';
 import {
   SupportChatMessage,
   loadSupportHistory,
@@ -327,7 +328,7 @@ export const SupportChatbot: React.FC<SupportChatbotProps> = ({
                             : 'bg-slate-100/90 dark:bg-[#0c223a] border border-[#dbeafe] dark:border-cyan-800/40 text-slate-800 dark:text-slate-200 rounded-tl-sm shadow-xs'
                         }`}
                       >
-                        <div className="whitespace-pre-wrap">{cleanText}</div>
+                        {isUser ? <div className="whitespace-pre-wrap">{cleanText}</div> : <ChatMarkdown text={cleanText} />}
                       </div>
 
                       {/* Render Navigation Chips if any */}

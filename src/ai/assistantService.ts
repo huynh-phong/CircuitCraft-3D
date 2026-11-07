@@ -114,24 +114,30 @@ export class AssistantService {
 
       if (response.ok) {
         const data = await response.json();
-        const replyText = data.reply || data.text || 'Tôi đã phân tích mạch của bạn.';
-        return {
-          id: `msg_${Date.now()}`,
-          role: 'assistant',
-          content: replyText,
-          text: replyText,
-          timestamp: new Date().toISOString(),
-        };
+        const replyText = typeof data.reply === 'string' && data.reply.trim() ? data.reply : null;
+        if (replyText) {
+          return {
+            id: `msg_${Date.now()}`,
+            role: 'assistant',
+            content: replyText,
+            text: replyText,
+            timestamp: new Date().toISOString(),
+          };
+        }
+      } else if (response.status === 429) {
+        const busy = locale === 'en' ? 'You are sending messages too quickly. Please wait a few seconds.' : 'Bạn đang gửi câu hỏi hơi nhanh. Đợi vài giây rồi hỏi lại nhé.';
+        return { id: `msg_${Date.now()}`, role: 'assistant', content: busy, text: busy, timestamp: new Date().toISOString() };
       }
     } catch {
-      // Fallback to local deterministic rule engine if offline or backend unavailable
+      // Offline: answered below
     }
 
-    const fallback = this.localSmartFallback(prompt, project, simResult, issues, practiceContext);
-    return {
-      ...fallback,
-      text: fallback.content,
-    };
+    // No answer from the AI (offline, busy, slow): say so, never pretend with a canned text
+    const notice =
+      locale === 'en'
+        ? 'Minibot could not reach the AI model this time (offline, busy or slow). Please send your question again.'
+        : 'Minibot chưa kết nối được tới mô hình AI lần này (mất mạng, đang bận hoặc phản hồi chậm). Bạn gửi lại câu hỏi giúp mình nhé.';
+    return { id: `msg_${Date.now()}`, role: 'assistant', content: notice, text: notice, timestamp: new Date().toISOString() };
   }
 
   /**
