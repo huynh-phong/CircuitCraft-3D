@@ -245,6 +245,26 @@ Status: kiểm thử bằng giả lập trình duyệt; **chưa kiểm thử tr�
 | Website thật sau deploy | NOT RUN (cần push) |
 
 
+## C1 — Kiểm định linh kiện, mô hình 3D và mô phỏng (2026-11-08)
+- **Status:** [PASS] cho phạm vi đã công bố; các giới hạn còn lại ghi ở báo cáo mục F.
+- **Báo cáo đầy đủ:** `docs/reports/COMPONENT_SIMULATION_AUDIT_2026-11-08.md` (ma trận 27 linh kiện, công thức, kết quả tham chiếu).
+- **Linh kiện đã kiểm tra (27):** dc-source, resistor, led, switch, connector, potentiometer, capacitor, pushbutton, diode, buzzer, ldr, relay, ne555, logic-and, arduino-uno, breadboard, temp-sensor, transistor-npn, ultrasonic-sensor, servo-motor, rgb-led, 7seg-display, oled-i2c, ultrasonic-sr04, servo-sg90, dc-motor, voltage-reg-7805 (+ 4 bản đăng ký cho dự án cũ).
+- **Lỗi thật đã sửa:** NE555 có 4/8 chân, 74HC08 có 5/14 chân, rơ-le thiếu NC, nút nhấn 4 chân chỉ có 2, LED 7 đoạn thiếu d–g; Arduino luôn coi D13 HIGH; LED lam/trắng dùng Vf 2,0 V do giá trị mặc định lưu sẵn; chân `strip_N` của breadboard nối điện vào cột khác cột đang hiển thị; servo/RGB/7 đoạn/OLED hiển thị theo thông số thay vì theo mạch; DRC chỉ xét dây trực tiếp nên bỏ sót ngắn mạch qua breadboard; Property Panel không chỉnh được biến trở, mức sáng, nhiệt độ… và nút công tắc ghi sai trường; đổi thông số/tên linh kiện/màu bo/tên dự án đi vòng qua Undo nên lệnh sau có thể hoàn tác mất.
+- **Mô hình mới:** transistor NPN (3 chế độ), LM7805/7812, LM35, 74HC08, NE555 (astable/monostable/so sánh), LED RGB, LED 7 đoạn, động cơ DC, servo SG90 theo xung, 4 chương trình mẫu Arduino, τ của tụ, thanh nguồn breadboard ngắt giữa. OLED và HC-SR04 chỉ kiểm tra nguồn.
+- **File:** `src/domain/components/definitions.ts`, `aliases.ts`, `src/domain/simulation/engine.ts`, `types.ts`, `capabilities.ts` (mới), `src/domain/validation/engine.ts`, `src/domain/commands/commands.ts`, `src/domain/project/types.ts`, `src/scene/proceduralModels.ts`, `src/scene/ThreeScene.tsx`, `src/components/PropertyPanel.tsx`, `ComponentLibrary.tsx`, `src/App.tsx`, `test/components_simulation.test.ts` (mới), `test/domain_simulation_ai.test.ts`, `package.json` (thêm test vào `npm test`). Hợp đồng: `docs/CONTRACTS.md` mục 5–6.
+
+| Lệnh | Kết quả |
+|---|---|
+| `npm run lint` | PASS |
+| `npm test` (14 bộ; mới: `components_simulation` 55/55) | PASS |
+| `npm run build` | PASS |
+| Dựng hình 3D trên trình duyệt (trang xem tạm, dev server cách ly) | PASS — xem báo cáo mục E |
+| Workspace thật (đăng nhập), thiết bị di động thật, đo FPS/RAM/GPU | NOT RUN |
+
+- **Còn mở:** khoảng cách chân D8–D7 của Arduino cần đối chiếu với GLB; chưa có mô phỏng theo thời gian, trình thông dịch sketch, I2C, TRIG/ECHO; thư viện chưa có cuộn cảm/MOSFET.
+- **Bước nhỏ tiếp theo:** thử trên Workspace thật sau deploy (đặt NE555 lên breadboard, mạch Blink, mạch Knob) và đối chiếu chân Arduino với GLB.
+- **Commit:** chưa có.
+
 ## AI-2 — Lạc đề trả lời ngắn rồi quay lại, từ chối khéo yêu cầu lạm dụng (2026-11-07)
 - `answerStyle(locale, topic)` có chủ đề chính riêng cho từng trợ lý: `support` (website, khóa học, thiết kế 3D, cửa hàng, gói), `circuit` (mạch đang thiết kế, code Arduino ngắn cho mạch), `tutor` (bài giảng, slide).
 - Quy tắc:

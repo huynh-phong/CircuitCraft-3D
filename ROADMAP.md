@@ -107,6 +107,12 @@ Acceptance: Admin, Creator, Workspace, Three.js và JSZip tải theo nhu cầu; 
 
 ---
 
+## Task ID: C1 — Kiểm định linh kiện, mô hình 3D và mô phỏng
+Status: [PASS]
+Depends on: R4
+Acceptance: mọi linh kiện trong registry có chân đúng datasheet và mức mô phỏng công bố; breadboard đúng cấu trúc nối thông; không còn kết quả hardcode; linh kiện chưa hỗ trợ được đánh dấu; 3D phản ánh kết quả bộ giải; DRC không mâu thuẫn bộ giải; dự án cũ mở được; lint/build/test PASS; báo cáo `docs/reports/COMPONENT_SIMULATION_AUDIT_2026-11-08.md`. Bằng chứng: `test/components_simulation.test.ts` (55/55), `docs/PROGRESS.md` mục C1.
+Chưa làm (task sau): mô phỏng theo thời gian (tụ, cuộn cảm, dạng sóng), trình thông dịch sketch Arduino, I2C/OLED, HC-SR04, linh kiện cuộn cảm/MOSFET; kiểm thử trên Workspace thật và thiết bị di động.
+
 ## Task ID: D1 — Triển khai Vercel + Supabase
 Status: [BLOCKED]
 Depends on: R1-SECRETS

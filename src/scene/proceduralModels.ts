@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { disposeObjectTree } from './disposal';
+import { disposeObjectTree, markShared } from './disposal';
 import { ComponentInstance, ComponentDefinition } from '../domain/project/types';
+import type { ComponentVisualState } from '../domain/simulation/types';
 import { SceneMaterialRegistry } from './materials';
 import { getResistorColorBands } from '../domain/components/colorCode';
 import { loadGLBModel } from './modelLoader';
@@ -19,8 +20,38 @@ const SIMULATION_VISUAL_DEFINITIONS = new Set([
   'rgb-led',
   '7seg-display',
   'oled-i2c',
+  'servo-sg90',
+  'servo-motor',
+  'dc-motor',
 ]);
 const SWITCH_VISUAL_DEFINITIONS = new Set(['switch', 'switch_spst']);
+
+/** Everything the solver tells the scene about one component (see simulation/types.ts). */
+export interface ComponentMeshOptions {
+  isSimulationOn?: boolean;
+  switchClosed?: boolean;
+  visual?: ComponentVisualState;
+  pwm?: { frequencyHz: number; duty: number };
+}
+
+/** Above this frequency a PWM-driven part is drawn at its average level instead of blinking. */
+const BLINK_MAX_HZ = 20;
+
+const q = (v: number | undefined, step: number) => (v === undefined ? null : Math.round(v / step) * step);
+
+/** Rounded simulation visuals: tiny current changes must not rebuild meshes every solve. */
+function visualKey(options?: ComponentMeshOptions) {
+  const v = options?.visual;
+  return {
+    on: Boolean(options?.isSimulationOn),
+    b: q(v?.brightness, 0.05),
+    rgb: v?.rgb?.map((x) => q(x, 0.05)),
+    seg: v?.segments ? Object.entries(v.segments).map(([k, x]) => `${k}${q(x, 0.05)}`).join('') : null,
+    a: q(v?.angleDeg, 1),
+    rpm: q(v?.rpm, 50),
+    pwm: options?.pwm ? [q(options.pwm.frequencyHz, 0.01), q(options.pwm.duty, 0.01)] : null,
+  };
+}
 
 /**
  * Everything createComponentMesh's output depends on, except position and rotation (those are
@@ -29,7 +60,7 @@ const SWITCH_VISUAL_DEFINITIONS = new Set(['switch', 'switch_spst']);
 export function componentVisualSignature(
   instance: ComponentInstance,
   definition: ComponentDefinition,
-  options?: { isSimulationOn?: boolean; switchClosed?: boolean }
+  options?: ComponentMeshOptions
 ): string {
   return JSON.stringify([
     definition.definitionId,
@@ -37,9 +68,51 @@ export function componentVisualSignature(
     instance.parameters,
     instance.state,
     // A loaded GLB model does not change with the simulation state
-    !definition.modelUrl && SIMULATION_VISUAL_DEFINITIONS.has(definition.definitionId) ? Boolean(options?.isSimulationOn) : null,
+    !definition.modelUrl && SIMULATION_VISUAL_DEFINITIONS.has(definition.definitionId) ? visualKey(options) : null,
     SWITCH_VISUAL_DEFINITIONS.has(definition.definitionId) ? Boolean(options?.switchClosed) : null,
   ]);
+}
+
+// Shared geometries / materials for repeated parts (never disposed with a single mesh)
+const sharedCache = new Map<string, any>();
+function shared<T extends THREE.BufferGeometry | THREE.Material>(key: string, make: () => T): T {
+  let v = sharedCache.get(key) as T | undefined;
+  if (!v) {
+    v = make();
+    markShared(v);
+    sharedCache.set(key, v);
+  }
+  return v;
+}
+
+/** Effective light level for drawing: PWM above the blink rate is shown at its average. */
+function drawLevel(level: number | undefined, options?: ComponentMeshOptions): number {
+  if (!level) return 0;
+  const pwm = options?.pwm;
+  return pwm && pwm.frequencyHz > BLINK_MAX_HZ ? level * pwm.duty : level;
+}
+
+/** Straight metal legs from below the board surface up to `topY`, one per defined pin. */
+function addPinLegs(group: THREE.Group, definition: ComponentDefinition, topY: number, flat = false) {
+  const depth = 3.2; // leg length inside the breadboard / PCB hole
+  const len = topY + depth;
+  const geom = shared(`leg-${flat ? 'flat' : 'round'}-${len.toFixed(2)}`, () =>
+    flat ? new THREE.BoxGeometry(0.5, len, 0.25) : new THREE.CylinderGeometry(0.28, 0.28, len, 8)
+  );
+  const mat = SceneMaterialRegistry.getInstance().pinLeadMaterial;
+  for (const pin of definition.pins) {
+    const leg = new THREE.Mesh(geom, mat);
+    leg.position.set(pin.localOffset.x, topY - len / 2, pin.localOffset.z);
+    leg.castShadow = true;
+    group.add(leg);
+  }
+}
+
+/** Marks a mesh whose material alternates with the oscillator driving it (blinking parts). */
+function blinkable(mesh: THREE.Mesh, offMaterial: THREE.Material) {
+  mesh.userData.blinkOn = mesh.material;
+  mesh.userData.blinkOff = offMaterial;
+  return mesh;
 }
 
 export function applyComponentTransform(group: THREE.Object3D, instance: ComponentInstance): void {
@@ -54,7 +127,7 @@ export function applyComponentTransform(group: THREE.Object3D, instance: Compone
 export function createComponentMesh(
   instance: ComponentInstance,
   definition: ComponentDefinition,
-  options?: { isSimulationOn?: boolean; switchClosed?: boolean }
+  options?: ComponentMeshOptions
 ): THREE.Group {
   const group = new THREE.Group();
   group.name = `comp-${instance.instanceId}`;
@@ -121,7 +194,7 @@ export function createComponentMesh(
       break;
     case 'led':
     case 'led_basic':
-      buildLED(group, instance, matReg, options?.isSimulationOn || false);
+      buildLED(group, instance, matReg, options?.isSimulationOn || false, options);
       break;
     case 'switch':
     case 'switch_spst':
@@ -140,6 +213,7 @@ export function createComponentMesh(
       break;
     case 'pushbutton':
       buildPushbutton(group, instance, matReg);
+      addPinLegs(group, definition, 1.0, true);
       break;
     case 'diode':
       buildDiode(group, instance, matReg);
@@ -152,14 +226,17 @@ export function createComponentMesh(
       break;
     case 'relay':
       buildRelay(group, instance, matReg);
+      addPinLegs(group, definition, 0.5, true);
       break;
     case 'ne555':
     case 'ic-dip8':
       buildNE555(group, instance, matReg);
+      addPinLegs(group, definition, 1.6, true);
       break;
     case 'logic-and':
     case 'logic_and':
       buildLogicGate(group, instance, matReg, 'AND');
+      addPinLegs(group, definition, 1.6, true);
       break;
     case 'arduino-uno':
     case 'arduino_uno':
@@ -178,19 +255,20 @@ export function createComponentMesh(
       break;
     case 'servo-motor':
     case 'servo-sg90':
-      buildServoMotor(group, instance, matReg);
+      buildServoMotor(group, instance, matReg, options);
       break;
     case 'rgb-led':
-      buildRgbLed(group, instance, matReg, options?.isSimulationOn || false);
+      buildRgbLed(group, instance, matReg, options);
       break;
     case '7seg-display':
-      buildSevenSegment(group, instance, matReg, options?.isSimulationOn || false);
+      buildSevenSegment(group, instance, matReg, options);
+      addPinLegs(group, definition, 1.0);
       break;
     case 'oled-i2c':
-      buildOledDisplay(group, instance, matReg, options?.isSimulationOn || false);
+      buildOledDisplay(group, instance, matReg, Boolean(options?.visual?.displayOn));
       break;
     case 'dc-motor':
-      buildDcMotor(group, instance, matReg);
+      buildDcMotor(group, instance, matReg, options);
       break;
     case 'breadboard':
       buildBreadboard(group, instance, matReg);
@@ -198,6 +276,10 @@ export function createComponentMesh(
     default:
       buildGenericComponent(group, instance, definition, matReg);
     }
+  }
+
+  if (options?.pwm && options.pwm.frequencyHz <= BLINK_MAX_HZ && options.pwm.frequencyHz > 0) {
+    group.userData.blink = { hz: options.pwm.frequencyHz, duty: options.pwm.duty };
   }
 
   // Ensure 100% of defined pins have prominent, easily clickable pin targets
@@ -330,23 +412,27 @@ function buildLED(
   group: THREE.Group,
   instance: ComponentInstance,
   mats: SceneMaterialRegistry,
-  isSimulationOn: boolean
+  isSimulationOn: boolean,
+  options?: ComponentMeshOptions
 ) {
   const color = instance.parameters?.color || 'red';
-  const ledMat = mats.getLedMaterial(color, isSimulationOn);
+  const level = drawLevel(options?.visual?.brightness ?? (isSimulationOn ? 1 : 0), options);
+  const lit = isSimulationOn && level > 0.04;
+  const ledMat = mats.getLedMaterial(color, lit);
+  const ledOff = mats.getLedMaterial(color, false);
 
   // Elevated LED bulb (no base / pedestal underneath)
   const bulbBaseY = 6.0;
 
   // Main cylinder bulb
   const cylGeom = new THREE.CylinderGeometry(2.5, 2.5, 5.0, 20);
-  const cylMesh = new THREE.Mesh(cylGeom, ledMat);
+  const cylMesh = blinkable(new THREE.Mesh(cylGeom, ledMat), ledOff);
   cylMesh.position.set(-1.27, bulbBaseY + 2.5, 0); // Centered symmetrically between the two pins (-2.54 and 0)
   group.add(cylMesh);
 
   // Hemispherical dome top
   const domeGeom = new THREE.SphereGeometry(2.5, 20, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-  const domeMesh = new THREE.Mesh(domeGeom, ledMat);
+  const domeMesh = blinkable(new THREE.Mesh(domeGeom, ledMat), ledOff);
   domeMesh.position.set(-1.27, bulbBaseY + 5.0, 0);
   group.add(domeMesh);
 
@@ -375,8 +461,9 @@ function buildLED(
   cathodeLead.castShadow = true;
   group.add(cathodeLead);
 
-  // If simulation is on, add point light glow effect
-  if (isSimulationOn) {
+  // Glow scaled by the solved LED current (brightness 1 = rated 20 mA)
+  if (lit) {
+    const k = Math.min(1.5, level);
     const hexColors: Record<string, number> = {
       red: 0xff0000,
       green: 0x00ff44,
@@ -385,7 +472,8 @@ function buildLED(
       white: 0xffffff,
     };
     const lightColor = hexColors[color] || 0xff0000;
-    const glowLight = new THREE.PointLight(lightColor, 2.5, 40, 1.5);
+    const glowLight = new THREE.PointLight(lightColor, 2.5 * k, 40, 1.5);
+    glowLight.name = 'sim-glow';
     glowLight.position.set(-1.27, bulbBaseY + 5.0, 0);
     group.add(glowLight);
 
@@ -394,9 +482,10 @@ function buildLED(
     const haloMat = new THREE.MeshBasicMaterial({
       color: lightColor,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.35 * Math.min(1, k),
     });
     const halo = new THREE.Mesh(haloGeom, haloMat);
+    halo.name = 'sim-glow';
     halo.position.set(-1.27, bulbBaseY + 4.5, 0);
     group.add(halo);
   }
@@ -673,6 +762,7 @@ function buildBuzzer(group: THREE.Group, instance: ComponentInstance, mats: Scen
     waveGeom.rotateX(-Math.PI / 2);
     const waveMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
     const wave = new THREE.Mesh(waveGeom, waveMat);
+    wave.name = 'sim-glow';
     wave.position.set(0, 11, 0);
     group.add(wave);
   }
@@ -732,27 +822,25 @@ function buildRelay(group: THREE.Group, instance: ComponentInstance, mats: Scene
  * NE555 Timer IC (DIP-8 Package)
  */
 function buildNE555(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry) {
-  // DIP-8 Black plastic epoxy body
-  const bodyGeom = new THREE.BoxGeometry(12, 4.5, 8);
+  // DIP-8 epoxy body 9.8 × 6.35 mm, seated 1.6 mm above the board on its legs
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.6 });
-  const body = new THREE.Mesh(bodyGeom, bodyMat);
-  body.position.set(0, 3, 0);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(9.8, 3.3, 6.35), bodyMat);
+  body.position.set(0, 1.6 + 1.65, 0);
   body.castShadow = true;
   group.add(body);
 
-  // Pin 1 Index Notch (Half-cylinder indentation at front end)
-  const notchGeom = new THREE.CylinderGeometry(0.8, 0.8, 4.6, 12, 1, false, 0, Math.PI);
-  notchGeom.rotateX(Math.PI / 2);
-  const notchMat = new THREE.MeshBasicMaterial({ color: 0x111827 });
-  const notch = new THREE.Mesh(notchGeom, notchMat);
-  notch.position.set(-6, 3, 0);
+  // Pin 1 notch at the −x end and the pin-1 dot next to pin 1 (+z row)
+  const notchGeom = new THREE.CylinderGeometry(0.8, 0.8, 0.4, 12, 1, false, 0, Math.PI);
+  const notch = new THREE.Mesh(notchGeom, new THREE.MeshBasicMaterial({ color: 0x0b1220 }));
+  notch.rotation.y = -Math.PI / 2;
+  notch.position.set(-4.9, 4.95, 0);
   group.add(notch);
+  const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x94a3b8 }));
+  dot.position.set(-3.6, 4.96, 2.2);
+  group.add(dot);
 
-  // White text silkscreen indicator
-  const textGeom = new THREE.BoxGeometry(6, 0.1, 3);
-  const textMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8 });
-  const text = new THREE.Mesh(textGeom, textMat);
-  text.position.set(0, 5.3, 0);
+  const text = new THREE.Mesh(new THREE.BoxGeometry(5, 0.05, 1.4), new THREE.MeshBasicMaterial({ color: 0x94a3b8 }));
+  text.position.set(0.6, 4.95, -0.6);
   group.add(text);
 }
 
@@ -760,19 +848,25 @@ function buildNE555(group: THREE.Group, instance: ComponentInstance, mats: Scene
  * Logic Gate IC (DIP-14 Package)
  */
 function buildLogicGate(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry, type: string) {
-  // DIP-14 longer body
-  const bodyGeom = new THREE.BoxGeometry(18, 4.5, 8);
+  // DIP-14 epoxy body 19.0 × 6.35 mm
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.6 });
-  const body = new THREE.Mesh(bodyGeom, bodyMat);
-  body.position.set(0, 3, 0);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(19.0, 3.3, 6.35), bodyMat);
+  body.position.set(0, 1.6 + 1.65, 0);
   body.castShadow = true;
   group.add(body);
 
-  // Silkscreen gate logo
-  const gateGeom = new THREE.BoxGeometry(8, 0.1, 3.5);
-  const gateMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-  const gate = new THREE.Mesh(gateGeom, gateMat);
-  gate.position.set(0, 5.3, 0);
+  const notchGeom = new THREE.CylinderGeometry(0.8, 0.8, 0.4, 12, 1, false, 0, Math.PI);
+  const notch = new THREE.Mesh(notchGeom, new THREE.MeshBasicMaterial({ color: 0x0b1220 }));
+  notch.rotation.y = -Math.PI / 2;
+  notch.position.set(-9.5, 4.95, 0);
+  group.add(notch);
+  const dot = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.1, 12), new THREE.MeshBasicMaterial({ color: 0x94a3b8 }));
+  dot.position.set(-8.3, 4.96, 2.2);
+  group.add(dot);
+
+  // Silkscreen marking ("74HC08" print area)
+  const gate = new THREE.Mesh(new THREE.BoxGeometry(8, 0.05, 1.6), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+  gate.position.set(0.5, 4.95, -0.4);
   group.add(gate);
 }
 
@@ -1117,7 +1211,7 @@ function buildTransistorNPN(group: THREE.Group, instance: ComponentInstance, mat
   for (const px of pinOffsets) {
     const leadGeom = new THREE.CylinderGeometry(0.3, 0.3, 3, 8);
     const lead = new THREE.Mesh(leadGeom, mats.pinLeadMaterial);
-    lead.position.set(px, 1.5, px === 0 ? 1.5 : 0);
+    lead.position.set(px, 1.5, 0);
     group.add(lead);
   }
 }
@@ -1158,7 +1252,7 @@ function buildUltrasonicSensor(group: THREE.Group, instance: ComponentInstance, 
 /**
  * SG90 Micro Servo Motor
  */
-function buildServoMotor(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry) {
+function buildServoMotor(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry, options?: ComponentMeshOptions) {
   // Blue translucent plastic casing
   const bodyGeom = new THREE.BoxGeometry(23, 22, 12);
   const servoMat = new THREE.MeshStandardMaterial({
@@ -1179,11 +1273,17 @@ function buildServoMotor(group: THREE.Group, instance: ComponentInstance, mats: 
   gear.position.set(5, 25, 0);
   group.add(gear);
 
-  // White horn arm
-  const hornGeom = new THREE.BoxGeometry(16, 1.5, 5);
-  const horn = new THREE.Mesh(hornGeom, gearMat);
-  horn.position.set(5, 27, 0);
-  group.add(horn);
+  // White horn arm on a pivot at the output shaft. Angle: the solved control pulse when one is
+  // received, otherwise the mounting angle stored on the part (an unpowered servo stays put).
+  const p = instance.parameters || {};
+  const angle = options?.visual?.angleDeg ?? Number(p.angle ?? p.targetAngle ?? 90);
+  const pivot = new THREE.Group();
+  pivot.position.set(5, 27, 0);
+  pivot.rotation.y = ((90 - (Number.isFinite(angle) ? angle : 90)) * Math.PI) / 180;
+  const horn = new THREE.Mesh(new THREE.BoxGeometry(16, 1.5, 5), gearMat);
+  horn.position.set(5, 0, 0);
+  pivot.add(horn);
+  group.add(pivot);
 
   // Mounting tabs
   const tabGeom = new THREE.BoxGeometry(32, 2, 12);
@@ -1195,50 +1295,44 @@ function buildServoMotor(group: THREE.Group, instance: ComponentInstance, mats: 
 /**
  * 4-Pin RGB LED (5mm common cathode)
  */
-function buildRgbLed(
-  group: THREE.Group,
-  instance: ComponentInstance,
-  mats: SceneMaterialRegistry,
-  isSimulating: boolean
-) {
-  const colorState = instance.parameters?.colorState || 'green';
-  let emissiveHex = 0x22c55e;
-  if (colorState === 'red') emissiveHex = 0xef4444;
-  else if (colorState === 'blue') emissiveHex = 0x3b82f6;
+function buildRgbLed(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry, options?: ComponentMeshOptions) {
+  const [r, g, b] = (options?.visual?.rgb || [0, 0, 0]).map((x) => Math.min(1, drawLevel(x, options)));
+  const peak = Math.max(r, g, b);
+  const lit = peak > 0.04;
+  const mix = new THREE.Color(r / (peak || 1), g / (peak || 1), b / (peak || 1));
 
   const domeGeom = new THREE.SphereGeometry(3.2, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
   const cylGeom = new THREE.CylinderGeometry(3.2, 3.2, 4.5, 16);
+  const offMat = shared('rgb-off', () => new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.88 }));
+  const ledMat = lit
+    ? new THREE.MeshStandardMaterial({ color: mix, emissive: mix, emissiveIntensity: 0.4 + peak, roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.88 })
+    : offMat;
 
-  const ledMat = new THREE.MeshStandardMaterial({
-    color: isSimulating ? emissiveHex : 0xf1f5f9,
-    emissive: isSimulating ? emissiveHex : 0x000000,
-    emissiveIntensity: isSimulating ? 1.2 : 0,
-    roughness: 0.2,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 0.88,
-  });
-
-  const dome = new THREE.Mesh(domeGeom, ledMat);
+  const dome = blinkable(new THREE.Mesh(domeGeom, ledMat), offMat);
   dome.position.set(0, 8.5, 0);
   group.add(dome);
 
-  const cyl = new THREE.Mesh(cylGeom, ledMat);
+  const cyl = blinkable(new THREE.Mesh(cylGeom, ledMat), offMat);
   cyl.position.set(0, 6, 0);
   group.add(cyl);
 
-  // Rim flange
-  const rimGeom = new THREE.CylinderGeometry(3.6, 3.6, 0.8, 16);
-  const rim = new THREE.Mesh(rimGeom, ledMat);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 0.8, 16), offMat);
   rim.position.set(0, 3.6, 0);
   group.add(rim);
 
-  // 4 through-hole leads
+  if (lit) {
+    const glow = new THREE.PointLight(mix, 2 * peak, 35, 1.5);
+    glow.name = 'sim-glow';
+    glow.position.set(0, 9, 0);
+    group.add(glow);
+  }
+
+  // 4 through-hole leads (cathode, the 2nd lead, is the longest)
   const pinXs = [-3.81, -1.27, 1.27, 3.81];
   for (const px of pinXs) {
-    const leadGeom = new THREE.CylinderGeometry(0.3, 0.3, 3, 8);
-    const lead = new THREE.Mesh(leadGeom, mats.pinLeadMaterial);
-    lead.position.set(px, 1.5, 0);
+    const len = px === -1.27 ? 4.2 : 3;
+    const lead = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, len, 8), mats.pinLeadMaterial);
+    lead.position.set(px, 3.2 - len / 2, 0);
     group.add(lead);
   }
 }
@@ -1246,12 +1340,7 @@ function buildRgbLed(
 /**
  * 7-Segment LED Display
  */
-function buildSevenSegment(
-  group: THREE.Group,
-  instance: ComponentInstance,
-  mats: SceneMaterialRegistry,
-  isSimulating: boolean
-) {
+function buildSevenSegment(group: THREE.Group, instance: ComponentInstance, mats: SceneMaterialRegistry, options?: ComponentMeshOptions) {
   const bodyGeom = new THREE.BoxGeometry(12.6, 7.0, 19.0);
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.1 });
   const body = new THREE.Mesh(bodyGeom, bodyMat);
@@ -1267,29 +1356,32 @@ function buildSevenSegment(
 
   const colorName = instance.parameters?.color || 'red';
   const segHex = colorName === 'green' ? 0x22c55e : colorName === 'blue' ? 0x3b82f6 : 0xef4444;
-  const segMat = new THREE.MeshStandardMaterial({
-    color: isSimulating ? segHex : 0x475569,
-    emissive: isSimulating ? segHex : 0x000000,
-    emissiveIntensity: isSimulating ? 1.1 : 0,
-    roughness: 0.2,
-  });
+  const offMat = shared('7seg-off', () => new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.2 }));
+  const onMat = shared(`7seg-on-${segHex}`, () => new THREE.MeshStandardMaterial({ color: segHex, emissive: segHex, emissiveIntensity: 1.1, roughness: 0.2 }));
+  const levels = options?.visual?.segments || {};
 
-  const hSeg = new THREE.BoxGeometry(5.6, 0.35, 1.2);
-  const vSeg = new THREE.BoxGeometry(1.2, 0.35, 5.6);
+  const hSeg = shared('7seg-h', () => new THREE.BoxGeometry(5.6, 0.35, 1.2));
+  const vSeg = shared('7seg-v', () => new THREE.BoxGeometry(1.2, 0.35, 5.6));
+  const dpGeom = shared('7seg-dp', () => new THREE.CylinderGeometry(0.7, 0.7, 0.35, 12));
 
-  const positions: Array<{ geom: THREE.BufferGeometry; x: number; z: number }> = [
-    { geom: hSeg, x: 0, z: -6.0 },
-    { geom: hSeg, x: 0, z: 0 },
-    { geom: hSeg, x: 0, z: 6.0 },
-    { geom: vSeg, x: -2.8, z: -3.0 },
-    { geom: vSeg, x: 2.8, z: -3.0 },
-    { geom: vSeg, x: -2.8, z: 3.0 },
-    { geom: vSeg, x: 2.8, z: 3.0 },
+  // Top of the digit is −z (pin row 10-6). a: top, b: upper right, c: lower right, d: bottom,
+  // e: lower left, f: upper left, g: middle.
+  const segments: Array<{ key: string; geom: THREE.BufferGeometry; x: number; z: number }> = [
+    { key: 'a', geom: hSeg, x: 0, z: -6.0 },
+    { key: 'g', geom: hSeg, x: 0, z: 0 },
+    { key: 'd', geom: hSeg, x: 0, z: 6.0 },
+    { key: 'f', geom: vSeg, x: -2.8, z: -3.0 },
+    { key: 'b', geom: vSeg, x: 2.8, z: -3.0 },
+    { key: 'e', geom: vSeg, x: -2.8, z: 3.0 },
+    { key: 'c', geom: vSeg, x: 2.8, z: 3.0 },
+    { key: 'dp', geom: dpGeom, x: 4.6, z: 7.4 },
   ];
 
-  for (const s of positions) {
-    const m = new THREE.Mesh(s.geom, segMat);
-    m.position.set(s.x, 8.22, s.z);
+  for (const sgm of segments) {
+    const on = drawLevel(levels[sgm.key], options) > 0.04;
+    const m = new THREE.Mesh(sgm.geom, on ? onMat : offMat);
+    if (on) blinkable(m, offMat);
+    m.position.set(sgm.x, 8.22, sgm.z);
     group.add(m);
   }
 }
@@ -1313,6 +1405,7 @@ function buildOledDisplay(
   const glassGeom = new THREE.BoxGeometry(24, 1.2, 18);
   const glassMat = new THREE.MeshStandardMaterial({
     color: 0x020617,
+    // Only lit when the solver reports display data (I2C is not simulated yet: stays dark)
     emissive: isSimulating ? 0x06b6d4 : 0x000000,
     emissiveIntensity: isSimulating ? 0.45 : 0,
     roughness: 0.1,
@@ -1335,7 +1428,8 @@ function buildOledDisplay(
 function buildDcMotor(
   group: THREE.Group,
   _instance: ComponentInstance,
-  mats: SceneMaterialRegistry
+  mats: SceneMaterialRegistry,
+  options?: ComponentMeshOptions
 ) {
   const cylGeom = new THREE.CylinderGeometry(8.5, 8.5, 22, 24);
   cylGeom.rotateX(Math.PI / 2);
@@ -1356,6 +1450,12 @@ function buildDcMotor(
   shaftGeom.rotateX(Math.PI / 2);
   const shaft = new THREE.Mesh(shaftGeom, mats.pinLeadMaterial);
   shaft.position.set(0, 9.5, -14);
+  // Flag on the shaft makes the rotation visible; the animation loop turns it at visual.rpm
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(6, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0xfacc15 }));
+  flag.position.set(2.5, 0, -3);
+  shaft.add(flag);
+  const rpm = options?.visual?.rpm ?? 0;
+  if (rpm) shaft.userData.spinRpm = rpm;
   group.add(shaft);
 }
 

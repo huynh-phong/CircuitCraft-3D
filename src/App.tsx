@@ -24,6 +24,9 @@ import {
   ResizeBoardCommand,
   ChangeBoardShapeCommand,
   CutBoardCommand,
+  UpdateComponentParameterCommand,
+  RenameComponentCommand,
+  UpdateProjectFieldsCommand,
 } from './domain/commands/commands';
 import {
   areAllComponentsContained,
@@ -1815,23 +1818,19 @@ export const App: React.FC = () => {
                 onUpdateComponentParams={(id, params) => {
                   const comp = project.components.find((c) => c.instanceId === id);
                   if (!comp) return;
-                  const updated: ComponentInstance = { ...comp, parameters: params };
-                  const newDoc = {
-                    ...project,
-                    components: project.components.map((c) => (c.instanceId === id ? updated : c)),
-                    revision: project.revision + 1,
-                  };
-                  setProject(newDoc);
-                  triggerAutosave(newDoc);
+                  // Design changes go through the command engine so they can be undone
+                  const before = comp.parameters || {};
+                  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(params)]));
+                  const changes = keys
+                    .filter((k) => JSON.stringify(before[k]) !== JSON.stringify(params[k]))
+                    .map((k) => new UpdateComponentParameterCommand(id, k, before[k], params[k]));
+                  if (changes.length === 0) return;
+                  executeCommand(changes.length === 1 ? changes[0] : new BatchCommand(`Đổi thông số ${comp.name}`, changes));
                 }}
                 onUpdateComponentName={(id, name) => {
-                  const newDoc = {
-                    ...project,
-                    components: project.components.map((c) => (c.instanceId === id ? { ...c, name } : c)),
-                    revision: project.revision + 1,
-                  };
-                  setProject(newDoc);
-                  triggerAutosave(newDoc);
+                  const comp = project.components.find((c) => c.instanceId === id);
+                  if (!comp || comp.name === name) return;
+                  executeCommand(new RenameComponentCommand(id, comp.name, name));
                 }}
                 onRotateComponent={handleRotateComponent}
                 onDeleteComponent={(id) => {
@@ -1847,13 +1846,10 @@ export const App: React.FC = () => {
                 onUpdateWireThickness={handleUpdateWireThickness}
                 onUpdateWireSag={handleUpdateWireSag}
                 onUpdateBoardColor={(colorHex) => {
-                  const newDoc = {
-                    ...project,
-                    board: { ...project.board, solderMaskColor: colorHex },
-                    revision: project.revision + 1,
-                  };
-                  setProject(newDoc);
-                  triggerAutosave(newDoc);
+                  if (project.board.solderMaskColor === colorHex) return;
+                  executeCommand(
+                    new UpdateProjectFieldsCommand('Đổi màu bo mạch', { solderMaskColor: project.board.solderMaskColor }, { solderMaskColor: colorHex })
+                  );
                 }}
               />
             )}
@@ -1937,10 +1933,8 @@ export const App: React.FC = () => {
                   </button>
                   <button
                     onClick={() => {
-                      if (renameInput.trim()) {
-                        const newDoc = { ...project, name: renameInput.trim(), revision: project.revision + 1 };
-                        setProject(newDoc);
-                        triggerAutosave(newDoc);
+                      if (renameInput.trim() && renameInput.trim() !== project.name) {
+                        executeCommand(new UpdateProjectFieldsCommand('Đổi tên dự án', { name: project.name }, { name: renameInput.trim() }));
                       }
                       setIsRenameOpen(false);
                     }}

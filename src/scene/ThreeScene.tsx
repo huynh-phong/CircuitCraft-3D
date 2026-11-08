@@ -10,6 +10,7 @@ import { componentLayoutHash, createPreviewWireMesh, createWireMesh, wireVisualS
 import { Minibot3D, MinibotState } from './minibot3D';
 import { snapToGrid, calculatePinWorldPosition } from '../domain/project/coordinates';
 import { SimulationResult } from '../domain/simulation/types';
+import { isSwitchClosed } from '../domain/simulation/engine';
 import { useI18n } from '../i18n/context';
 import {
   getBoardPerimeter,
@@ -106,6 +107,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   const latestPropsRef = useRef({ document, simulationResult, isExplodedView });
   latestPropsRef.current = { document, simulationResult, isExplodedView };
   const instancesByMeshNameRef = useRef(new Map<string, ComponentInstance>());
+  /** Objects animated from simulation results (blinking at the oscillator rate, spinning shafts). */
+  const simAnimatedRef = useRef<{ blink: THREE.Object3D[]; spin: THREE.Object3D[] }>({ blink: [], spin: [] });
 
   // Three.js instances ref
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -534,13 +537,17 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       }
 
       // 4. Electrical Current Flow Pulse Animation along connected wires
-      const isCircuitActive = Boolean(latest.simulationResult && latest.simulationResult.status === 'running');
+      const sim = latest.simulationResult;
+      const isCircuitActive = Boolean(sim && sim.status === 'running');
+      const conducts = (compId: string) => (sim?.components?.[compId]?.currentA ?? 0) > 1e-6;
       wiresGroupRef.current.children.forEach((wireGroup, wireIdx) => {
         const pulseMesh = wireGroup.children.find((c) => c.name === 'electric-pulse') as THREE.Mesh | undefined;
         if (pulseMesh && pulseMesh.userData?.curve) {
           const curve = pulseMesh.userData.curve as THREE.Curve<THREE.Vector3>;
           const mat = pulseMesh.material as THREE.MeshBasicMaterial;
-          if (isCircuitActive) {
+          const conn = wireGroup.userData?.connection as Connection | undefined;
+          const carriesCurrent = isCircuitActive && (!conn || conducts(conn.fromComponentId) || conducts(conn.toComponentId));
+          if (carriesCurrent) {
             pulseMesh.visible = true;
             mat.opacity = THREE.MathUtils.lerp(mat.opacity, 0.9, delta * 6);
             const progress = ((time / 1000) * 0.45 + wireIdx * 0.22) % 1.0;
@@ -554,6 +561,23 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
           }
         }
       });
+
+      // 4b. Simulation-driven animation: blink at the solved oscillator rate, spin motor shafts
+      const tSec = time / 1000;
+      for (const g of simAnimatedRef.current.blink) {
+        const { hz, duty } = g.userData.blink as { hz: number; duty: number };
+        const on = (tSec * hz) % 1 < duty;
+        if (g.userData.blinkState === on) continue;
+        g.userData.blinkState = on;
+        g.traverse((child) => {
+          if (child.name === 'sim-glow') child.visible = on;
+          const m = child as THREE.Mesh;
+          if (m.userData?.blinkOn) m.material = on ? m.userData.blinkOn : m.userData.blinkOff;
+        });
+      }
+      for (const shaft of simAnimatedRef.current.spin) {
+        shaft.rotation.z += ((shaft.userData.spinRpm as number) / 60) * Math.PI * 2 * delta;
+      }
 
       // 5. Update Minibot bobbing & hover
       if (minibotRef.current) {
@@ -887,10 +911,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   // Build / Update Component Meshes
   useEffect(() => {
     const started = performance.now();
-    const meshOptions = (inst: ComponentInstance) => ({
-      isSimulationOn: simulationResult?.components?.[inst.instanceId]?.isOn || false,
-      switchClosed: switchStates[inst.instanceId] ?? (inst.state?.open === false),
-    });
+    const meshOptions = (inst: ComponentInstance) => {
+      const st = simulationResult?.components?.[inst.instanceId];
+      return {
+        isSimulationOn: st?.isOn || false,
+        switchClosed: isSwitchClosed(inst, switchStates),
+        visual: st?.visual,
+        pwm: st?.pwm,
+      };
+    };
 
     instancesByMeshNameRef.current = new Map(document.components.map((c) => [`comp-${c.instanceId}`, c]));
 
@@ -907,6 +936,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       (group, inst) => applyComponentTransform(group, inst)
     );
     reportSceneStats('components', stats, started);
+
+    const blink: THREE.Object3D[] = [];
+    const spin: THREE.Object3D[] = [];
+    componentsGroupRef.current.traverse((obj) => {
+      if (obj.userData?.blink) blink.push(obj);
+      if (obj.userData?.spinRpm) spin.push(obj);
+    });
+    simAnimatedRef.current = { blink, spin };
   }, [document.components, simulationResult, switchStates]);
 
   // Selection outline: selecting a component never touches its mesh

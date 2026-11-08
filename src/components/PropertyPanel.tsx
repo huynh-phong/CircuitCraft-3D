@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { ComponentInstance, Connection, BoardDefinition, WireStyle } from '../domain/project/types';
 import { getResistorColorBands } from '../domain/components/colorCode';
-import { COMPONENT_DEFINITIONS, getComponentDefinition } from '../domain/components/definitions';
+import { ARDUINO_PROGRAM_OPTIONS, COMPONENT_DEFINITIONS, getComponentDefinition } from '../domain/components/definitions';
+import { ComponentDefinition } from '../domain/project/types';
+import { resolveDefinitionId } from '../domain/components/aliases';
+import { isSwitchClosed } from '../domain/simulation/engine';
+import { SIMULATION_LEVEL_LABEL, SIMULATION_SUPPORT } from '../domain/simulation/capabilities';
 import {
   RotateCw,
   RotateCcw,
@@ -44,6 +48,102 @@ export interface PropertyPanelProps {
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
+
+/** Parameters that already have a dedicated editor below; the others get a generic field. */
+const DEDICATED_PARAMS: Record<string, string[]> = {
+  'arduino-uno': ['codeProgram'],
+  breadboard: ['railSplit', 'notes'],
+  resistor: ['resistance'],
+  led: ['color'],
+  'dc-source': ['voltage'],
+};
+
+const SimulationParams: React.FC<{
+  def: ComponentDefinition;
+  component: ComponentInstance;
+  onChange: (params: Record<string, any>) => void;
+}> = ({ def, component, onChange }) => {
+  const skip = DEDICATED_PARAMS[resolveDefinitionId(def.definitionId)] || [];
+  const fields = def.parameterSchema.filter((f) => !skip.includes(f.name));
+  if (fields.length === 0) return null;
+  const value = (name: string, fallback: any) => component.parameters?.[name] ?? def.defaultParameters?.[name] ?? fallback;
+  const set = (name: string, v: any) => onChange({ ...component.parameters, [name]: v });
+  return (
+    <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#070e1c] border border-cyan-500/30 space-y-3 shadow-xs">
+      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+        <Sliders className="w-3.5 h-3.5 text-cyan-500" />
+        Thông số mô phỏng
+      </div>
+      {fields.map((f) => {
+        const id = `param-${component.instanceId}-${f.name}`;
+        if (f.type === 'boolean') {
+          const v = Boolean(value(f.name, f.default));
+          return (
+            <label key={f.name} htmlFor={id} className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+              <span>{f.label}</span>
+              <input id={id} type="checkbox" checked={v} onChange={(e) => set(f.name, e.target.checked)} className="w-4 h-4 accent-cyan-500" />
+            </label>
+          );
+        }
+        if (f.type === 'select') {
+          const v = value(f.name, f.default);
+          return (
+            <div key={f.name} className="space-y-1">
+              <label htmlFor={id} className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">{f.label}</label>
+              <select
+                id={id}
+                value={String(v)}
+                onChange={(e) => {
+                  const opt = f.options?.find((o) => String(o.value) === e.target.value);
+                  set(f.name, opt ? opt.value : e.target.value);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-cyan-950/60 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:border-cyan-500"
+              >
+                {(f.options || []).map((o) => (
+                  <option key={String(o.value)} value={String(o.value)}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          );
+        }
+        if (f.type === 'number') {
+          const v = Number(value(f.name, f.default));
+          const clampValue = (n: number) => Math.min(f.max ?? Infinity, Math.max(f.min ?? -Infinity, n));
+          return (
+            <div key={f.name} className="space-y-1">
+              <label htmlFor={id} className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                <span>{f.label}</span>
+                <span className="font-mono text-cyan-600 dark:text-cyan-400">{Number.isFinite(v) ? v : '—'}{f.unit ? ` ${f.unit}` : ''}</span>
+              </label>
+              {f.min !== undefined && f.max !== undefined ? (
+                <input
+                  id={id}
+                  type="range"
+                  min={f.min}
+                  max={f.max}
+                  step={f.step ?? 1}
+                  value={Number.isFinite(v) ? v : f.default}
+                  onChange={(e) => set(f.name, clampValue(Number(e.target.value)))}
+                  className="w-full accent-cyan-500 touch-target"
+                />
+              ) : (
+                <input
+                  id={id}
+                  type="number"
+                  step={f.step ?? 1}
+                  value={Number.isFinite(v) ? v : ''}
+                  onChange={(e) => Number.isFinite(Number(e.target.value)) && set(f.name, clampValue(Number(e.target.value)))}
+                  className="tech-input w-full px-2.5 py-1 text-xs rounded-lg"
+                />
+              )}
+            </div>
+          );
+        }
+        return null;
+      })}
+    </div>
+  );
+};
 
 export const PropertyPanel: React.FC<PropertyPanelProps> = ({
   selectedComponent,
@@ -102,6 +202,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
         const def =
           getComponentDefinition(selectedComponent.definitionId) ||
           COMPONENT_DEFINITIONS.find((d) => d.definitionId === selectedComponent.definitionId);
+        const support = SIMULATION_SUPPORT[resolveDefinitionId(selectedComponent.definitionId)];
 
         return (
           /* Component Selected View */
@@ -206,13 +307,28 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   </span>
                 </div>
                 <div className="flex flex-col bg-white dark:bg-slate-900/60 p-1.5 rounded-lg border border-slate-200/60 dark:border-slate-800/80">
-                  <span className="text-slate-500 text-[10px]">{language === 'vi' ? 'Trạng thái' : 'Status'}</span>
+                  <span className="text-slate-500 text-[10px]">{language === 'vi' ? 'Mức mô phỏng' : 'Simulation'}</span>
                   <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-2.5 h-2.5" /> Sẵn sàng
+                    <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
+                    {support ? SIMULATION_LEVEL_LABEL[support.level] : language === 'vi' ? 'Chưa hỗ trợ' : 'Not supported'}
                   </span>
                 </div>
               </div>
+              {support && (
+                <div className="pt-1 text-[10.5px] leading-relaxed text-slate-600 dark:text-slate-400 space-y-0.5">
+                  <p><span className="font-semibold text-slate-700 dark:text-slate-300">Mô hình:</span> {support.summary}</p>
+                  <p><span className="font-semibold text-amber-600 dark:text-amber-400">Giới hạn:</span> {support.limits}</p>
+                </div>
+              )}
             </div>
+
+            {def && (
+              <SimulationParams
+                def={def}
+                component={selectedComponent}
+                onChange={(params) => onUpdateComponentParams(selectedComponent.instanceId, params)}
+              />
+            )}
 
             {/* 6. Position & Orientation */}
             <div className="space-y-2">
@@ -255,7 +371,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                    {language === 'vi' ? 'Chương trình nhúng nạp sẵn:' : 'Embedded Program:'}
+                    {language === 'vi' ? 'Chương trình mẫu được mô phỏng:' : 'Simulated sample program:'}
                   </label>
                   <select
                     value={selectedComponent.parameters?.codeProgram || 'blink_led'}
@@ -267,37 +383,15 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                     }
                     className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-cyan-950/60 text-xs text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:border-cyan-500"
                   >
-                    <option value="blink_led">{language === 'vi' ? 'Blink LED D13 (1Hz chu kỳ chuẩn)' : 'Blink LED D13 (1Hz)'}</option>
-                    <option value="button_read">{language === 'vi' ? 'Đọc nút bấm D12 điều khiển LED' : 'Read Pushbutton D12'}</option>
-                    <option value="analog_read">{language === 'vi' ? 'Đọc biến trở Analog A0' : 'Read Analog A0 Potentiometer'}</option>
-                    <option value="servo_control">{language === 'vi' ? 'Điều khiển góc Servo PWM D9' : 'Control Servo PWM D9'}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                    {language === 'vi' ? 'Điện áp Logic chân cấp:' : 'Logic Voltage:'}
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[5.0, 3.3].map((v) => (
-                      <button
-                        key={v}
-                        onClick={() =>
-                          onUpdateComponentParams(selectedComponent.instanceId, {
-                            ...selectedComponent.parameters,
-                            operatingVoltage: v,
-                          })
-                        }
-                        className={`py-1 rounded text-xs font-mono font-semibold transition ${
-                          (selectedComponent.parameters?.operatingVoltage || 5.0) === v
-                            ? 'bg-teal-500 text-slate-950 font-bold shadow-xs'
-                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
-                        }`}
-                      >
-                        {v}V {v === 5.0 ? '(Chuẩn)' : '(Low Power)'}
-                      </button>
+                    {ARDUINO_PROGRAM_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
-                  </div>
+                  </select>
+                  <p className="text-[10.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    {language === 'vi'
+                      ? 'Bo được giả định cấp nguồn qua USB 5 V. Chỉ các chương trình mẫu trên được mô phỏng; chưa biên dịch/chạy sketch tùy ý.'
+                      : 'The board is assumed to be USB powered (5 V). Only these sample programs are simulated; arbitrary sketches are not compiled or run.'}
+                  </p>
                 </div>
               </div>
             )}
@@ -313,61 +407,25 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   <span className="font-mono text-[10px] text-cyan-600 dark:text-cyan-400">Solderless Prototyping</span>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                    {language === 'vi' ? 'Quy cách điểm cắm (Tie-points):' : 'Tie-Points Specification:'}
-                  </label>
-                  <div className="grid grid-cols-3 gap-1">
-                    {[
-                      { val: 400, label: '400 (Half)' },
-                      { val: 830, label: '830 (Full)' },
-                      { val: 170, label: '170 (Mini)' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.val}
-                        onClick={() =>
-                          onUpdateComponentParams(selectedComponent.instanceId, {
-                            ...selectedComponent.parameters,
-                            tiePoints: opt.val,
-                          })
-                        }
-                        className={`py-1 px-1 rounded text-[11px] font-mono transition text-center ${
-                          (selectedComponent.parameters?.tiePoints || 400) === opt.val
-                            ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
-                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                    {language === 'vi' ? 'Điện áp thanh bus nguồn (+/-):' : 'Bus Rail Voltage (+/-):'}
-                  </label>
-                  <div className="grid grid-cols-3 gap-1">
-                    {[5.0, 3.3, 12.0].map((v) => (
-                      <button
-                        key={v}
-                        onClick={() =>
-                          onUpdateComponentParams(selectedComponent.instanceId, {
-                            ...selectedComponent.parameters,
-                            railVoltage: v,
-                          })
-                        }
-                        className={`py-1 rounded text-xs font-mono font-semibold transition ${
-                          (selectedComponent.parameters?.railVoltage || 5.0) === v
-                            ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
-                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
-                        }`}
-                      >
-                        {v}V
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <p className="text-[10.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  {language === 'vi'
+                    ? '60 cột × 10 hàng (A–E và F–J nối dọc theo cột) + 4 thanh nguồn 60 lỗ. Thanh nguồn không tự có điện: hãy nối nguồn vào thanh.'
+                    : '60 columns × 10 rows (A–E and F–J joined per column) + four 60-hole power rails. Rails carry no voltage until a supply is wired to them.'}
+                </p>
+                <label className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
+                  <span>{language === 'vi' ? 'Thanh nguồn ngắt ở giữa (lỗ 1–30 | 31–60)' : 'Power rails split in the middle (1–30 | 31–60)'}</span>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedComponent.parameters?.railSplit)}
+                    onChange={(e) =>
+                      onUpdateComponentParams(selectedComponent.instanceId, {
+                        ...selectedComponent.parameters,
+                        railSplit: e.target.checked,
+                      })
+                    }
+                    className="w-4 h-4 accent-cyan-500"
+                  />
+                </label>
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
@@ -518,16 +576,16 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   onClick={() =>
                     onUpdateComponentParams(selectedComponent.instanceId, {
                       ...selectedComponent.parameters,
-                      open: !selectedComponent.state?.open,
+                      open: isSwitchClosed(selectedComponent),
                     })
                   }
                   className={`w-full py-1.5 px-3 rounded text-xs font-medium transition cursor-pointer ${
-                    selectedComponent.state?.open === false
+                    isSwitchClosed(selectedComponent)
                       ? 'bg-emerald-600 text-white font-semibold'
                       : 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300'
                   }`}
                 >
-                  {selectedComponent.state?.open === false
+                  {isSwitchClosed(selectedComponent)
                     ? (language === 'vi' ? 'Đang ĐÓNG (Dẫn điện)' : 'CLOSED (Conducting)')
                     : (language === 'vi' ? 'Đang MỞ (Ngắt điện)' : 'OPEN (Disconnected)')}
                 </button>

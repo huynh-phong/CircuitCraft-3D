@@ -34,6 +34,7 @@ export type ComponentCategory =
   | 'ics'
   | 'sensors'
   | 'microcontrollers'
+  | 'actuators'
   | 'opto';
 
 export interface ComponentDefinition {
@@ -59,6 +60,8 @@ export interface ComponentDefinition {
   footprintType: 'through-hole' | 'smd' | 'modular';
   imageUrl?: string; // Optional preview thumbnail image path
   modelUrl?: string; // Optional 3D GLB model path (e.g. /3d-model/breadboard.glb)
+  /** Kept only so older projects open; the library offers this definition id instead. */
+  deprecatedBy?: string;
 }
 
 export interface ComponentInstance {

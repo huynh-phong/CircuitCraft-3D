@@ -4,11 +4,26 @@ import { ComponentDefinition, PinDefinition } from '../project/types';
  * Returns the electrical internal bus identifier for a breadboard pin.
  * All pins sharing the same busId on a breadboard are electrically tied together.
  */
-export function getBreadboardBusId(pinId: string): string {
-  if (pinId.startsWith('rail_top_pos')) return 'rail_top_pos';
-  if (pinId.startsWith('rail_top_neg')) return 'rail_top_neg';
-  if (pinId.startsWith('rail_bot_pos')) return 'rail_bot_pos';
-  if (pinId.startsWith('rail_bot_neg')) return 'rail_bot_neg';
+export const BREADBOARD_COLUMNS = 60;
+/** Column after which split power rails are interrupted (holes 1-30 | 31-60). */
+export const BREADBOARD_RAIL_SPLIT_AFTER = 30;
+
+/** Column a legacy `strip_N_top/bot` pin sits on (10 legacy strips spread over the 60 columns). */
+export function legacyStripColumn(strip: number): number {
+  return Math.round(1 + ((strip - 1) / 9) * (BREADBOARD_COLUMNS - 1));
+}
+
+/**
+ * @param options.railSplit true for boards whose power rails are cut in the middle
+ *   (many full-size boards): holes 1-30 and 31-60 of a rail are then separate buses.
+ */
+export function getBreadboardBusId(pinId: string, options: { railSplit?: boolean } = {}): string {
+  const rail = /^rail_(top|bot)_(pos|neg)(?:_(\d+))?$/.exec(pinId);
+  if (rail) {
+    const base = `rail_${rail[1]}_${rail[2]}`;
+    if (!options.railSplit || !rail[3]) return base;
+    return Number(rail[3]) <= BREADBOARD_RAIL_SPLIT_AFTER ? `${base}_left` : `${base}_right`;
+  }
 
   if (pinId.startsWith('tie_')) {
     const parts = pinId.split('_');
@@ -21,15 +36,19 @@ export function getBreadboardBusId(pinId: string): string {
   }
 
   if (pinId.startsWith('strip_')) {
+    // Legacy strip pins are drawn on column legacyStripColumn(N): they join THAT column's bus,
+    // so a wire to strip_2_top reaches the parts plugged in where the hole is shown (column 8).
     const parts = pinId.split('_');
-    return `col_${parts[1]}_${parts[2]}`; // e.g. col_1_top
+    return `col_${legacyStripColumn(Number(parts[1]))}_${parts[2]}`;
   }
 
   return pinId;
 }
 
 /**
- * Generates all 60 columns (rows A-J) and power rails for a standard full-size breadboard (830 tie-points).
+ * Generates the 60 columns (rows A-J: 600 terminal holes) and four power rails of 60 holes each
+ * (240 holes) of the breadboard model. Hole pitch 2.54 mm; rows E and F are 7.68 mm apart across
+ * the centre channel, so DIP ICs (row spacing 7.62 mm) straddle it like on a real board.
  */
 export function generateBreadboardPins(): PinDefinition[] {
   const pins: PinDefinition[] = [];
@@ -86,7 +105,7 @@ export function generateBreadboardPins(): PinDefinition[] {
       type: 'power',
       localOffset: { x, y: 9.8, z: -23.5 },
       designator: `+T${c}`,
-      description: `Thanh nguồn dương (+) phía trên (Nối chung toàn thanh)`,
+      description: `Thanh nguồn dương (+) phía trên (nối chung cả thanh; nếu chọn kiểu thanh ngắt giữa thì lỗ 1-30 và 31-60 tách riêng)`,
     });
     pins.push({
       id: `rail_top_neg_${c}`,
@@ -94,7 +113,7 @@ export function generateBreadboardPins(): PinDefinition[] {
       type: 'ground',
       localOffset: { x, y: 9.8, z: -25.8 },
       designator: `-T${c}`,
-      description: `Thanh mass GND (-) phía trên (Nối chung toàn thanh)`,
+      description: `Thanh mass GND (-) phía trên (nối chung cả thanh; nếu chọn kiểu thanh ngắt giữa thì lỗ 1-30 và 31-60 tách riêng)`,
     });
     pins.push({
       id: `rail_bot_pos_${c}`,
@@ -102,7 +121,7 @@ export function generateBreadboardPins(): PinDefinition[] {
       type: 'power',
       localOffset: { x, y: 9.8, z: 23.5 },
       designator: `+B${c}`,
-      description: `Thanh nguồn dương (+) phía dưới (Nối chung toàn thanh)`,
+      description: `Thanh nguồn dương (+) phía dưới (nối chung cả thanh; nếu chọn kiểu thanh ngắt giữa thì lỗ 1-30 và 31-60 tách riêng)`,
     });
     pins.push({
       id: `rail_bot_neg_${c}`,
@@ -110,13 +129,13 @@ export function generateBreadboardPins(): PinDefinition[] {
       type: 'ground',
       localOffset: { x, y: 9.8, z: 25.8 },
       designator: `-B${c}`,
-      description: `Thanh mass GND (-) phía dưới (Nối chung toàn thanh)`,
+      description: `Thanh mass GND (-) phía dưới (nối chung cả thanh; nếu chọn kiểu thanh ngắt giữa thì lỗ 1-30 và 31-60 tách riêng)`,
     });
   }
 
   // Backward compatibility aliases for existing samples/lessons
   for (let i = 1; i <= 10; i++) {
-    const colIdx = Math.round(1 + ((i - 1) / 9) * 59);
+    const colIdx = legacyStripColumn(i);
     pins.push(
       { id: `strip_${i}_top`, name: `Hàng cắm ${i} Trên (A-E)`, type: 'passive', localOffset: { x: Number(((colIdx - 1 - halfCols) * colPitch).toFixed(2)), y: 9.8, z: -8.92 }, designator: `${i}T` },
       { id: `strip_${i}_bot`, name: `Hàng cắm ${i} Dưới (F-J)`, type: 'passive', localOffset: { x: Number(((colIdx - 1 - halfCols) * colPitch).toFixed(2)), y: 9.8, z: 8.92 }, designator: `${i}B` }
@@ -125,6 +144,15 @@ export function generateBreadboardPins(): PinDefinition[] {
 
   return pins;
 }
+
+/** Sample programs the Arduino UNO model can run (behavioural, see simulation/engine.ts). */
+export const ARDUINO_PROGRAM_OPTIONS = [
+  { label: 'Không chạy chương trình (chỉ cấp nguồn, mọi chân ở chế độ INPUT)', value: 'none' },
+  { label: 'Blink: D13 sáng 1 s / tắt 1 s (ví dụ Blink)', value: 'blink_led' },
+  { label: 'Nút bấm: D13 = digitalRead(D12)', value: 'button_read' },
+  { label: 'Biến trở A0 → PWM D9 (ví dụ AnalogInOutSerial)', value: 'analog_read' },
+  { label: 'Biến trở A0 → góc Servo ở D9 (ví dụ Knob)', value: 'servo_control' },
+];
 
 export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
   {
@@ -233,7 +261,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
       {
         id: 'anode',
         name: 'Anode (+)',
-        type: 'input',
+        type: 'passive',
         localOffset: { x: -2.54, y: 0, z: 0 },
         description: 'Chân dương (chân dài hơn)',
         designator: 'A',
@@ -241,16 +269,15 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
       {
         id: 'cathode',
         name: 'Cathode (-)',
-        type: 'output',
+        type: 'passive',
         localOffset: { x: 0, y: 0, z: 0 },
-        description: 'Chân âm (chân vát cạnh)',
+        description: 'Chân âm (chân ngắn, phía thân vát phẳng)',
         designator: 'K',
       },
     ],
     defaultParameters: {
       color: 'red',
-      forwardVoltage: 2.0, // V
-      maxCurrent: 20, // mA
+      maxCurrent: 20, // mA (continuous forward current of a standard 5 mm indicator LED)
     },
     parameterSchema: [
       {
@@ -258,11 +285,11 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         label: 'Màu sắc ánh sáng',
         type: 'select',
         options: [
-          { label: 'Đỏ (Red 630nm)', value: 'red' },
-          { label: 'Xanh lục (Green 525nm)', value: 'green' },
-          { label: 'Xanh lam (Blue 470nm)', value: 'blue' },
-          { label: 'Vàng (Yellow 590nm)', value: 'yellow' },
-          { label: 'Trắng (White 6000K)', value: 'white' },
+          { label: 'Đỏ (Red ~630nm, Vf ≈ 2.0V)', value: 'red' },
+          { label: 'Xanh lục (Green ~570nm, Vf ≈ 2.2V)', value: 'green' },
+          { label: 'Xanh lam (Blue ~470nm, Vf ≈ 3.0V)', value: 'blue' },
+          { label: 'Vàng (Yellow ~590nm, Vf ≈ 2.1V)', value: 'yellow' },
+          { label: 'Trắng (White, Vf ≈ 3.0V)', value: 'white' },
         ],
         default: 'red',
       },
@@ -377,9 +404,18 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     ],
     defaultParameters: {
       maxResistance: 10000, // 10k
-      currentPosition: 0.5, // 50%
+      currentPosition: 0.5, // 0 = wiper at pin1, 1 = wiper at pin2
     },
     parameterSchema: [
+      {
+        name: 'currentPosition',
+        label: 'Vị trí con chạy (0 = sát Đầu 1, 1 = sát Đầu 2)',
+        type: 'number',
+        min: 0,
+        max: 1,
+        step: 0.05,
+        default: 0.5,
+      },
       {
         name: 'maxResistance',
         label: 'Trị số cực đại (Ω)',
@@ -425,6 +461,18 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     },
     parameterSchema: [
       {
+        name: 'voltageRating',
+        label: 'Điện áp định mức (V)',
+        type: 'select',
+        options: [
+          { label: '6.3 V', value: 6.3 },
+          { label: '16 V', value: 16 },
+          { label: '25 V', value: 25 },
+          { label: '50 V', value: 50 },
+        ],
+        default: 25,
+      },
+      {
         name: 'capacitance',
         label: 'Điện dung (µF)',
         type: 'select',
@@ -441,10 +489,10 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
   },
   {
     definitionId: 'pushbutton',
-    version: '1.0.0',
+    version: '2.0.0',
     name: 'Nút nhấn nhả (Tactile Switch)',
     category: 'switches',
-    description: 'Nút bấm 4 chân hồi vị tức thời (Momentary Pushbutton) tạo xung kích hoạt.',
+    description: 'Nút bấm 6×6 mm 4 chân hồi vị tức thời: 1A–1B và 2A–2B luôn nối với nhau; nhấn nút nối nhóm 1 với nhóm 2.',
     dimensions: { x: 12, y: 8, z: 12 },
     footprintType: 'through-hole',
     pins: [
@@ -464,11 +512,34 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         description: 'Tiếp điểm nhánh B',
         designator: '2A',
       },
+      {
+        id: 'pin1b',
+        name: 'Chân 1B',
+        type: 'passive',
+        localOffset: { x: -4, y: 1, z: 3 },
+        description: 'Nối liền bên trong với Chân 1A (cùng một bản tiếp điểm)',
+        designator: '1B',
+      },
+      {
+        id: 'pin2b',
+        name: 'Chân 2B',
+        type: 'passive',
+        localOffset: { x: 4, y: 1, z: 3 },
+        description: 'Nối liền bên trong với Chân 2A (cùng một bản tiếp điểm)',
+        designator: '2B',
+      },
     ],
     defaultParameters: {
       pressed: false,
     },
-    parameterSchema: [],
+    parameterSchema: [
+      {
+        name: 'pressed',
+        label: 'Đang nhấn giữ nút',
+        type: 'boolean',
+        default: false,
+      },
+    ],
   },
   {
     definitionId: 'diode',
@@ -497,8 +568,8 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
       },
     ],
     defaultParameters: {
-      forwardVoltage: 0.7, // V
-      maxCurrent: 1000, // mA
+      forwardVoltage: 0.7, // V (piecewise-linear knee; datasheet VF max 1.1 V at 1 A)
+      maxCurrent: 1000, // mA (1N4007 average rectified current 1 A)
     },
     parameterSchema: [],
   },
@@ -507,7 +578,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     version: '1.0.0',
     name: 'Còi chíp báo động (Buzzer 5V)',
     category: 'opto',
-    description: 'Phát ra âm thanh cảnh báo tần số ~2.3kHz khi được cấp nguồn đúng cực tính.',
+    description: 'Còi chủ động (active buzzer, có mạch dao động bên trong) 5 V: kêu ~2,3 kHz khi được cấp 4–7 V đúng cực tính.',
     dimensions: { x: 12, y: 10, z: 12 },
     footprintType: 'through-hole',
     pins: [
@@ -531,6 +602,8 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     defaultParameters: {
       frequencyHz: 2300,
       soundLevel: 85, // dB
+      minVoltage: 4.0, // V, typical 5 V active buzzer operating range 4-7 V
+      maxVoltage: 7.0,
     },
     parameterSchema: [],
   },
@@ -570,25 +643,27 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         name: 'lightLevelPercent',
         label: 'Mức ánh sáng môi trường (%)',
         type: 'number',
+        unit: '%',
         min: 0,
         max: 100,
+        step: 5,
         default: 50,
       },
     ],
   },
   {
     definitionId: 'relay',
-    version: '1.0.0',
+    version: '2.0.0',
     name: 'Rơ-le cách ly 5V (SPDT Relay)',
     category: 'switches',
-    description: 'Rơ-le điện cơ đóng cắt tiếp điểm cách ly quang/từ để điều khiển tải công suất lớn.',
+    description: 'Rơ-le điện từ 5 V kiểu SRD-05VDC-SL-C (cuộn 70 Ω, hút ở ≥ 3,75 V): cuộn hút cách ly với tiếp điểm COM/NO/NC.',
     dimensions: { x: 20, y: 15, z: 16 },
     footprintType: 'through-hole',
     pins: [
       {
         id: 'coil_pos',
         name: 'Cuộn hút (+)',
-        type: 'power',
+        type: 'passive',
         localOffset: { x: -7, y: 1, z: -4 },
         description: 'Kích nguồn 5V cuộn dây',
         designator: 'IN',
@@ -596,7 +671,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
       {
         id: 'coil_neg',
         name: 'Cuộn hút (-)',
-        type: 'ground',
+        type: 'passive',
         localOffset: { x: -7, y: 1, z: 4 },
         description: 'Mass cuộn dây',
         designator: 'GND',
@@ -617,45 +692,70 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         description: 'Tiếp điểm thường mở (Normally Open)',
         designator: 'NO',
       },
+      {
+        id: 'nc',
+        name: 'Thường đóng (NC)',
+        type: 'passive',
+        localOffset: { x: 7, y: 1, z: 4 },
+        description: 'Tiếp điểm thường đóng (Normally Closed): nối với COM khi cuộn hút chưa được kích',
+        designator: 'NC',
+      },
     ],
     defaultParameters: {
-      isEnergized: false,
+      coilResistance: 70, // Ω (SRD-05VDC-SL-C)
+      pickupVoltage: 3.75, // V (must-operate ≤ 75 % of 5 V)
+      releaseVoltage: 0.5, // V (must-release ≥ 10 % of 5 V)
     },
     parameterSchema: [],
   },
   {
     definitionId: 'ne555',
-    version: '1.0.0',
+    version: '2.0.0',
     name: 'IC Định thời (NE555 Timer)',
     category: 'ics',
-    description: 'IC định thời huyền thoại dạng DIP-8, tạo dao động xung vuông, chớp đèn và trễ thời gian.',
-    dimensions: { x: 16, y: 7, z: 12 },
+    description: 'IC định thời NE555 vỏ DIP-8 (VCC 4,5–16 V): tạo xung vuông (astable) hoặc một xung trễ (monostable) theo R và C mắc ngoài.',
+    dimensions: { x: 10, y: 5, z: 8 },
     footprintType: 'through-hole',
+    // DIP-8, 2.54 mm pitch, 7.62 mm row spacing. Pin 1 is at the notch (−x); seen from above the
+    // pins count counter-clockwise: 1-4 on the +z row, 5-8 back along the −z row.
     pins: [
-      { id: 'vcc', name: 'VCC (Chân 8)', type: 'power', localOffset: { x: -5, y: 1, z: 4 }, designator: 'VCC' },
-      { id: 'gnd', name: 'GND (Chân 1)', type: 'ground', localOffset: { x: -5, y: 1, z: -4 }, designator: 'GND' },
-      { id: 'out', name: 'OUT (Chân 3)', type: 'output', localOffset: { x: 0, y: 1, z: -4 }, designator: 'OUT' },
-      { id: 'trig', name: 'TRIG (Chân 2)', type: 'input', localOffset: { x: -2.5, y: 1, z: -4 }, designator: 'TRG' },
+      { id: 'gnd', name: 'GND (Chân 1)', type: 'ground', localOffset: { x: -3.81, y: 0, z: 3.81 }, designator: '1' },
+      { id: 'trig', name: 'TRIG (Chân 2)', type: 'input', localOffset: { x: -1.27, y: 0, z: 3.81 }, designator: '2', description: 'Kích khi điện áp < 1/3 VCC' },
+      { id: 'out', name: 'OUT (Chân 3)', type: 'output', localOffset: { x: 1.27, y: 0, z: 3.81 }, designator: '3' },
+      { id: 'reset', name: 'RESET (Chân 4)', type: 'input', localOffset: { x: 3.81, y: 0, z: 3.81 }, designator: '4', description: 'Tích cực mức thấp; nối lên VCC khi không dùng' },
+      { id: 'ctrl', name: 'CONTROL (Chân 5)', type: 'input', localOffset: { x: 3.81, y: 0, z: -3.81 }, designator: '5', description: 'Điện áp ngưỡng 2/3 VCC; thường nối tụ 10 nF xuống GND' },
+      { id: 'thr', name: 'THRESHOLD (Chân 6)', type: 'input', localOffset: { x: 1.27, y: 0, z: -3.81 }, designator: '6', description: 'Ngắt khi điện áp > 2/3 VCC' },
+      { id: 'dis', name: 'DISCHARGE (Chân 7)', type: 'output', localOffset: { x: -1.27, y: 0, z: -3.81 }, designator: '7', description: 'Cực collector hở, nối GND khi OUT ở mức thấp' },
+      { id: 'vcc', name: 'VCC (Chân 8)', type: 'power', localOffset: { x: -3.81, y: 0, z: -3.81 }, designator: '8', description: '4,5 V – 16 V' },
     ],
-    defaultParameters: {
-      mode: 'astable',
-    },
+    defaultParameters: {},
     parameterSchema: [],
   },
   {
     definitionId: 'logic-and',
-    version: '1.0.0',
+    version: '2.0.0',
     name: 'Cổng Logic AND (74HC08)',
     category: 'ics',
-    description: 'Cổng logic số AND: Ngõ ra OUT chỉ ở mức cao khi CẢ HAI ngõ vào A và B cùng ở mức cao.',
-    dimensions: { x: 16, y: 7, z: 12 },
+    description: 'IC 74HC08 vỏ DIP-14 gồm 4 cổng AND 2 ngõ vào (VCC 2–6 V): ngõ ra Y lên mức cao khi cả A và B ở mức cao.',
+    dimensions: { x: 19, y: 5, z: 8 },
     footprintType: 'through-hole',
+    // DIP-14 pinout of the 74HC08 (quad 2-input AND). The original five pin ids are kept for
+    // gate 1 (1A, 1B, 1Y) and the supply pins so existing wires stay valid.
     pins: [
-      { id: 'vcc', name: 'VCC', type: 'power', localOffset: { x: -5, y: 1, z: 4 }, designator: 'VCC' },
-      { id: 'gnd', name: 'GND', type: 'ground', localOffset: { x: -5, y: 1, z: -4 }, designator: 'GND' },
-      { id: 'in_a', name: 'Ngõ vào A', type: 'input', localOffset: { x: -2, y: 1, z: -4 }, designator: 'A' },
-      { id: 'in_b', name: 'Ngõ vào B', type: 'input', localOffset: { x: 1, y: 1, z: -4 }, designator: 'B' },
-      { id: 'out_y', name: 'Ngõ ra Y (A & B)', type: 'output', localOffset: { x: 4, y: 1, z: -4 }, designator: 'Y' },
+      { id: 'in_a', name: '1A (Chân 1)', type: 'input', localOffset: { x: -7.62, y: 0, z: 3.81 }, designator: '1' },
+      { id: 'in_b', name: '1B (Chân 2)', type: 'input', localOffset: { x: -5.08, y: 0, z: 3.81 }, designator: '2' },
+      { id: 'out_y', name: '1Y = 1A·1B (Chân 3)', type: 'output', localOffset: { x: -2.54, y: 0, z: 3.81 }, designator: '3' },
+      { id: 'in_2a', name: '2A (Chân 4)', type: 'input', localOffset: { x: 0, y: 0, z: 3.81 }, designator: '4' },
+      { id: 'in_2b', name: '2B (Chân 5)', type: 'input', localOffset: { x: 2.54, y: 0, z: 3.81 }, designator: '5' },
+      { id: 'out_2y', name: '2Y (Chân 6)', type: 'output', localOffset: { x: 5.08, y: 0, z: 3.81 }, designator: '6' },
+      { id: 'gnd', name: 'GND (Chân 7)', type: 'ground', localOffset: { x: 7.62, y: 0, z: 3.81 }, designator: '7' },
+      { id: 'out_3y', name: '3Y (Chân 8)', type: 'output', localOffset: { x: 7.62, y: 0, z: -3.81 }, designator: '8' },
+      { id: 'in_3a', name: '3A (Chân 9)', type: 'input', localOffset: { x: 5.08, y: 0, z: -3.81 }, designator: '9' },
+      { id: 'in_3b', name: '3B (Chân 10)', type: 'input', localOffset: { x: 2.54, y: 0, z: -3.81 }, designator: '10' },
+      { id: 'out_4y', name: '4Y (Chân 11)', type: 'output', localOffset: { x: 0, y: 0, z: -3.81 }, designator: '11' },
+      { id: 'in_4a', name: '4A (Chân 12)', type: 'input', localOffset: { x: -2.54, y: 0, z: -3.81 }, designator: '12' },
+      { id: 'in_4b', name: '4B (Chân 13)', type: 'input', localOffset: { x: -5.08, y: 0, z: -3.81 }, designator: '13' },
+      { id: 'vcc', name: 'VCC (Chân 14)', type: 'power', localOffset: { x: -7.62, y: 0, z: -3.81 }, designator: '14', description: '2 V – 6 V' },
     ],
     defaultParameters: {},
     parameterSchema: [],
@@ -665,7 +765,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     version: '1.0.0',
     name: 'Bo mạch Arduino UNO R3',
     category: 'microcontrollers',
-    description: 'Bo mạch vi điều khiển ATmega328P với nguồn 5V/3.3V, chân Digital D13 và chân Analog A0 tích hợp.',
+    description: 'Bo Arduino UNO R3 (ATmega328P, 5 V, 16 MHz): 14 chân digital (6 chân PWM ~), 6 chân analog A0–A5, chân nguồn 5V/3.3V/VIN. Mô phỏng: nguồn USB và các chương trình mẫu chọn sẵn.',
     dimensions: { x: 68, y: 12, z: 53 },
     footprintType: 'modular',
     imageUrl: '/picture/ArdruinoUNO.png',
@@ -676,7 +776,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
       { id: 'pin_sda', name: 'SDA (I2C Data)', type: 'bidirectional', localOffset: { x: -9.75, y: 7.15, z: -21.47 }, designator: 'SDA' },
       { id: 'pin_aref', name: 'AREF (Tham chiếu Analog)', type: 'input', localOffset: { x: -7.21, y: 7.15, z: -21.47 }, designator: 'AREF' },
       { id: 'pin_gnd_top', name: 'GND (Đất số)', type: 'ground', localOffset: { x: -4.67, y: 7.15, z: -21.47 }, designator: 'GND' },
-      { id: 'pin_d13', name: 'D13 (SCK / LED onboard)', type: 'output', localOffset: { x: -2.13, y: 7.15, z: -21.47 }, designator: 'D13' },
+      { id: 'pin_d13', name: 'D13 (SCK / LED onboard)', type: 'bidirectional', localOffset: { x: -2.13, y: 7.15, z: -21.47 }, designator: 'D13' },
       { id: 'pin_d12', name: 'D12 (MISO / GPIO)', type: 'bidirectional', localOffset: { x: 0.41, y: 7.15, z: -21.47 }, designator: 'D12' },
       { id: 'pin_d11', name: 'D11 (~PWM / MOSI)', type: 'bidirectional', localOffset: { x: 2.95, y: 7.15, z: -21.47 }, designator: '~D11' },
       { id: 'pin_d10', name: 'D10 (~PWM / SS)', type: 'bidirectional', localOffset: { x: 5.49, y: 7.15, z: -21.47 }, designator: '~D10' },
@@ -690,8 +790,8 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
       { id: 'pin_d4', name: 'D4 (GPIO)', type: 'bidirectional', localOffset: { x: 19.81, y: 7.15, z: -21.76 }, designator: 'D4' },
       { id: 'pin_d3', name: 'D3 (~PWM / INT1)', type: 'bidirectional', localOffset: { x: 22.35, y: 7.15, z: -21.76 }, designator: '~D3' },
       { id: 'pin_d2', name: 'D2 (GPIO / INT0)', type: 'bidirectional', localOffset: { x: 24.89, y: 7.15, z: -21.76 }, designator: 'D2' },
-      { id: 'pin_d1', name: 'D1 (TX / Truyền UART)', type: 'output', localOffset: { x: 27.43, y: 7.15, z: -21.76 }, designator: 'TX' },
-      { id: 'pin_d0', name: 'D0 (RX / Nhận UART)', type: 'input', localOffset: { x: 29.97, y: 7.15, z: -21.76 }, designator: 'RX' },
+      { id: 'pin_d1', name: 'D1 (TX / Truyền UART)', type: 'bidirectional', localOffset: { x: 27.43, y: 7.15, z: -21.76 }, designator: 'TX' },
+      { id: 'pin_d0', name: 'D0 (RX / Nhận UART)', type: 'bidirectional', localOffset: { x: 29.97, y: 7.15, z: -21.76 }, designator: 'RX' },
 
       // Bottom Power Header (NC to VIN)
       { id: 'pin_nc', name: 'NC (Không kết nối)', type: 'passive', localOffset: { x: -3.74, y: 7.15, z: 21.31 }, designator: 'NC' },
@@ -714,31 +814,14 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     defaultParameters: {
       codeProgram: 'blink_led',
       clockFrequency: 16,
-      operatingVoltage: 5.0,
-      d13State: true,
     },
     parameterSchema: [
       {
         name: 'codeProgram',
-        label: 'Chương trình nhúng',
+        label: 'Chương trình mẫu',
         type: 'select',
-        options: [
-          { label: 'Blink LED D13 (1Hz chu kỳ chuẩn)', value: 'blink_led' },
-          { label: 'Đọc nút bấm chân D12 điều khiển LED', value: 'button_read' },
-          { label: 'Đọc biến trở Analog A0', value: 'analog_read' },
-          { label: 'Điều khiển góc Servo PWM D9', value: 'servo_control' },
-        ],
+        options: ARDUINO_PROGRAM_OPTIONS,
         default: 'blink_led',
-      },
-      {
-        name: 'operatingVoltage',
-        label: 'Điện áp logic (V)',
-        type: 'select',
-        options: [
-          { label: '5.0V (Tiêu chuẩn UNO)', value: 5.0 },
-          { label: '3.3V (Chế độ tiết kiệm)', value: 3.3 },
-        ],
-        default: 5.0,
       },
     ],
   },
@@ -747,39 +830,21 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     version: '1.0.0',
     name: 'Bo mạch Breadboard (Bo test)',
     category: 'connectors',
-    description: 'Bo mạch thử nghiệm cắm dây không cần hàn, gồm 2 hàng thanh nguồn (+/-) và các rãnh kết nối cắm linh kiện.',
+    description: 'Breadboard 60 cột: mỗi cột có nhóm A–E và nhóm F–J nối dọc (tách nhau bởi rãnh giữa), cùng 4 thanh nguồn (+/−) 60 lỗ. Bước lỗ 2,54 mm.',
     dimensions: { x: 165, y: 10, z: 55 },
     footprintType: 'modular',
     modelUrl: '/3d-model/breadboard.glb',
     pins: generateBreadboardPins(),
     defaultParameters: {
-      tiePoints: 400,
-      railVoltage: 5.0,
-      boardType: 'half',
+      railSplit: false,
       notes: 'Breadboard cắm IC và mạch mẫu',
     },
     parameterSchema: [
       {
-        name: 'tiePoints',
-        label: 'Số điểm cắm (Tie-points)',
-        type: 'select',
-        options: [
-          { label: '400 Điểm (Chuẩn Half Size)', value: 400 },
-          { label: '830 Điểm (Chuẩn Full Size)', value: 830 },
-          { label: '170 Điểm (Chuẩn Mini Prototyping)', value: 170 },
-        ],
-        default: 400,
-      },
-      {
-        name: 'railVoltage',
-        label: 'Điện áp thanh Bus nguồn (V)',
-        type: 'select',
-        options: [
-          { label: '5.0V (Chuẩn USB / MCU)', value: 5.0 },
-          { label: '3.3V (Chuẩn Cảm biến / ESP)', value: 3.3 },
-          { label: '12.0V (Nguồn công suất)', value: 12.0 },
-        ],
-        default: 5.0,
+        name: 'railSplit',
+        label: 'Thanh nguồn bị ngắt ở giữa (lỗ 1–30 tách 31–60)',
+        type: 'boolean',
+        default: false,
       },
       {
         name: 'notes',
@@ -792,15 +857,15 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
   {
     definitionId: 'temp-sensor',
     version: '1.0.0',
-    name: 'Cảm biến nhiệt độ LM35',
+    name: 'Cảm biến nhiệt độ LM35 (LM35DZ, TO-92)',
     category: 'sensors',
-    description: 'Cảm biến nhiệt độ tuyến tính chuẩn xác, cho điện áp ra 10mV mỗi độ Celsius (°C).',
+    description: 'Cảm biến nhiệt độ tuyến tính LM35DZ (0–100 °C): VOUT = 10 mV/°C khi nguồn +VS từ 4 V đến 30 V.',
     dimensions: { x: 6, y: 10, z: 5 },
     footprintType: 'through-hole',
     pins: [
-      { id: 'vcc', name: 'VCC (+4V - 20V)', type: 'power', localOffset: { x: -2.5, y: 1, z: 0 }, designator: '+' },
-      { id: 'vout', name: 'VOUT (10mV/°C)', type: 'output', localOffset: { x: 0, y: 1, z: 0 }, designator: 'OUT' },
-      { id: 'gnd', name: 'GND (-)', type: 'ground', localOffset: { x: 2.5, y: 1, z: 0 }, designator: '-' },
+      { id: 'vcc', name: '+VS (4 V – 30 V)', type: 'power', localOffset: { x: -2.54, y: 1, z: 0 }, designator: '+VS' },
+      { id: 'vout', name: 'VOUT (10 mV/°C)', type: 'output', localOffset: { x: 0, y: 1, z: 0 }, designator: 'OUT' },
+      { id: 'gnd', name: 'GND', type: 'ground', localOffset: { x: 2.54, y: 1, z: 0 }, designator: 'GND' },
     ],
     defaultParameters: {
       temperatureC: 25,
@@ -810,30 +875,41 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
         name: 'temperatureC',
         label: 'Nhiệt độ môi trường (°C)',
         type: 'number',
-        min: -10,
+        unit: '°C',
+        min: 0,
         max: 100,
+        step: 1,
         default: 25,
       },
     ],
   },
   {
     definitionId: 'transistor-npn',
-    version: '1.0.0',
+    version: '1.1.0',
     name: 'Transistor NPN (2N2222)',
     category: 'semiconductors',
-    description: 'Transistor lưỡng cực NPN đóng vai trò công tắc điện tử hoặc bộ khuếch đại dòng.',
+    description: 'Transistor NPN 2N2222A vỏ TO-92 (IC tối đa 600 mA, VCEO 40 V): công tắc điện tử hoặc khuếch đại dòng. Thứ tự chân trên mô hình: C – B – E.',
     dimensions: { x: 6, y: 10, z: 6 },
     footprintType: 'through-hole',
     pins: [
       { id: 'collector', name: 'Collector (C)', type: 'passive', localOffset: { x: -2.54, y: 1, z: 0 }, designator: 'C' },
-      { id: 'base', name: 'Base (B)', type: 'input', localOffset: { x: 0, y: 1, z: 1.5 }, designator: 'B' },
-      { id: 'emitter', name: 'Emitter (E)', type: 'ground', localOffset: { x: 2.54, y: 1, z: 0 }, designator: 'E' },
+      { id: 'base', name: 'Base (B)', type: 'input', localOffset: { x: 0, y: 1, z: 0 }, designator: 'B' },
+      { id: 'emitter', name: 'Emitter (E)', type: 'passive', localOffset: { x: 2.54, y: 1, z: 0 }, designator: 'E' },
     ],
     defaultParameters: {
-      gainBeta: 100,
-      isConducting: false,
+      gainBeta: 100, // hFE min 100 at IC = 150 mA (PN2222A datasheet)
     },
-    parameterSchema: [],
+    parameterSchema: [
+      {
+        name: 'gainBeta',
+        label: 'Hệ số khuếch đại dòng hFE (β)',
+        type: 'number',
+        min: 35,
+        max: 300,
+        step: 5,
+        default: 100,
+      },
+    ],
   },
   {
     definitionId: 'ultrasonic-sensor',
@@ -852,13 +928,16 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     defaultParameters: {
       distanceCm: 15,
     },
+    deprecatedBy: 'ultrasonic-sr04',
     parameterSchema: [
       {
         name: 'distanceCm',
         label: 'Khoảng cách vật thể (cm)',
         type: 'number',
+        unit: 'cm',
         min: 2,
         max: 400,
+        step: 1,
         default: 15,
       },
     ],
@@ -867,8 +946,8 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     definitionId: 'servo-motor',
     version: '1.0.0',
     name: 'Động cơ Servo (SG90)',
-    category: 'opto',
-    description: 'Động cơ servo vi mô góc quay 0° - 180° điều khiển bằng xung PWM cho cửa tự động.',
+    category: 'actuators',
+    description: 'Động cơ servo SG90 (bản cũ, giữ để mở dự án cũ; chân Signal tương đương PWM). Dự án mới dùng "Động cơ Servo SG90".',
     dimensions: { x: 23, y: 26, z: 12 },
     footprintType: 'modular',
     pins: [
@@ -879,13 +958,16 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     defaultParameters: {
       targetAngle: 90,
     },
+    deprecatedBy: 'servo-sg90',
     parameterSchema: [
       {
         name: 'targetAngle',
-        label: 'Góc quay (độ)',
+        label: 'Góc trục lúc lắp (khi chưa nhận xung PWM)',
         type: 'number',
+        unit: '°',
         min: 0,
         max: 180,
+        step: 5,
         default: 90,
       },
     ],
@@ -895,60 +977,46 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     version: '1.0.0',
     name: 'Đèn LED RGB 5mm (Common Cathode)',
     category: 'semiconductors',
-    description: 'LED ba màu Đỏ, Xanh lá, Xanh dương chung cực âm Cathode GND.',
+    description: 'LED RGB 5 mm chung cathode (chân dài nhất): mỗi màu là một LED riêng, Vf ≈ 2,0 V (đỏ) và ≈ 3,2 V (lục, lam). Màu hiển thị do dòng qua từng chân quyết định.',
     dimensions: { x: 8, y: 10, z: 8 },
     footprintType: 'through-hole',
     pins: [
-      { id: 'red', name: 'Red (R)', type: 'input', localOffset: { x: -3.81, y: 1, z: 0 }, designator: 'R' },
-      { id: 'cathode', name: 'Cathode (GND)', type: 'ground', localOffset: { x: -1.27, y: 1, z: 0 }, designator: 'K' },
-      { id: 'green', name: 'Green (G)', type: 'input', localOffset: { x: 1.27, y: 1, z: 0 }, designator: 'G' },
-      { id: 'blue', name: 'Blue (B)', type: 'input', localOffset: { x: 3.81, y: 1, z: 0 }, designator: 'B' },
+      { id: 'red', name: 'Red (R)', type: 'passive', localOffset: { x: -3.81, y: 1, z: 0 }, designator: 'R' },
+      { id: 'cathode', name: 'Cathode chung (chân dài nhất)', type: 'passive', localOffset: { x: -1.27, y: 1, z: 0 }, designator: 'K' },
+      { id: 'green', name: 'Green (G)', type: 'passive', localOffset: { x: 1.27, y: 1, z: 0 }, designator: 'G' },
+      { id: 'blue', name: 'Blue (B)', type: 'passive', localOffset: { x: 3.81, y: 1, z: 0 }, designator: 'B' },
     ],
     defaultParameters: {
-      colorState: 'green',
+      maxCurrent: 20, // mA per colour chip
     },
-    parameterSchema: [
-      {
-        name: 'colorState',
-        label: 'Màu sáng hiện tại',
-        type: 'select',
-        options: [
-          { label: 'Đỏ (Báo động/Đóng)', value: 'red' },
-          { label: 'Xanh lá (An toàn/Mở)', value: 'green' },
-          { label: 'Xanh lam (Chờ)', value: 'blue' },
-        ],
-        default: 'green',
-      },
-    ],
+    parameterSchema: [],
   },
 
   // 19. 7-Segment LED Display
   {
     definitionId: '7seg-display',
-    version: '1.0.0',
+    version: '2.0.0',
     name: 'LED 7 Đoạn (7-Segment)',
     category: 'opto',
-    description: 'Màn hình hiển thị số LED 7 đoạn (0-9) chuẩn Cathode chung',
+    description: 'LED 7 đoạn 1 số loại cathode chung, 10 chân (a–g, DP, 2 chân COM): đoạn nào có dòng thuận chạy qua thì sáng.',
     footprintType: 'through-hole',
     dimensions: { x: 12.6, y: 8, z: 19 },
+    // 10-pin common-cathode layout: bottom row (+z) pins 1-5 = E D COM C DP,
+    // top row (−z) pins 10-6 = G F COM A B. Both COM pins are tied inside.
     pins: [
-      { id: 'com', name: 'COM (GND)', type: 'ground', localOffset: { x: 0, y: 1.5, z: 7.62 }, designator: 'COM' },
-      { id: 'seg_a', name: 'Đoạn A', type: 'input', localOffset: { x: 2.54, y: 1.5, z: -7.62 }, designator: 'A' },
-      { id: 'seg_b', name: 'Đoạn B', type: 'input', localOffset: { x: 5.08, y: 1.5, z: -7.62 }, designator: 'B' },
-      { id: 'seg_c', name: 'Đoạn C', type: 'input', localOffset: { x: 2.54, y: 1.5, z: 7.62 }, designator: 'C' },
-      { id: 'dp', name: 'Dấu chấm (DP)', type: 'input', localOffset: { x: 5.08, y: 1.5, z: 7.62 }, designator: 'DP' },
+      { id: 'seg_e', name: 'Đoạn E (Chân 1)', type: 'passive', localOffset: { x: -5.08, y: 1.5, z: 7.62 }, designator: 'E' },
+      { id: 'seg_d', name: 'Đoạn D (Chân 2)', type: 'passive', localOffset: { x: -2.54, y: 1.5, z: 7.62 }, designator: 'D' },
+      { id: 'com', name: 'COM (Chân 3, cathode chung)', type: 'passive', localOffset: { x: 0, y: 1.5, z: 7.62 }, designator: 'COM' },
+      { id: 'seg_c', name: 'Đoạn C (Chân 4)', type: 'passive', localOffset: { x: 2.54, y: 1.5, z: 7.62 }, designator: 'C' },
+      { id: 'dp', name: 'Dấu chấm DP (Chân 5)', type: 'passive', localOffset: { x: 5.08, y: 1.5, z: 7.62 }, designator: 'DP' },
+      { id: 'seg_b', name: 'Đoạn B (Chân 6)', type: 'passive', localOffset: { x: 5.08, y: 1.5, z: -7.62 }, designator: 'B' },
+      { id: 'seg_a', name: 'Đoạn A (Chân 7)', type: 'passive', localOffset: { x: 2.54, y: 1.5, z: -7.62 }, designator: 'A' },
+      { id: 'com2', name: 'COM (Chân 8, cathode chung)', type: 'passive', localOffset: { x: 0, y: 1.5, z: -7.62 }, designator: 'COM' },
+      { id: 'seg_f', name: 'Đoạn F (Chân 9)', type: 'passive', localOffset: { x: -2.54, y: 1.5, z: -7.62 }, designator: 'F' },
+      { id: 'seg_g', name: 'Đoạn G (Chân 10)', type: 'passive', localOffset: { x: -5.08, y: 1.5, z: -7.62 }, designator: 'G' },
     ],
-    defaultParameters: { digit: 8, color: 'red' },
+    defaultParameters: { color: 'red', maxCurrent: 20 },
     parameterSchema: [
-      {
-        name: 'digit',
-        label: 'Số hiển thị',
-        type: 'number',
-        min: 0,
-        max: 9,
-        step: 1,
-        default: 8,
-      },
       {
         name: 'color',
         label: 'Màu LED',
@@ -969,13 +1037,13 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     version: '1.0.0',
     name: 'Màn hình OLED 0.96" I2C',
     category: 'opto',
-    description: 'Màn hình đồ họa OLED 128x64 giao tiếp I2C 4 chân (GND, VCC, SCL, SDA)',
+    description: 'Mô-đun OLED 0,96" 128×64 (chip SSD1306, I2C) 4 chân GND, VCC 3,3–5 V, SCL, SDA. Chỉ hiển thị khi có vi điều khiển gửi dữ liệu I2C.',
     footprintType: 'modular',
     dimensions: { x: 27, y: 5, z: 27 },
     pins: [
       { id: 'gnd', name: 'GND', type: 'ground', localOffset: { x: -3.81, y: 2.5, z: -11 }, designator: 'GND' },
       { id: 'vcc', name: 'VCC (3.3-5V)', type: 'power', localOffset: { x: -1.27, y: 2.5, z: -11 }, designator: 'VCC' },
-      { id: 'scl', name: 'SCL (Clock)', type: 'input', localOffset: { x: 1.27, y: 2.5, z: -11 }, designator: 'SCL' },
+      { id: 'scl', name: 'SCL (Clock)', type: 'bidirectional', localOffset: { x: 1.27, y: 2.5, z: -11 }, designator: 'SCL' },
       { id: 'sda', name: 'SDA (Data)', type: 'bidirectional', localOffset: { x: 3.81, y: 2.5, z: -11 }, designator: 'SDA' },
     ],
     defaultParameters: { contrast: 100 },
@@ -1028,8 +1096,8 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     definitionId: 'servo-sg90',
     version: '1.0.0',
     name: 'Động cơ Servo SG90',
-    category: 'connectors',
-    description: 'Động cơ góc quay chính xác 0-180° điều khiển bằng xung PWM 50Hz',
+    category: 'actuators',
+    description: 'Servo SG90 (4,8–6 V): góc trục do độ rộng xung chu kỳ 20 ms quyết định (thư viện Servo của Arduino: 544 µs → 0°, 2400 µs → 180°).',
     footprintType: 'modular',
     dimensions: { x: 23, y: 22, z: 12 },
     pins: [
@@ -1041,7 +1109,7 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     parameterSchema: [
       {
         name: 'angle',
-        label: 'Góc quay trục',
+        label: 'Góc trục lúc lắp (khi chưa nhận xung PWM)',
         type: 'number',
         unit: '°',
         min: 0,
@@ -1057,19 +1125,29 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     definitionId: 'dc-motor',
     version: '1.0.0',
     name: 'Động cơ DC 3-6V',
-    category: 'power',
-    description: 'Động cơ điện một chiều nam châm vĩnh cửu dùng cho quạt, xe robot và băng tải',
+    category: 'actuators',
+    description: 'Động cơ DC chổi than nam châm vĩnh cửu 3–6 V. Mô hình: tải điện trở tương đương; tốc độ không tải tỉ lệ với điện áp, đảo chiều khi đảo cực.',
     footprintType: 'modular',
     dimensions: { x: 20, y: 15, z: 25 },
     pins: [
       { id: 'pos', name: 'Cực Dương (M+)', type: 'passive', localOffset: { x: -4, y: 4, z: 10 }, designator: 'M+' },
       { id: 'neg', name: 'Cực Âm (M-)', type: 'passive', localOffset: { x: 4, y: 4, z: 10 }, designator: 'M-' },
     ],
-    defaultParameters: { rpm: 3000 },
+    defaultParameters: { rpm: 3000, ratedVoltage: 6, equivalentResistance: 20, startVoltage: 0.8 },
     parameterSchema: [
       {
+        name: 'equivalentResistance',
+        label: 'Điện trở tương đương khi quay (Ω, giả định)',
+        type: 'number',
+        unit: 'Ω',
+        min: 1,
+        max: 200,
+        step: 1,
+        default: 20,
+      },
+      {
         name: 'rpm',
-        label: 'Tốc độ định mức',
+        label: 'Tốc độ không tải ở 6 V',
         type: 'number',
         unit: 'RPM',
         min: 500,
@@ -1086,24 +1164,23 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     version: '1.0.0',
     name: 'IC Ổn áp LM7805 (5V)',
     category: 'ics',
-    description: 'IC ổn áp tuyến tính 5V 1.5A kiểu chân TO-220 có cánh tản nhiệt nhôm',
+    description: 'IC ổn áp tuyến tính LM78xx vỏ TO-220 (IN – GND – OUT nhìn từ mặt chữ): cần VIN cao hơn VOUT ít nhất ~2 V, dòng ra tối đa 1,5 A, VIN tối đa 35 V.',
     footprintType: 'through-hole',
     dimensions: { x: 10, y: 15, z: 4.5 },
     pins: [
-      { id: 'vin', name: 'VIN (7-24V)', type: 'power', localOffset: { x: -2.54, y: 1.5, z: 0 }, designator: 'IN' },
-      { id: 'gnd', name: 'GND', type: 'ground', localOffset: { x: 0, y: 1.5, z: 0 }, designator: 'GND' },
-      { id: 'vout', name: 'VOUT (5V)', type: 'power', localOffset: { x: 2.54, y: 1.5, z: 0 }, designator: 'OUT' },
+      { id: 'vin', name: 'INPUT (Chân 1)', type: 'power', localOffset: { x: -2.54, y: 1.5, z: 0 }, designator: 'IN' },
+      { id: 'gnd', name: 'GND (Chân 2, nối tab)', type: 'ground', localOffset: { x: 0, y: 1.5, z: 0 }, designator: 'GND' },
+      { id: 'vout', name: 'OUTPUT (Chân 3)', type: 'power', localOffset: { x: 2.54, y: 1.5, z: 0 }, designator: 'OUT' },
     ],
     defaultParameters: { outputVoltage: 5.0 },
     parameterSchema: [
       {
         name: 'outputVoltage',
-        label: 'Điện áp ngõ ra',
+        label: 'Phiên bản (điện áp ra)',
         type: 'select',
         options: [
-          { label: '5.0V (LM7805)', value: 5.0 },
-          { label: '3.3V (AMS1117)', value: 3.3 },
-          { label: '12.0V (LM7812)', value: 12.0 },
+          { label: 'LM7805 – 5 V', value: 5.0 },
+          { label: 'LM7812 – 12 V', value: 12.0 },
         ],
         default: 5.0,
       },

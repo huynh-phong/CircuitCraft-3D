@@ -2,8 +2,25 @@ import { ValidationIssue } from './types';
 import { ProjectDocument } from '../project/types';
 import { isInsideBoard } from '../project/coordinates';
 import { COMPONENT_DEFINITION_MAP } from '../components/definitions';
-import { toCanonicalDocument } from '../components/aliases';
-import { computeBreadboardPlugs } from '../simulation/engine';
+import { isKnownDefinition, isKnownPin, toCanonicalDocument } from '../components/aliases';
+import { buildConnectivity, computeBreadboardPlugs, simulateBehavior } from '../simulation/engine';
+
+/** Supply pins that must be wired before an IC / module can work. */
+const SUPPLY_PINS: Record<string, string[]> = {
+  ne555: ['vcc', 'gnd'],
+  'logic-and': ['vcc', 'gnd'],
+  'temp-sensor': ['vcc', 'gnd'],
+  'voltage-reg-7805': ['vin', 'gnd'],
+  'servo-sg90': ['vcc', 'gnd'],
+  'oled-i2c': ['vcc', 'gnd'],
+  'ultrasonic-sr04': ['vcc', 'gnd'],
+};
+
+function hashText(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
 
 export function validateProjectDocument(inputDoc: ProjectDocument): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
@@ -129,102 +146,60 @@ export function validateProjectDocument(inputDoc: ProjectDocument): ValidationIs
     }
   }
 
-  // 5. Direct Short Circuit Detection (VCC directly connected to GND)
-  const powerSource = powerSources[0];
-  if (powerSource) {
-    const vccConns = connections.filter(
-      (c) =>
-        (c.fromComponentId === powerSource.instanceId && c.fromPinId === 'vcc') ||
-        (c.toComponentId === powerSource.instanceId && c.toPinId === 'vcc')
-    );
-
-    for (const vc of vccConns) {
-      const isDirectToGnd =
-        (vc.fromComponentId === powerSource.instanceId &&
-          vc.fromPinId === 'vcc' &&
-          vc.toComponentId === powerSource.instanceId &&
-          vc.toPinId === 'gnd') ||
-        (vc.fromComponentId === powerSource.instanceId &&
-          vc.fromPinId === 'gnd' &&
-          vc.toComponentId === powerSource.instanceId &&
-          vc.toPinId === 'vcc');
-
-      if (isDirectToGnd) {
+  // 5. Wires must end on pins that exist on the component (legacy spellings are accepted)
+  const storedById = new Map(inputDoc.components.map((c) => [c.instanceId, c]));
+  for (const conn of inputDoc.connections) {
+    for (const [compId, pinId] of [
+      [conn.fromComponentId, conn.fromPinId],
+      [conn.toComponentId, conn.toPinId],
+    ] as const) {
+      const inst = storedById.get(compId);
+      if (inst && isKnownDefinition(inst.definitionId) && !isKnownPin(inst.definitionId, pinId)) {
         issues.push({
-          id: `short-circuit-${powerSource.instanceId}`,
-          ruleId: 'SHORT_CIRCUIT',
+          id: `invalid-pin-${conn.id}-${compId}-${pinId}`,
+          ruleId: 'INVALID_PIN',
           severity: 'error',
-          message: `NGUY HIỂM: Chân VCC (+) đang bị nối tắt trực tiếp vào chân GND (-) của nguồn ${powerSource.name}!`,
-          objectRefs: [powerSource.instanceId, vc.id],
-          suggestion: 'Xóa dây nối tắt này ngay lập tức để tránh làm hỏng nguồn điện.',
+          message: `Dây ${conn.id} nối vào chân "${pinId}" không tồn tại trên ${inst.name}.`,
+          objectRefs: [conn.id, compId],
+          suggestion: 'Xóa dây này và nối lại vào một chân có thật của linh kiện.',
         });
       }
     }
   }
 
-  // 6. LED Missing Current Limiting Resistor Check
-  const leds = components.filter((c) => c.definitionId === 'led');
-  for (const led of leds) {
-    // Check if LED anode is directly wired to VCC and cathode directly to GND with 0 resistor
-    const anodeConns = connections.filter(
-      (c) =>
-        (c.fromComponentId === led.instanceId && c.fromPinId === 'anode') ||
-        (c.toComponentId === led.instanceId && c.toPinId === 'anode')
-    );
-    const cathodeConns = connections.filter(
-      (c) =>
-        (c.fromComponentId === led.instanceId && c.fromPinId === 'cathode') ||
-        (c.toComponentId === led.instanceId && c.toPinId === 'cathode')
-    );
-
-    const directlyToVcc = anodeConns.some((c) => {
-      const otherCompId = c.fromComponentId === led.instanceId ? c.toComponentId : c.fromComponentId;
-      const otherPin = c.fromComponentId === led.instanceId ? c.toPinId : c.fromPinId;
-      const other = components.find((x) => x.instanceId === otherCompId);
-      return other?.definitionId === 'dc-source' && otherPin === 'vcc';
-    });
-
-    const directlyToGnd = cathodeConns.some((c) => {
-      const otherCompId = c.fromComponentId === led.instanceId ? c.toComponentId : c.fromComponentId;
-      const otherPin = c.fromComponentId === led.instanceId ? c.toPinId : c.fromPinId;
-      const other = components.find((x) => x.instanceId === otherCompId);
-      return other?.definitionId === 'dc-source' && otherPin === 'gnd';
-    });
-
-    if (directlyToVcc && directlyToGnd) {
+  // 6. ICs and modules that are wired but have no supply connected
+  const conn = buildConnectivity(doc);
+  for (const comp of components) {
+    const supply = SUPPLY_PINS[comp.definitionId];
+    if (!supply) continue;
+    const def = COMPONENT_DEFINITION_MAP.get(comp.definitionId);
+    const anyWired = def?.pins.some((p) => conn.isConnected(comp.instanceId, p.id));
+    const missing = supply.filter((pin) => !conn.isConnected(comp.instanceId, pin));
+    if (anyWired && missing.length > 0) {
       issues.push({
-        id: `led-no-resistor-${led.instanceId}`,
-        ruleId: 'LED_OVERCURRENT_RISK',
+        id: `missing-power-${comp.instanceId}`,
+        ruleId: 'MISSING_POWER',
         severity: 'warning',
-        message: `CẢNH BÁO: Đèn ${led.name} được nối thẳng vào nguồn điện mà không có điện trở hạn dòng (Series Resistor).`,
-        objectRefs: [led.instanceId],
-        suggestion: 'Mắc nối tiếp một điện trở 220Ω hoặc 330Ω giữa VCC và chân Anode của LED để bảo vệ LED.',
+        message: `${comp.name} chưa nối chân nguồn ${missing.map((m) => m.toUpperCase()).join(', ')} nên sẽ không hoạt động.`,
+        objectRefs: [comp.instanceId],
+        suggestion: 'Nối chân VCC lên nguồn dương và chân GND về mass chung của mạch.',
       });
     }
+  }
 
-    // Check Reverse Polarity (Anode connected to GND, Cathode connected to VCC)
-    const reversedAnodeToGnd = anodeConns.some((c) => {
-      const otherCompId = c.fromComponentId === led.instanceId ? c.toComponentId : c.fromComponentId;
-      const otherPin = c.fromComponentId === led.instanceId ? c.toPinId : c.fromPinId;
-      const other = components.find((x) => x.instanceId === otherCompId);
-      return other?.definitionId === 'dc-source' && otherPin === 'gnd';
-    });
-
-    const reversedCathodeToVcc = cathodeConns.some((c) => {
-      const otherCompId = c.fromComponentId === led.instanceId ? c.toComponentId : c.fromComponentId;
-      const otherPin = c.fromComponentId === led.instanceId ? c.toPinId : c.fromPinId;
-      const other = components.find((x) => x.instanceId === otherCompId);
-      return other?.definitionId === 'dc-source' && otherPin === 'vcc';
-    });
-
-    if (reversedAnodeToGnd || reversedCathodeToVcc) {
+  // 7. Electrical rules come from the solver itself (short circuits through any path, LED and
+  //    pin over-current, over-power, over-voltage, reverse polarity, floating CMOS inputs,
+  //    regulator dropout...), so the DRC can never contradict the simulation result.
+  if (powerSources.length > 0) {
+    const sim = simulateBehavior(inputDoc);
+    for (const d of sim.diagnostics || []) {
       issues.push({
-        id: `led-reverse-polarity-${led.instanceId}`,
-        ruleId: 'REVERSE_POLARITY',
-        severity: 'warning',
-        message: `Đèn ${led.name} có thể đang bị mắc ngược cực (Anode nối mass hoặc Cathode nối nguồn dương).`,
-        objectRefs: [led.instanceId],
-        suggestion: 'Đảo lại chân: Chân Anode (+) phải hướng về cực dương, Cathode (-) hướng về mass.',
+        id: `${d.ruleId.toLowerCase()}-${d.objectRefs.join('-')}-${hashText(d.message)}`,
+        ruleId: d.ruleId,
+        severity: d.severity,
+        message: d.message,
+        objectRefs: d.objectRefs,
+        suggestion: d.suggestion,
       });
     }
   }

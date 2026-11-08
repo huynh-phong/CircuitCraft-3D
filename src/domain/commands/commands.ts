@@ -187,6 +187,65 @@ export class UpdateComponentParameterCommand implements Command {
 }
 
 /**
+ * Rename a component instance (display name only; the instance id never changes)
+ */
+export class RenameComponentCommand implements Command {
+  id = `rename-comp-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+  description: string;
+
+  constructor(
+    private componentId: string,
+    private oldName: string,
+    private newName: string
+  ) {
+    this.description = `Đổi tên ${oldName} thành ${newName}`;
+  }
+
+  private apply(doc: ProjectDocument, name: string): ProjectDocument {
+    const next = cloneProjectDocument(doc);
+    const target = next.components.find((c) => c.instanceId === this.componentId);
+    if (target) target.name = name;
+    return bumpRevision(next);
+  }
+
+  execute(doc: ProjectDocument): ProjectDocument {
+    return this.apply(doc, this.newName);
+  }
+
+  undo(doc: ProjectDocument): ProjectDocument {
+    return this.apply(doc, this.oldName);
+  }
+}
+
+/**
+ * Change document-level fields (project name, solder mask colour)
+ */
+export class UpdateProjectFieldsCommand implements Command {
+  id = `project-fields-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+  constructor(
+    public description: string,
+    private before: { name?: string; solderMaskColor?: string },
+    private after: { name?: string; solderMaskColor?: string }
+  ) {}
+
+  private apply(doc: ProjectDocument, v: { name?: string; solderMaskColor?: string }): ProjectDocument {
+    const next = cloneProjectDocument(doc);
+    if (v.name !== undefined) next.name = v.name;
+    if (v.solderMaskColor !== undefined) next.board = { ...next.board, solderMaskColor: v.solderMaskColor };
+    return bumpRevision(next);
+  }
+
+  execute(doc: ProjectDocument): ProjectDocument {
+    return this.apply(doc, this.after);
+  }
+
+  undo(doc: ProjectDocument): ProjectDocument {
+    return this.apply(doc, this.before);
+  }
+}
+
+/**
  * Create Connection
  */
 export class CreateConnectionCommand implements Command {

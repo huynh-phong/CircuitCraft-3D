@@ -102,9 +102,21 @@ Mọi proposal được kiểm tra bằng `validateAIProposal` (`src/domain/ai/p
 
 Schema chuẩn: `src/domain/components/definitions.ts`. Bản đồ ID cũ: `src/domain/components/aliases.ts` (`dc_power_supply`/`dc_source`/`terminal_block_2pin` → `dc-source`; `switch_spst` → `switch`; `resistor_axial` → `resistor`; `led_basic` → `led`; `arduino_uno` → `arduino-uno`; chân `pin_pos`→`vcc`, `pin_1`→`pin1`, `p1`→`pin1`, `pin_anode`→`anode`…). Mô phỏng, DRC và AI dùng bản chuẩn hóa **dẫn xuất**; dữ liệu đã lưu không bị ghi lại.
 
+Bổ sung 2026-11-08 (tương thích ngược, không đổi ID đã lưu):
+- Định nghĩa trùng `servo-motor` → `servo-sg90` (chân `signal` → `pwm`), `ultrasonic-sensor` → `ultrasonic-sr04`, `logic_and` → `logic-and`, `temp_sensor` → `temp-sensor`. Hai định nghĩa cũ có `deprecatedBy` nên không còn hiện trong thư viện nhưng dự án cũ vẫn mở được.
+- Chân Arduino viết tắt: `d0`…`d13`, `a0`…`a5`, `5v`, `3v3`, `vin`, `gnd1/gnd2/gnd3`, `ioref`, `reset`, `aref`, `sda`, `scl`; tụ/còi `pos`/`neg`; NE555 `trigger/output/threshold/discharge/control`; 7805 `in/out`; LM35 `out`; động cơ `pin1/pin2`.
+- Chân mới (ID cũ giữ nguyên): NE555 thêm `reset`, `ctrl`, `thr`, `dis`; 74HC08 thêm `in_2a … out_4y` (cổng 1 giữ `in_a`, `in_b`, `out_y`); rơ-le thêm `nc`; nút nhấn thêm `pin1b`, `pin2b`; LED 7 đoạn thêm `seg_d`, `seg_e`, `seg_f`, `seg_g`, `com2`. Vị trí chân IC/LED 7 đoạn đổi theo package thật, nên linh kiện IC cũ đang cắm trên breadboard có thể cắm vào lỗ khác.
+- `ComponentDefinition.deprecatedBy?: string`; `ComponentCategory` thêm `actuators`.
+- Tham số mới: breadboard `railSplit: boolean`; rơ-le `coilResistance`, `pickupVoltage`, `releaseVoltage`; còi `minVoltage`, `maxVoltage`; động cơ `ratedVoltage`, `equivalentResistance`, `startVoltage`; Arduino `codeProgram` thêm `'none'`. Không còn dùng (bị bỏ qua, vẫn giữ trong dữ liệu cũ): breadboard `tiePoints`, `railVoltage`; Arduino `operatingVoltage`, `d13State`; LED RGB `colorState`; LED 7 đoạn `digit`; LED `forwardVoltage: 2` lưu sẵn cho LED không phải màu đỏ (được hiểu là "chưa chọn", dùng Vf theo màu).
+
 ## 6. Kết quả mô phỏng (`SimulationResult`)
 
 Thêm (tùy chọn, tương thích ngược): `solver: "mna-dc"`, `unsupportedComponents: string[]`, `nodeVoltages`, và mỗi linh kiện `currentA`, `voltageV` (đơn vị SI). Các trường cũ (`status`, `isClosedLoop`, `components[id].isOn/stateLabel/currentEstimate/voltageDrop`, `issues`, `summary`) giữ nguyên ý nghĩa.
+
+Bổ sung 2026-11-08 (đều tùy chọn):
+- `diagnostics: Array<{ ruleId, severity: 'error'|'warning'|'info', message, objectRefs, suggestion? }>` — DRC hiển thị đúng các mục này; `issues` = message của mục error/warning (+ "Mạch hở…" khi dừng).
+- Mỗi linh kiện: `powerW`, `mode` (vd. `cutoff`/`active`/`saturation`, `regulating`/`dropout`, `astable`), `pwm { frequencyHz, duty, sourceId }` (linh kiện đi theo bộ dao động; `currentA` khi đó là dòng trung bình), `timeConstantS` (tụ), `visual { brightness, rgb, segments, angleDeg, rpm, sounding, displayOn, contact }`.
+- `ruleId` do bộ giải sinh: `SHORT_CIRCUIT`, `SOURCE_OVERLOAD`, `LED_OVERCURRENT_RISK`, `OVERCURRENT`, `OVERPOWER`, `OVERVOLTAGE`, `REVERSE_POLARITY`, `FLOATING_INPUT`, `REGULATOR_DROPOUT`, `THERMAL` (info), `RELAY_FLYBACK` (info), `PIN_CONFLICT`, `SIMULATION_LIMIT`. DRC thêm `INVALID_PIN` (error) và `MISSING_POWER` (warning).
 
 ## Serverless (Vercel + Supabase)
 

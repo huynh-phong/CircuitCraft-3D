@@ -10,9 +10,9 @@ Tài liệu chi tiết lịch sử: `SYSTEM_ARCHITECTURE_DETAILED.md` (file nộ
 | Định tuyến | `src/router/routes.ts` (History API, alias URL) |
 | Dữ liệu thiết kế | `src/domain/project/*` (ProjectDocument là nguồn sự thật) |
 | Lệnh / Undo-Redo | `src/domain/commands/commands.ts`, `history.ts` (`CommandHistory`, tối đa **50** bước) |
-| Linh kiện | `src/domain/components/definitions.ts` + `aliases.ts` (chuẩn hóa ID cũ) |
-| Mô phỏng | `src/domain/simulation/engine.ts` — giải mạch DC xác lập bằng **Modified Nodal Analysis** |
-| DRC | `src/domain/validation/engine.ts` (8 luật; dùng chung quy tắc breadboard & ID chuẩn với mô phỏng) |
+| Linh kiện | `src/domain/components/definitions.ts` (định nghĩa, chân theo datasheet, breadboard) + `aliases.ts` (chuẩn hóa ID/chân cũ) + `src/domain/simulation/capabilities.ts` (mức hỗ trợ mô phỏng công bố cho từng linh kiện) |
+| Mô phỏng | `src/domain/simulation/engine.ts` — **Modified Nodal Analysis** DC xác lập + mô hình thiết bị tuyến tính từng đoạn / hành vi (xem mục *Mô phỏng & linh kiện* bên dưới) |
+| DRC | `src/domain/validation/engine.ts`: luật bố trí (biên bo, va chạm, chưa nối), `INVALID_PIN`, `MISSING_POWER`, cộng **toàn bộ chẩn đoán điện của bộ giải** (cùng nguồn dữ liệu nên không mâu thuẫn) |
 | AI | `src/ai/assistantService.ts`, `circuitContext.ts`, `src/domain/ai/proposalValidation.ts` |
 | 3D | `src/scene/ThreeScene.tsx`, `proceduralModels.ts`, `modelLoader.ts`, `materials.ts`, `wires.ts`, `disposal.ts`, `sceneReconciler.ts` (chỉ dựng lại object có chữ ký hình ảnh thay đổi) |
 | Lưu trữ client | `src/persistence/*` (localStorage theo user + Supabase nếu cấu hình) |
@@ -35,8 +35,16 @@ Tài liệu chi tiết lịch sử: `SYSTEM_ARCHITECTURE_DETAILED.md` (file nộ
 - Nội dung trả phí: danh sách công khai chỉ có đề cương (`src/server/contentAccess.ts`). Nội dung bài học qua `GET /api/courses/:id/content`, bản thiết kế qua `GET /api/products/:id/design` (`src/server/catalogDesigns.ts`, không có trong bundle client). Ảnh và video nằm trong bucket riêng tư, truy cập bằng liên kết ký có hạn.
 - `GET /api/courses` trả toàn bộ giáo trình (slide, dự án thực hành) kể cả khóa trả phí, và 6 thiết kế mẫu trả phí nằm trong bundle client: nội dung trả phí chưa được bảo vệ thật sự.
 - Trạng thái gói hiển thị phía client lưu trong localStorage từng trình duyệt; quyền thật do server kiểm tra. Việc hiển thị gói khi đăng nhập trên thiết bị khác chưa được kiểm thử.
-- Mô phỏng chỉ DC xác lập: không có quá độ (nạp/xả tụ), không chạy chương trình Arduino (chỉ mô phỏng các chân nguồn và giả định D13 = HIGH), chưa có mô hình cho NE555, transistor, IC logic, cảm biến số, servo, OLED, 7805, motor…
+- Mô phỏng không tích phân theo thời gian: tụ chỉ báo τ = R·C; dao động (NE555 astable, chương trình mẫu Arduino) được giải ở từng mức cao/thấp và báo tần số + độ rộng xung. Arduino chỉ chạy 4 chương trình mẫu (không biên dịch sketch). OLED (I2C) và HC-SR04 (TRIG/ECHO) chỉ được kiểm tra nguồn. Chi tiết: `docs/reports/COMPONENT_SIMULATION_AUDIT_2026-11-08.md`.
 - Chưa có cổng thanh toán thật: ở chế độ real, đơn chỉ được xác nhận khi admin đánh dấu đã thanh toán.
+
+## Mô phỏng & linh kiện (cập nhật 2026-11-08)
+
+- **Pin system:** mỗi `PinDefinition` có `id` duy nhất trong linh kiện, `localOffset` (mm) là điểm nối mà cả lỗ breadboard, dây 3D và bộ giải cùng dùng; `designator` theo số chân datasheet. IC DIP dùng bước 2,54 mm, hai hàng cách 7,62 mm, chân 1 ở phía khuyết (−x), đếm ngược chiều kim đồng hồ.
+- **Kết nối (`buildConnectivity`)**: union-find gom dây, lỗ breadboard (cột A–E / F–J, thanh nguồn liền hoặc ngắt giữa theo `railSplit`), chân cắm vào lỗ trong bán kính 3 mm và các chân nối liền bên trong linh kiện (GND của Arduino, nút nhấn 1A–1B/2A–2B, 2 chân COM của LED 7 đoạn). Bộ giải và DRC dùng chung hàm này.
+- **Bộ giải:** phần tử nguyên thủy R, nguồn áp V, nguồn dòng I, nguồn dòng điều khiển bằng dòng F (dùng cho transistor, 7805, LM35); mỗi thiết bị là một `Device` có chế độ (`stamp` → giải → `update`) lặp tới khi không thiết bị nào đổi chế độ (tối đa 80 vòng, 400 ms mỗi pha). Nút "được lái" là nút nối tới nguồn áp qua trở kháng < 100 MΩ — dùng để phát hiện ngõ vào thả nổi.
+- **Dao động:** mỗi bộ dao động (NE555 astable, Blink, PWM D9, xung servo) được giải thêm một lần ở mức thấp; linh kiện đổi trạng thái giữa hai lần giải nhận `pwm {frequencyHz, duty}`. Cảnh 3D nhấp nháy theo tần số đó nếu ≤ 20 Hz, trên mức này vẽ ở độ sáng trung bình.
+- **Đồng bộ 3D:** `ComponentSimulationState.visual` (độ sáng LED, mức từng chip RGB, từng đoạn LED 7 đoạn, góc servo, vòng/phút động cơ, tiếp điểm rơ-le) là thứ duy nhất điều khiển hình ảnh mô phỏng; chữ ký hình ảnh được làm tròn để thay đổi rất nhỏ không dựng lại mesh. Hoạt ảnh nhấp nháy/quay chạy trong vòng lặp render, không dựng lại cảnh. Dây chỉ có hiệu ứng dòng điện khi một đầu dây nối với linh kiện đang có dòng.
 
 ## Phân loại module không nằm trong import graph của client
 

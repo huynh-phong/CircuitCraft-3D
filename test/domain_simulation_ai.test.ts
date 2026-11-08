@@ -237,11 +237,16 @@ check('Hai nguồn 5V song song vẫn giải được (không suy biến)', () =
 
 check('Linh kiện chưa có mô hình điện được đánh dấu, không có số liệu giả', () => {
   const s = comp('dc-source', { voltage: 5 });
+  // Every registered part now has a model (see capabilities.ts); an unregistered one stays unsupported
+  const unknown = comp('pin-header');
   const servo = comp('servo-motor');
   const r = comp('resistor', { resistance: 1000 });
-  const res = simulateBehavior(doc([s, servo, r], [wire(s, 'vcc', r, 'pin1'), wire(r, 'pin2', s, 'gnd')]));
-  assert.ok(res.unsupportedComponents?.includes(servo.instanceId));
-  assert.equal(res.components[servo.instanceId].stateLabel, 'Chưa hỗ trợ mô phỏng điện');
+  const res = simulateBehavior(doc([s, unknown, servo, r], [wire(s, 'vcc', r, 'pin1'), wire(r, 'pin2', s, 'gnd')]));
+  assert.ok(res.unsupportedComponents?.includes(unknown.instanceId));
+  assert.equal(res.components[unknown.instanceId].stateLabel, 'Chưa hỗ trợ mô phỏng điện');
+  assert.equal(res.components[unknown.instanceId].currentA, undefined);
+  // An unwired servo gets no invented angle or current
+  assert.equal(res.components[servo.instanceId].visual?.angleDeg, undefined);
   assert.equal(res.components[servo.instanceId].currentA, undefined);
   assert.equal(res.status, 'running');
 });
@@ -251,7 +256,9 @@ check('Không còn trạng thái giả kiểu "ARDUINO CHẠY CHƯƠNG TRÌNH / 
   const ic = comp('ne555');
   const res = simulateBehavior(doc([s, ic], [wire(s, 'vcc', ic, 'vcc'), wire(ic, 'gnd', s, 'gnd')]));
   assert.ok(!JSON.stringify(res).includes('DAO ĐỘNG XUNG VUÔNG'));
-  assert.equal(res.components[ic.instanceId].stateLabel, 'Chưa hỗ trợ mô phỏng điện');
+  // Only VCC/GND wired: RESET floats and there is no RC network, so the 555 must not oscillate
+  assert.match(res.components[ic.instanceId].stateLabel, /KHÔNG XÁC ĐỊNH/);
+  assert.notEqual(res.components[ic.instanceId].mode, 'astable');
 });
 
 check('Arduino 5V → 220Ω → LED → GND: LED sáng, ghi chú rõ giới hạn (không chạy sketch)', () => {

@@ -35,6 +35,8 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
   ];
 
   const filteredComponents = COMPONENT_DEFINITIONS.filter((def) => {
+    // Old duplicate definitions stay registered for saved projects but are not offered again
+    if (def.deprecatedBy) return false;
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
       !q ||
@@ -149,6 +151,9 @@ export const ComponentLibrary: React.FC<ComponentLibraryProps> = ({
     }
     if (def.category === 'switches') {
       return <ToggleLeft className="w-3.5 h-3.5 text-purple-500" />;
+    }
+    if (def.category === 'actuators') {
+      return <Volume2 className="w-3.5 h-3.5 text-rose-500" />;
     }
     if (def.category === 'sensors') {
       return <Thermometer className="w-3.5 h-3.5 text-orange-500" />;

@@ -27,7 +27,23 @@ export const DEFINITION_ALIASES: Record<string, string> = {
   'switch-spst': 'switch',
   push_button: 'pushbutton',
   arduino_uno: 'arduino-uno',
+  logic_and: 'logic-and',
+  temp_sensor: 'temp-sensor',
+  // Older duplicate definitions of the same physical part
+  'servo-motor': 'servo-sg90',
+  'ultrasonic-sensor': 'ultrasonic-sr04',
 };
+
+const ARDUINO_PIN_ALIASES: Record<string, string> = (() => {
+  const map: Record<string, string> = {
+    '5v': 'pin_5v', '3v3': 'pin_3v3', '3.3v': 'pin_3v3', vin: 'pin_vin',
+    gnd: 'pin_gnd', gnd1: 'pin_gnd', gnd2: 'pin_gnd2', gnd3: 'pin_gnd_top',
+    ioref: 'pin_ioref', reset: 'pin_reset', aref: 'pin_aref', sda: 'pin_sda', scl: 'pin_scl',
+  };
+  for (let i = 0; i <= 13; i++) map[`d${i}`] = `pin_d${i}`;
+  for (let i = 0; i <= 5; i++) map[`a${i}`] = `pin_a${i}`;
+  return map;
+})();
 
 /** Legacy pin spellings per CANONICAL definition id. */
 export const PIN_ALIASES: Record<string, Record<string, string>> = {
@@ -40,9 +56,16 @@ export const PIN_ALIASES: Record<string, Record<string, string>> = {
   connector: { pin_1: 'pin1', pin_2: 'pin2', p1: 'pin1', p2: 'pin2' },
   ldr: { pin_1: 'pin1', pin_2: 'pin2', p1: 'pin1', p2: 'pin2' },
   potentiometer: { pin_1: 'pin1', pin_2: 'pin2', pin_wiper: 'wiper', w: 'wiper' },
-  capacitor: { pin1: 'pin_pos', pin2: 'pin_neg', pin_1: 'pin_pos', pin_2: 'pin_neg', '+': 'pin_pos', '-': 'pin_neg', anode: 'pin_pos', cathode: 'pin_neg' },
-  buzzer: { pin1: 'pin_pos', pin2: 'pin_neg', pin_1: 'pin_pos', pin_2: 'pin_neg', '+': 'pin_pos', '-': 'pin_neg' },
-  'arduino-uno': { '5v': 'pin_5v', '3v3': 'pin_3v3', gnd: 'pin_gnd', vin: 'pin_vin', d13: 'pin_d13' },
+  capacitor: { pin1: 'pin_pos', pin2: 'pin_neg', pin_1: 'pin_pos', pin_2: 'pin_neg', '+': 'pin_pos', '-': 'pin_neg', anode: 'pin_pos', cathode: 'pin_neg', pos: 'pin_pos', neg: 'pin_neg' },
+  buzzer: { pin1: 'pin_pos', pin2: 'pin_neg', pin_1: 'pin_pos', pin_2: 'pin_neg', '+': 'pin_pos', '-': 'pin_neg', pos: 'pin_pos', neg: 'pin_neg' },
+  'arduino-uno': ARDUINO_PIN_ALIASES,
+  ne555: { trigger: 'trig', output: 'out', threshold: 'thr', discharge: 'dis', control: 'ctrl', cv: 'ctrl', rst: 'reset' },
+  relay: { 'coil+': 'coil_pos', 'coil-': 'coil_neg', in: 'coil_pos' },
+  'servo-sg90': { signal: 'pwm', sig: 'pwm' },
+  'voltage-reg-7805': { in: 'vin', input: 'vin', out: 'vout', output: 'vout' },
+  'temp-sensor': { out: 'vout', '+vs': 'vcc', vs: 'vcc' },
+  'dc-motor': { pin1: 'pos', pin2: 'neg', 'm+': 'pos', 'm-': 'neg' },
+  'transistor-npn': { c: 'collector', b: 'base', e: 'emitter' },
 };
 
 export function resolveDefinitionId(definitionId: string): string {
