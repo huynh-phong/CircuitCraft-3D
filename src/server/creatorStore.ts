@@ -380,6 +380,10 @@ class CreatorStore {
   }
 
   // --- Creator Profiles ---
+  public countProfiles(): number {
+    return Object.keys(this.data.profiles).length;
+  }
+
   public getProfile(userId: string): CreatorProfile | null {
     if (this.data.profiles[userId]) return this.data.profiles[userId];
     // Fallback if userId is an email or creator-demo or matches official creator

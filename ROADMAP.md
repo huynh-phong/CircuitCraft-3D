@@ -113,6 +113,12 @@ Depends on: R4
 Acceptance: mọi linh kiện trong registry có chân đúng datasheet và mức mô phỏng công bố; breadboard đúng cấu trúc nối thông; không còn kết quả hardcode; linh kiện chưa hỗ trợ được đánh dấu; 3D phản ánh kết quả bộ giải; DRC không mâu thuẫn bộ giải; dự án cũ mở được; lint/build/test PASS; báo cáo `docs/reports/COMPONENT_SIMULATION_AUDIT_2026-11-08.md`. Bằng chứng: `test/components_simulation.test.ts` (55/55), `docs/PROGRESS.md` mục C1.
 Chưa làm (task sau): mô phỏng theo thời gian (tụ, cuộn cảm, dạng sóng), trình thông dịch sketch Arduino, I2C/OLED, HC-SR04, linh kiện cuộn cảm/MOSFET; kiểm thử trên Workspace thật và thiết bị di động.
 
+## Task ID: A1 — Admin Console: kiểm toán dữ liệu & dashboard phân tích
+Status: [PASS]
+Depends on: R5
+Acceptance: sidebar mới (nhóm, thu gọn, drawer di động); trang Tổng quan lấy mọi số từ `GET /api/admin/analytics` (tính ở server); doanh thu mô phỏng không cộng vào doanh thu thật; ngày theo giờ Việt Nam; chỉ số chưa ghi nhận hiển thị là chưa ghi nhận (không phải 0); API chỉ cho admin; đối soát tổng bucket = KPI và giữa các API; báo cáo `docs/ADMIN_ANALYTICS_DATA_AUDIT.md`, `docs/ADMIN_DASHBOARD_IMPLEMENTATION_REPORT.md`. Bằng chứng: `test/admin_analytics.test.ts` (33/33), `docs/PROGRESS.md` mục A1.
+Chưa làm (task sau): chạy kiểm tra chất lượng dữ liệu trên production; hạn gói/hoàn tiền tự hạ gói (cần quyết định nghiệp vụ); retention theo nhóm (cần ~30 ngày dữ liệu); giám sát nhiều instance.
+
 ## Task ID: D1 — Triển khai Vercel + Supabase
 Status: [BLOCKED]
 Depends on: R1-SECRETS

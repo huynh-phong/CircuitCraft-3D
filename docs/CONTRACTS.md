@@ -118,6 +118,32 @@ Bổ sung 2026-11-08 (đều tùy chọn):
 - Mỗi linh kiện: `powerW`, `mode` (vd. `cutoff`/`active`/`saturation`, `regulating`/`dropout`, `astable`), `pwm { frequencyHz, duty, sourceId }` (linh kiện đi theo bộ dao động; `currentA` khi đó là dòng trung bình), `timeConstantS` (tụ), `visual { brightness, rgb, segments, angleDeg, rpm, sounding, displayOn, contact }`.
 - `ruleId` do bộ giải sinh: `SHORT_CIRCUIT`, `SOURCE_OVERLOAD`, `LED_OVERCURRENT_RISK`, `OVERCURRENT`, `OVERPOWER`, `OVERVOLTAGE`, `REVERSE_POLARITY`, `FLOATING_INPUT`, `REGULATOR_DROPOUT`, `THERMAL` (info), `RELAY_FLYBACK` (info), `PIN_CONFLICT`, `SIMULATION_LIMIT`. DRC thêm `INVALID_PIN` (error) và `MISSING_POWER` (warning).
 
+## 7. Admin analytics (2026-11-08)
+
+`GET /api/admin/analytics?range=today|7d|30d|90d|month|custom&from=YYYY-MM-DD&to=YYYY-MM-DD&env=all|real|mock` — chỉ admin (401/403), rate limit 120/phút. Tham số sai → `400 { code: 'INVALID_QUERY' }`. `from`/`to` là ngày theo giờ Việt Nam, gồm cả hai đầu, tối đa 2 năm.
+
+Phản hồi (rút gọn):
+```
+{ generatedAt, timezone: 'Asia/Ho_Chi_Minh', currency: 'VND',
+  range: { preset, from, to, days, granularity: 'day'|'week'|'month', previous: { from, to } },
+  filters: { env }, buckets: [{ key, label }],
+  revenue:  { kpis: {Metric}, statusDistribution, series: { real, mock, orders, paidOrders }, composition, compositionSeries, topProducts, recentTransactions },
+  users:    { kpis, series: { newUsers, cumulative, activeUsers }, activityTrackedSince, byRole, funnel, retention },
+  memberships: { distribution: [{ plan, total, viaSimulatedPayment, viaRealOrAdmin }], kpis },
+  learning: { kpis, topCourses, salesByCreator, productCategories, salesByCategory },
+  projects: { kpis, series: { newProjects, simulationRuns }, topComponents, componentsBasis },
+  system:   { environment, logLevels, logCategories, authFailures, paymentWarnings, recentProblems, instance },
+  dataQuality: [{ id, severity: 'critical'|'warning'|'info', title, count, sampleIds, note }] }
+Metric = { value: number | null, previous?: number | null, status: 'ok'|'not_tracked'|'insufficient_data'|'not_applicable', unit: 'count'|'vnd'|'percent'|'ms', definition: string, trackedSince?: string | null }
+```
+Quy ước: `null` = chưa ghi nhận / không áp dụng (không bao giờ thay bằng 0); mảng chuỗi thời gian có `null` cho các mốc trước khi bắt đầu ghi nhận; tiền là số nguyên VND; doanh thu thật không bao gồm đơn mô phỏng. Định nghĩa từng chỉ số: `docs/ADMIN_ANALYTICS_DATA_AUDIT.md` mục 6.
+
+`GET /api/admin/analytics/export.csv` (cùng tham số) — chỉ admin, 30/phút, UTF-8 có BOM, ghi nhật ký `ADMIN_ANALYTICS_EXPORT`. Cột: orderCode, createdAt, paidAt, status, environment, kind, productId, productTitle, amountVnd, currency, userId. Ô bắt đầu bằng `= + - @` được thêm `'`.
+
+`POST /api/analytics/events { event: 'simulation_run' | 'simulation_error' }` — cần đăng nhập, 240/10 phút, tên khác → `400 UNKNOWN_EVENT`. Lưu vào collection `activity_days` (id `${ngày VN}:${HMAC(userId)}`, `{ day, u, events }`), mỗi sự kiện tối đa 2000 lần/người/ngày. Mọi request đã đăng nhập cũng đánh dấu người dùng hoạt động trong ngày.
+
+Thay đổi tương thích ngược: `revenue` của khóa học/sản phẩm trong `/api/admin/courses`, `/api/admin/marketplace` giờ chỉ là doanh thu thật, thêm `mockRevenue`; `componentCount` của sản phẩm Creator thiếu dữ liệu là `null` thay vì 3; `dailySeries.revenue` (overview) và `timeline.revenue` (reports) chỉ còn doanh thu thật, ngày theo giờ Việt Nam; reports 90 ngày trả đủ mọi ngày.
+
 ## Serverless (Vercel + Supabase)
 
 ### Nội dung trả phí

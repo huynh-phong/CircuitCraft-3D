@@ -46,6 +46,14 @@ Tài liệu chi tiết lịch sử: `SYSTEM_ARCHITECTURE_DETAILED.md` (file nộ
 - **Dao động:** mỗi bộ dao động (NE555 astable, Blink, PWM D9, xung servo) được giải thêm một lần ở mức thấp; linh kiện đổi trạng thái giữa hai lần giải nhận `pwm {frequencyHz, duty}`. Cảnh 3D nhấp nháy theo tần số đó nếu ≤ 20 Hz, trên mức này vẽ ở độ sáng trung bình.
 - **Đồng bộ 3D:** `ComponentSimulationState.visual` (độ sáng LED, mức từng chip RGB, từng đoạn LED 7 đoạn, góc servo, vòng/phút động cơ, tiếp điểm rơ-le) là thứ duy nhất điều khiển hình ảnh mô phỏng; chữ ký hình ảnh được làm tròn để thay đổi rất nhỏ không dựng lại mesh. Hoạt ảnh nhấp nháy/quay chạy trong vòng lặp render, không dựng lại cảnh. Dây chỉ có hiệu ứng dòng điện khi một đầu dây nối với linh kiện đang có dòng.
 
+## Admin Console & analytics (2026-11-08)
+
+- **Giao diện:** `src/pages/AdminDashboardPage.tsx` giữ 10 khu vực quản trị; điều hướng mới `src/components/admin/AdminSidebar.tsx` (4 nhóm Tổng quan / Kinh doanh / Nền tảng / Quản trị, thu gọn thành thanh icon có tooltip và lưu trạng thái trong localStorage, drawer trên điện thoại). Trang Tổng quan là `src/components/admin/AdminAnalyticsDashboard.tsx` (6 phần, bộ lọc kỳ và môi trường thanh toán dùng chung) với biểu đồ SVG tự viết trong `src/components/admin/charts.tsx` (không thêm thư viện).
+- **Tính toán:** toàn bộ ở server, hàm thuần `computeAdminAnalytics(snapshot, query)` trong `src/server/adminAnalytics.ts`; route chỉ dựng snapshot từ các kho và trả JSON. Ngày theo `Asia/Ho_Chi_Minh` (UTC+7). Không có số tính ở React.
+- **Ghi nhận hoạt động:** `src/server/activityStore.ts` (collection `activity_days`, HMAC userId, không có dữ liệu cá nhân) ghi khi có request đã đăng nhập và qua `POST /api/analytics/events`; client gửi `simulation_run`/`simulation_error` từ `src/services/usageEvents.ts`.
+- **Sức khỏe hệ thống:** bộ đếm request/4xx/5xx/độ trễ là của instance đang trả lời (ghi rõ trên giao diện); không có kho metric chung.
+- **Giới hạn:** gói thành viên không có hạn nên không có churn/MRR; lịch sử hoạt động trước ngày bật ghi nhận không khôi phục được. Chi tiết: `docs/ADMIN_ANALYTICS_DATA_AUDIT.md`, `docs/ADMIN_DASHBOARD_IMPLEMENTATION_REPORT.md`.
+
 ## Phân loại module không nằm trong import graph của client
 
 Xác định bằng metafile esbuild từ `src/main.tsx` (2026-11-01). **Chưa xóa** — cần quyết định của chủ dự án.

@@ -6,6 +6,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { readJsonFile, writeJsonAtomic } from './atomicJson.ts';
 import { isRemotePersistence, registerCollection, saveCollection, getPersistenceMode } from './persistence.ts';
 import { hitRateLimit } from './sharedState.ts';
+import { recordActivity } from './activityStore.ts';
 import {
   RegisteredUser,
   ensureAuthenticatedUserRecord,
@@ -277,6 +278,7 @@ export async function resolveAuthenticatedUser(
     const session = verifySessionToken(token);
     if (!session) return null;
     touchUserActivity(session.user.email);
+    recordActivity(session.user.id);
     return { user: session.user, session };
   }
 
@@ -290,6 +292,7 @@ export async function resolveAuthenticatedUser(
       email: sbUser.email,
       verified: true,
     });
+    recordActivity(user.id);
     return { user, session: null };
   }
   return null;

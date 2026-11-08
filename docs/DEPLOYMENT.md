@@ -145,4 +145,5 @@ Mở `https://<tên-miền>/api/health` và đọc các trường:
 - **Supabase Free:** tệp tối đa 50 MB; project có thể bị tạm dừng khi lâu không dùng.
 - **Thanh toán thật:** chưa có webhook ngân hàng, Admin xác nhận thủ công. Khi chuyển sang chế độ thật, quyền và gói có từ mô phỏng hết hiệu lực.
 - **Chạy local:** `npm run dev` dùng `data/*.json`, trừ khi đặt `PERSISTENCE_BACKEND=supabase`. Chỉ đặt giá trị này với project test.
+- **Admin analytics (2026-11-08):** không cần biến môi trường hay migration mới (dùng collection `activity_days` trong `cc_documents` có sẵn). Mỗi người dùng đã đăng nhập tạo tối đa một bản ghi mỗi ngày, nên `cc_documents` tăng thêm khoảng (số người hoạt động × số ngày) dòng nhỏ; khi quá lớn nên gom theo tháng hoặc tách bảng. Số request/lỗi/độ trễ trên trang Vận hành chỉ là của instance đang trả lời, không phải toàn hệ thống.
 - **Kiểm chứng:** `vercel build` chưa chạy được trên máy phát triển (Windows chặn tạo symlink khi chưa bật Developer Mode). Build thật sẽ chạy trên Vercel ở bước 9.

@@ -245,6 +245,24 @@ Status: kiểm thử bằng giả lập trình duyệt; **chưa kiểm thử tr�
 | Website thật sau deploy | NOT RUN (cần push) |
 
 
+## A1 — Admin Console: kiểm toán dữ liệu & dashboard phân tích (2026-11-08)
+- **Status:** [PASS] cho phạm vi đã nêu; giới hạn ở báo cáo.
+- **Báo cáo:** `docs/ADMIN_ANALYTICS_DATA_AUDIT.md` (kiểm toán, công thức, số liệu không tính được, bảo mật) và `docs/ADMIN_DASHBOARD_IMPLEMENTATION_REPORT.md` (kiến trúc, file, API, kiểm thử).
+- **Lỗi số liệu đã sửa:** biểu đồ doanh thu ở Tổng quan và Báo cáo cộng cả thanh toán mô phỏng; doanh thu từng khóa học/sản phẩm cũng vậy; ngày tính theo UTC nên đơn 0h–7h giờ Việt Nam rơi sang hôm trước; báo cáo 90 ngày bỏ 2/3 số ngày; "hoạt động Creator" là tổng từ trước tới nay; số Creator gộp vai trò và gói; `componentCount` giả bằng 3.
+- **Mới:** `GET /api/admin/analytics` (tính ở server, hàm thuần `computeAdminAnalytics`), xuất CSV, ghi nhận hoạt động ẩn danh (`activity_days`) và sự kiện mô phỏng; sidebar nhóm + thu gọn + drawer; dashboard 6 phần với biểu đồ SVG; 15 phép kiểm tra chất lượng dữ liệu chỉ đọc.
+- **Không có migration**, không sửa hay xóa dữ liệu cũ.
+
+| Lệnh | Kết quả |
+|---|---|
+| `npm run lint` | PASS |
+| `npm test` (15 bộ; mới: `admin_analytics` 33/33) | PASS |
+| `npm run build` | PASS |
+| Trình duyệt trên server cách ly (desktop tối/sáng, 1280, điện thoại 375) | PASS — chi tiết ở báo cáo triển khai mục 9–10 |
+| Production / Vercel thật, thiết bị thật | NOT RUN |
+
+- **Còn mở:** hạn gói/churn/MRR cần quyết định nghiệp vụ; hoàn tiền không tự hạ gói; retention cần ~30 ngày dữ liệu; kiểm tra chất lượng dữ liệu chưa chạy trên production.
+- **Commit:** chưa có (theo yêu cầu không tự commit).
+
 ## C1 — Kiểm định linh kiện, mô hình 3D và mô phỏng (2026-11-08)
 - **Status:** [PASS] cho phạm vi đã công bố; các giới hạn còn lại ghi ở báo cáo mục F.
 - **Báo cáo đầy đủ:** `docs/reports/COMPONENT_SIMULATION_AUDIT_2026-11-08.md` (ma trận 27 linh kiện, công thức, kết quả tham chiếu).

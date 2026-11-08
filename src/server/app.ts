@@ -101,6 +101,15 @@ import {
 } from './courseMedia.ts';
 import { creatorStore, CatalogProductItem, ProductStatus } from './creatorStore.ts';
 import { readJsonFile, writeJsonAtomic } from './atomicJson.ts';
+import {
+  AnalyticsQueryError,
+  computeAdminAnalytics,
+  parseAnalyticsQuery,
+  transactionsCsv,
+  vnDayKey,
+  type AnalyticsSnapshot,
+} from './adminAnalytics.ts';
+import { listActivityDays, recordActivity, TRACKED_EVENTS, type TrackedEvent } from './activityStore.ts';
 
 // Always override container defaults with values explicitly defined in .env
 dotenv.config({ override: true, quiet: true } as any);
@@ -112,6 +121,21 @@ configureTrustProxy(app);
 // API answers are per-user and must not be stored by the CDN; a route may opt out explicitly
 app.use('/api', (_req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+
+// Request counters of THIS server instance since it started (admin "platform health"). Nothing about
+// the request (path, user, IP) is kept: only the status class and the duration.
+const instanceMetrics = { startedAt: new Date().toISOString(), requests: 0, status4xx: 0, status5xx: 0, latenciesMs: [] as number[] };
+app.use('/api', (_req, res, next) => {
+  const started = process.hrtime.bigint();
+  res.on('finish', () => {
+    instanceMetrics.requests += 1;
+    if (res.statusCode >= 500) instanceMetrics.status5xx += 1;
+    else if (res.statusCode >= 400) instanceMetrics.status4xx += 1;
+    instanceMetrics.latenciesMs.push(Number(process.hrtime.bigint() - started) / 1e6);
+    if (instanceMetrics.latenciesMs.length > 1000) instanceMetrics.latenciesMs.splice(0, instanceMetrics.latenciesMs.length - 1000);
+  });
   next();
 });
 
@@ -3017,6 +3041,15 @@ app.get('/api/creator/sales', requireAuth, (req, res) => {
 // 7. ADMIN DASHBOARD API ROUTES (STRICT SERVER-SIDE AUTHORIZATION)
 // ============================================================================
 
+/** Real (non-simulated) revenue of paid orders, integer VND. */
+function realRevenueOf(orders: any[]): number {
+  return orders.filter((o) => !isMockOrder(o)).reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+}
+/** Value of simulated (mock) paid orders: shown separately, never as revenue. */
+function mockRevenueOf(orders: any[]): number {
+  return orders.filter((o) => isMockOrder(o)).reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+}
+
 function getUnifiedCoursesList() {
   const creatorCourses = creatorStore.listAllCourses();
   const creatorMap = new Map(creatorCourses.map((c) => [c.id, c]));
@@ -3037,7 +3070,8 @@ function getUnifiedCoursesList() {
       ...courseOrders.map((o) => o.userId),
       ...courseEnrollments.map((e) => e.userId),
     ]).size;
-    const revenue = courseOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+    const revenue = realRevenueOf(courseOrders);
+    const mockRevenue = mockRevenueOf(courseOrders);
 
     results.push({
       id: sys.id,
@@ -3054,6 +3088,7 @@ function getUnifiedCoursesList() {
       studentsCount: uniqueStudents,
       salesCount: courseOrders.length,
       revenue,
+      mockRevenue,
       category: override?.category || sys.category,
       isCreatorCourse: Boolean(override && override.creatorId !== 'system'),
       updatedAt: override?.updatedAt || sys.createdAt,
@@ -3069,7 +3104,8 @@ function getUnifiedCoursesList() {
       ...courseOrders.map((o) => o.userId),
       ...courseEnrollments.map((e) => e.userId),
     ]).size;
-    const revenue = courseOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+    const revenue = realRevenueOf(courseOrders);
+    const mockRevenue = mockRevenueOf(courseOrders);
 
     results.push({
       id: cc.id,
@@ -3084,6 +3120,7 @@ function getUnifiedCoursesList() {
       studentsCount: uniqueStudents,
       salesCount: courseOrders.length,
       revenue,
+      mockRevenue,
       category: cc.category || 'custom',
       isCreatorCourse: true,
       updatedAt: cc.updatedAt,
@@ -3175,7 +3212,7 @@ function getUnifiedMarketplaceList() {
     seenIds.add(cat.id);
     const override = creatorMap.get(cat.id);
     const prodOrders = orders.filter((o) => o.productId === cat.id);
-    const revenue = prodOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+    const revenue = realRevenueOf(prodOrders);
 
     results.push({
       id: cat.id,
@@ -3192,6 +3229,7 @@ function getUnifiedMarketplaceList() {
       boardType: cat.boardType,
       salesCount: prodOrders.length,
       revenue,
+      mockRevenue: mockRevenueOf(prodOrders),
       isCreatorListing: false,
       createdAt: override?.createdAt || cat.createdAt,
       updatedAt: override?.updatedAt || cat.createdAt,
@@ -3201,7 +3239,7 @@ function getUnifiedMarketplaceList() {
   for (const cp of creatorProducts) {
     if (seenIds.has(cp.id)) continue;
     const prodOrders = orders.filter((o) => o.productId === cp.id);
-    const revenue = prodOrders.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
+    const revenue = realRevenueOf(prodOrders);
 
     results.push({
       id: cp.id,
@@ -3214,10 +3252,11 @@ function getUnifiedMarketplaceList() {
       status: cp.status || 'PUBLISHED',
       category: cp.category || 'custom',
       version: cp.currentVersionNumber || '1.0.0',
-      componentCount: cp.componentsSummary?.length || 3,
+      componentCount: Array.isArray(cp.componentsSummary) ? cp.componentsSummary.length : null,
       boardType: 'rectangle',
       salesCount: prodOrders.length,
       revenue,
+      mockRevenue: mockRevenueOf(prodOrders),
       isCreatorListing: true,
       createdAt: cp.createdAt,
       updatedAt: cp.updatedAt,
@@ -3266,7 +3305,8 @@ app.get('/api/admin/overview', requireAdmin, (req, res) => {
   const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
 
   const newUsersCount = users.filter((u) => new Date(u.createdAt).getTime() >= sevenDaysAgo).length;
-  const creatorsCount = users.filter((u) => u.tier === 'creator' || u.role === 'creator').length;
+  // Membership plan (tier), not the account role: the two are different concepts
+  const creatorsCount = users.filter((u) => u.tier === 'creator').length;
   const activeSubscriptionsCount = users.filter((u) => u.tier === 'student' || u.tier === 'creator').length;
   const publishedCircuitsCount = marketplaceItems.filter(
     (m) => String(m.status).toUpperCase() === 'PUBLISHED'
@@ -3289,16 +3329,18 @@ app.get('/api/admin/overview', requireAdmin, (req, res) => {
     projects: number;
   }> = [];
 
+  // Calendar days in Asia/Ho_Chi_Minh (the old code mixed UTC dates with local labels)
+  const onVnDay = (iso: string | undefined, day: string) => Boolean(iso) && vnDayKey(Date.parse(iso as string)) === day;
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(now - i * 24 * 3600 * 1000);
-    const yyyyMmDd = d.toISOString().split('T')[0];
-    const label = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+    const yyyyMmDd = vnDayKey(now - i * 24 * 3600 * 1000);
+    const label = `${yyyyMmDd.slice(8, 10)}/${yyyyMmDd.slice(5, 7)}`;
 
-    const dayUsers = users.filter((u) => u.createdAt?.startsWith(yyyyMmDd)).length;
-    const dayPaidOrders = paidOrders.filter((o) => (o.paidAt || o.createdAt)?.startsWith(yyyyMmDd));
-    const dayOrders = orders.filter((o) => o.createdAt?.startsWith(yyyyMmDd)).length;
-    const dayRevenue = dayPaidOrders.reduce((s, o) => s + (Number(o.amount) || 0), 0);
-    const dayProjects = projects.filter((p) => p.createdAt?.startsWith(yyyyMmDd)).length;
+    const dayUsers = users.filter((u) => onVnDay(u.createdAt, yyyyMmDd)).length;
+    const dayPaidOrders = paidOrders.filter((o) => onVnDay(o.paidAt || o.createdAt, yyyyMmDd));
+    const dayOrders = orders.filter((o) => onVnDay(o.createdAt, yyyyMmDd)).length;
+    // Real revenue only (simulated checkouts are not revenue)
+    const dayRevenue = realRevenueOf(dayPaidOrders);
+    const dayProjects = projects.filter((p) => onVnDay(p.createdAt, yyyyMmDd)).length;
 
     dailySeries.push({
       date: yyyyMmDd,
@@ -3941,19 +3983,19 @@ app.get('/api/admin/reports', requireAdmin, (req, res) => {
     projectsCreated: number;
   }> = [];
 
-  const stepDays = days > 30 ? 3 : 1;
-  for (let i = days - 1; i >= 0; i -= stepDays) {
-    const startWindow = new Date(now - i * 24 * 3600 * 1000);
-    const yyyyMmDd = startWindow.toISOString().split('T')[0];
-    const label = `${startWindow.getDate().toString().padStart(2, '0')}/${(startWindow.getMonth() + 1).toString().padStart(2, '0')}`;
+  // One point per Vietnam calendar day. The old 90-day view sampled every third day and silently
+  // dropped the two days in between; every day is now counted.
+  const onVnDay = (iso: string | undefined, day: string) => Boolean(iso) && vnDayKey(Date.parse(iso as string)) === day;
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const yyyyMmDd = vnDayKey(now - i * 24 * 3600 * 1000);
+    const label = `${yyyyMmDd.slice(8, 10)}/${yyyyMmDd.slice(5, 7)}`;
 
-    const uCount = users.filter((u) => u.createdAt?.startsWith(yyyyMmDd)).length;
-    const tCount = orders.filter((o) => o.createdAt?.startsWith(yyyyMmDd)).length;
-    const rSum = orders
-      .filter((o) => o.status === 'paid' && (o.paidAt || o.createdAt)?.startsWith(yyyyMmDd))
-      .reduce((s, o) => s + (Number(o.amount) || 0), 0);
-    const eCount = enrollments.filter((e) => e.enrolledAt?.startsWith(yyyyMmDd)).length;
-    const pCount = projects.filter((p) => p.createdAt?.startsWith(yyyyMmDd)).length;
+    const uCount = users.filter((u) => onVnDay(u.createdAt, yyyyMmDd)).length;
+    const tCount = orders.filter((o) => onVnDay(o.createdAt, yyyyMmDd)).length;
+    // Real revenue only
+    const rSum = realRevenueOf(orders.filter((o) => o.status === 'paid' && onVnDay(o.paidAt || o.createdAt, yyyyMmDd)));
+    const eCount = enrollments.filter((e) => onVnDay(e.enrolledAt, yyyyMmDd)).length;
+    const pCount = projects.filter((p) => onVnDay(p.createdAt, yyyyMmDd)).length;
 
     timeline.push({
       date: yyyyMmDd,
@@ -3978,7 +4020,8 @@ app.get('/api/admin/reports', requireAdmin, (req, res) => {
     marketplaceSales: marketplaceSalesInRange,
     courseSales: courseSalesInRange,
     membershipSales: membershipSalesInRange,
-    creatorActivityCount: creatorProducts.length + creatorCourses.length,
+    // Creator products / courses created in the range (was: all-time total, mislabelled as activity)
+    creatorActivityCount: [...creatorProducts, ...creatorCourses].filter((x) => new Date(x.createdAt).getTime() >= cutoff).length,
   };
 
   res.json({
@@ -4043,6 +4086,77 @@ app.patch('/api/admin/settings', requireAdmin, (req, res) => {
   });
 
   res.json({ success: true, settings: updated });
+});
+
+// 7.11 Advanced analytics (server-side aggregation; see src/server/adminAnalytics.ts)
+async function buildAnalyticsSnapshot(): Promise<AnalyticsSnapshot> {
+  let database = 'not_used';
+  if (isRemotePersistence()) database = 'ok'; // the request already synced with the database (middleware)
+  return {
+    now: Date.now(),
+    users: listAllUsers(),
+    orders: Array.from(serverOrdersStore.values()),
+    entitlements: Array.from(serverEntitlementsStore.values()),
+    projects: listAllPersonalProjects(),
+    projectVersionsCount: listAllProjectVersions().length,
+    enrollments: listAllCourseEnrollments(),
+    courses: getUnifiedCoursesList(),
+    products: getUnifiedMarketplaceList(),
+    creatorProfilesCount: creatorStore.countProfiles(),
+    logs: listSystemLogs(5000),
+    activity: listActivityDays(),
+    instance: instanceMetrics,
+    environment: {
+      paymentMode: getPaymentMode(),
+      persistence: getPersistenceMode(),
+      database,
+      aiConfigured: Boolean(process.env.GEMINI_API_KEY?.trim()),
+      emailConfigured: Boolean(process.env.SMTP_USER && process.env.SMTP_PASS),
+    },
+  };
+}
+
+app.get('/api/admin/analytics', requireAdmin, rateLimit('admin-analytics', 120, 60 * 1000), async (req, res) => {
+  let query;
+  try {
+    query = parseAnalyticsQuery(req.query as Record<string, unknown>);
+  } catch (err) {
+    if (err instanceof AnalyticsQueryError) return res.status(400).json({ success: false, error: err.message, code: 'INVALID_QUERY' });
+    throw err;
+  }
+  res.json(computeAdminAnalytics(await buildAnalyticsSnapshot(), query));
+});
+
+app.get('/api/admin/analytics/export.csv', requireAdmin, rateLimit('admin-analytics-export', 30, 60 * 1000), async (req, res) => {
+  let query;
+  try {
+    query = parseAnalyticsQuery(req.query as Record<string, unknown>);
+  } catch (err) {
+    if (err instanceof AnalyticsQueryError) return res.status(400).json({ success: false, error: err.message, code: 'INVALID_QUERY' });
+    throw err;
+  }
+  const adminUser = (req as any).adminUser;
+  addSystemLog({
+    level: 'info',
+    category: 'admin',
+    action: 'ADMIN_ANALYTICS_EXPORT',
+    actorId: adminUser?.id,
+    actorEmail: adminUser?.email,
+    details: `Admin xuất CSV giao dịch (${query.range}${query.from ? ` ${query.from}..${query.to}` : ''}, env=${query.env})`,
+  });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="circuitcraft-transactions-${vnDayKey(Date.now())}.csv"`);
+  res.send(transactionsCsv(await buildAnalyticsSnapshot(), query));
+});
+
+// Feature usage events from signed-in users (whitelisted names only, no payload is stored)
+app.post('/api/analytics/events', requireAuth, rateLimit('analytics-events', 240, 10 * 60 * 1000), (req, res) => {
+  const event = String(req.body?.event || '');
+  if (!(TRACKED_EVENTS as readonly string[]).includes(event)) {
+    return res.status(400).json({ success: false, error: 'Sự kiện không được hỗ trợ.', code: 'UNKNOWN_EVENT' });
+  }
+  const recorded = recordActivity(getAuthUser(req)!.id, event as TrackedEvent);
+  res.json({ success: true, recorded });
 });
 
 // Explicit API 404 handler so unknown API requests return JSON rather than SPA index.html

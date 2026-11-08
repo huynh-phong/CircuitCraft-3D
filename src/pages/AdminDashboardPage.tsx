@@ -38,6 +38,10 @@ import { authService } from '../persistence/authService';
 import { useI18n } from '../i18n/context';
 import { Product3DViewerModal } from '../components/Product3DViewerModal';
 import { ProjectDocument } from '../domain/project/types';
+import { AdminSidebar, type AdminNavGroup } from '../components/admin/AdminSidebar';
+import { AdminAnalyticsDashboard } from '../components/admin/AdminAnalyticsDashboard';
+
+const SIDEBAR_STORAGE_KEY = 'cc3d:admin:sidebar-collapsed';
 
 type AdminTabId =
   | 'overview'
@@ -65,7 +69,26 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   const { language, formatCurrency } = useI18n();
   const [activeTab, setActiveTab] = useState<AdminTabId>('overview');
   // Tablets in portrait start with the icon-only sidebar so tables keep their width
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1100);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+      if (stored !== null) return stored === '1';
+    } catch {
+      // storage unavailable (private mode): fall back to the screen width
+    }
+    return window.innerWidth < 1100;
+  });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const toggleSidebar = () =>
+    setSidebarCollapsed((prev) => {
+      try {
+        window.localStorage.setItem(SIDEBAR_STORAGE_KEY, prev ? '0' : '1');
+      } catch {
+        // ignore
+      }
+      return !prev;
+    });
 
   // Server verification state
   const [isVerifying, setIsVerifying] = useState(true);
@@ -183,8 +206,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     setLoading(true);
     try {
       if (activeTab === 'overview') {
-        const res = await fetch('/api/admin/overview', { headers: getHeaders() });
-        if (res.ok) setOverviewData(await res.json());
+        // The analytics dashboard (AdminAnalyticsDashboard) fetches /api/admin/analytics itself
+        return;
       } else if (activeTab === 'users') {
         const params = new URLSearchParams({
           search: userSearch,
@@ -394,6 +417,17 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
     { id: 'settings', labelVi: 'Cài đặt', labelEn: 'Settings', icon: Settings },
   ];
 
+  const navItem = (id: AdminTabId) => {
+    const item = sidebarItems.find((i) => i.id === id)!;
+    return { id, label: language === 'vi' ? item.labelVi : item.labelEn, icon: item.icon };
+  };
+  const navGroups: AdminNavGroup[] = [
+    { id: 'overview', label: language === 'vi' ? 'Tổng quan' : 'Overview', items: [navItem('overview')] },
+    { id: 'business', label: language === 'vi' ? 'Kinh doanh' : 'Business', items: [navItem('transactions'), navItem('memberships'), navItem('marketplace'), navItem('courses')] },
+    { id: 'platform', label: language === 'vi' ? 'Nền tảng' : 'Platform', items: [navItem('users'), navItem('projects')] },
+    { id: 'admin', label: language === 'vi' ? 'Quản trị' : 'Administration', items: [navItem('reports'), navItem('logs'), navItem('settings')] },
+  ];
+
   // Loading / Verifying screen
   if (isVerifying) {
     return (
@@ -458,86 +492,18 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         </div>
       )}
 
-      {/* Left Collapsible Admin Sidebar */}
-      <aside
-        className={`w-full ${
-          sidebarCollapsed ? 'md:w-16' : 'md:w-64'
-        } bg-white/95 dark:bg-[#0c1424]/95 backdrop-blur-md border-b md:border-b-0 md:border-r border-[#d7e7f0] dark:border-cyan-950/50 flex flex-col justify-between shrink-0 transition-all duration-200 z-20 shadow-sm`}
-      >
-        <div className="p-2 md:p-3.5 md:space-y-4 overflow-y-auto">
-          {/* Sidebar Header (phones show the sections as a scrollable tab bar instead) */}
-          <div className="hidden md:flex items-center justify-between px-2 py-1.5 border-b border-[#d7e7f0] dark:border-cyan-950/50">
-            {!sidebarCollapsed && (
-              <div className="flex items-center gap-2.5 truncate">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-cyan-500 to-teal-500 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs shadow-cyan-500/20">
-                  CC
-                </div>
-                <div className="truncate">
-                  <div className="text-xs font-extrabold text-slate-900 dark:text-white tracking-tight">
-                    ADMIN CONSOLE
-                  </div>
-                  <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono truncate">
-                    {currentUser?.email}
-                  </div>
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="tech-btn-control p-1.5 mx-auto"
-              title={sidebarCollapsed ? 'Expand' : 'Collapse'}
-            >
-              {sidebarCollapsed ? <ChevronRight className="w-4 h-4 text-slate-600 dark:text-slate-400" /> : <ChevronLeft className="w-4 h-4 text-slate-600 dark:text-slate-400" />}
-            </button>
-          </div>
-
-          {/* 10 Navigation Items */}
-          <nav className="flex md:flex-col gap-1 overflow-x-auto md:overflow-visible md:space-y-0 snap-x" aria-label="Admin sections">
-            {sidebarItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              const label = language === 'vi' ? item.labelVi : item.labelEn;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  title={sidebarCollapsed ? label : undefined}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`shrink-0 md:w-full snap-start flex items-center whitespace-nowrap px-3 ${
-                    sidebarCollapsed ? 'md:justify-center md:px-2' : 'md:justify-start md:px-3'
-                  } py-2.5 coarse:min-h-11 rounded-xl text-xs font-semibold transition-all gap-3 ${
-                    isActive
-                      ? 'tech-btn-primary'
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-100'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0 drop-shadow-xs" />
-                  <span className={`truncate ${sidebarCollapsed ? 'md:hidden' : ''}`}>{label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Footer Security Badge */}
-        <div className="hidden md:block p-3 border-t border-slate-200 dark:border-slate-800">
-          {!sidebarCollapsed ? (
-            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
-              <div className="truncate">
-                <div className="text-[10px] font-bold text-slate-800 dark:text-slate-200">
-                  {language === 'vi' ? 'Bảo mật Server-Side' : 'Server-Side Verified'}
-                </div>
-                <div className="text-[9px] text-slate-500 truncate">RBAC • Real Database Sync</div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-center" title="Server-Side Verified">
-              <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            </div>
-          )}
-        </div>
-      </aside>
+      {/* Admin navigation (floating pill style, collapsible rail, mobile drawer) */}
+      <AdminSidebar
+        groups={navGroups}
+        activeId={activeTab}
+        onSelect={(id) => setActiveTab(id as AdminTabId)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebar}
+        mobileOpen={mobileNavOpen}
+        onMobileOpenChange={setMobileNavOpen}
+        adminEmail={currentUser?.email}
+        language={language === 'vi' ? 'vi' : 'en'}
+      />
 
       {/* Main Dashboard Content Area */}
       <main className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-5 md:p-7 space-y-6 pb-24 md:pb-7">
@@ -556,7 +522,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${activeTab === 'overview' ? 'hidden' : ''}`}>
             <button
               onClick={loadTabData}
               disabled={loading}
@@ -571,206 +537,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         {/* ============================================================ */}
         {/* 1. OVERVIEW TAB                                              */}
         {/* ============================================================ */}
-        {activeTab === 'overview' && overviewData && (
-          <div className="space-y-6">
-            {/* KPI Grid — 100% Real System Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              {[
-                {
-                  labelVi: 'Tổng người dùng',
-                  labelEn: 'Total Users',
-                  value: overviewData.kpis.totalUsers,
-                  subVi: `${overviewData.kpis.newUsersLast7d} mới (7 ngày)`,
-                  subEn: `${overviewData.kpis.newUsersLast7d} new (7d)`,
-                  icon: Users,
-                  color: 'text-cyan-500',
-                },
-                {
-                  labelVi: 'Tổng doanh thu xác nhận',
-                  labelEn: 'Confirmed Revenue',
-                  value: formatCurrency(overviewData.kpis.confirmedRevenue),
-                  subVi: `${overviewData.kpis.paidOrdersCount} đơn thành công · Mô phỏng: ${formatCurrency(overviewData.kpis.mockRevenue ?? 0)}`,
-                  subEn: `${overviewData.kpis.paidOrdersCount} paid orders · Simulated: ${formatCurrency(overviewData.kpis.mockRevenue ?? 0)}`,
-                  icon: Receipt,
-                  color: 'text-emerald-500',
-                },
-                {
-                  labelVi: 'Tổng giao dịch',
-                  labelEn: 'Total Transactions',
-                  value: overviewData.kpis.totalTransactions,
-                  subVi: `${overviewData.kpis.pendingOrders} đang chờ thanh toán`,
-                  subEn: `${overviewData.kpis.pendingOrders} pending orders`,
-                  icon: Activity,
-                  color: 'text-amber-500',
-                },
-                {
-                  labelVi: 'Dự án & Mạch đang bán',
-                  labelEn: 'Projects & Listings',
-                  value: `${overviewData.kpis.totalProjects} / ${overviewData.kpis.totalMarketplaceProducts}`,
-                  subVi: 'Dự án cá nhân / Mạch bán',
-                  subEn: 'Personal / Marketplace',
-                  icon: Cpu,
-                  color: 'text-indigo-500',
-                },
-                {
-                  labelVi: 'Khóa học & Creator',
-                  labelEn: 'Courses & Creators',
-                  value: `${overviewData.kpis.totalCourses} / ${overviewData.kpis.totalCreators}`,
-                  subVi: `${overviewData.kpis.activeSubscriptions} gói trả phí đang bật`,
-                  subEn: `${overviewData.kpis.activeSubscriptions} active subscriptions`,
-                  icon: GraduationCap,
-                  color: 'text-purple-500',
-                },
-              ].map((kpi, idx) => {
-                const Icon = kpi.icon;
-                return (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                        {language === 'vi' ? kpi.labelVi : kpi.labelEn}
-                      </span>
-                      <Icon className={`w-4 h-4 ${kpi.color}`} />
-                    </div>
-                    <div className="text-xl font-black text-slate-900 dark:text-white my-2 truncate">
-                      {kpi.value}
-                    </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                      {language === 'vi' ? kpi.subVi : kpi.subEn}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Plan Distribution & Recent Transactions */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Plan Distribution Bar Visualization */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {language === 'vi' ? 'Phân bổ Gói thành viên' : 'Membership Distribution'}
-                  </h3>
-                  <Crown className="w-4 h-4 text-amber-500" />
-                </div>
-
-                {overviewData.kpis?.totalUsers === 0 ? (
-                  renderEmptyState(
-                    'Chưa có người dùng',
-                    'No users yet',
-                    'Phân bổ gói thành viên sẽ hiển thị khi có tài khoản đăng ký.',
-                    'Membership distribution will appear once users register.'
-                  )
-                ) : (
-                  <div className="space-y-3 pt-1">
-                    {(Array.isArray(overviewData.planDistribution)
-                      ? overviewData.planDistribution
-                      : [
-                          { tier: 'free', plan: 'Starter (Free)', count: overviewData.planDistribution?.free || 0 },
-                          { tier: 'student', plan: 'Student Pro', count: overviewData.planDistribution?.student || 0 },
-                          { tier: 'creator', plan: 'Creator Pro', count: overviewData.planDistribution?.creator || 0 },
-                        ]
-                    ).map((p: any) => {
-                      const pct =
-                        overviewData.kpis?.totalUsers > 0
-                          ? Math.round((p.count / overviewData.kpis.totalUsers) * 100)
-                          : 0;
-                      return (
-                        <div key={p.tier} className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-semibold text-slate-700 dark:text-slate-300">{p.plan}</span>
-                            <span className="font-mono text-slate-500">
-                              {p.count} ({pct}%)
-                            </span>
-                          </div>
-                          <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                p.tier === 'creator'
-                                  ? 'bg-purple-500'
-                                  : p.tier === 'student'
-                                  ? 'bg-cyan-500'
-                                  : 'bg-slate-400'
-                              }`}
-                              style={{ width: `${Math.max(pct, p.count > 0 ? 6 : 0)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Recent Real Transactions Table */}
-              <div className="lg:col-span-2 p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {language === 'vi' ? 'Giao dịch gần đây' : 'Recent Transactions'}
-                  </h3>
-                  <button
-                    onClick={() => setActiveTab('transactions')}
-                    className="text-xs font-semibold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-                  >
-                    <span>{language === 'vi' ? 'Xem tất cả' : 'View all'}</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {!overviewData.recentTransactions || overviewData.recentTransactions.length === 0 ? (
-                  renderEmptyState(
-                    '0 giao dịch',
-                    '0 transactions',
-                    'Hệ thống hiện chưa ghi nhận giao dịch thanh toán nào.',
-                    'No payment transactions have been recorded in the system yet.'
-                  )
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
-                          <th className="py-2 pr-3">{language === 'vi' ? 'Mã đơn' : 'Order Code'}</th>
-                          <th className="py-2 px-3">{language === 'vi' ? 'Người dùng' : 'User'}</th>
-                          <th className="py-2 px-3">{language === 'vi' ? 'Sản phẩm' : 'Product'}</th>
-                          <th className="py-2 px-3">{language === 'vi' ? 'Số tiền' : 'Amount'}</th>
-                          <th className="py-2 pl-3">{language === 'vi' ? 'Trạng thái' : 'Status'}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                        {overviewData.recentTransactions.map((tx: any) => (
-                          <tr key={tx.orderId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                            <td className="py-2.5 pr-3 font-mono font-bold text-cyan-600 dark:text-cyan-400">
-                              {tx.orderCode || tx.orderId}
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">{tx.userId}</td>
-                            <td className="py-2.5 px-3 font-medium text-slate-800 dark:text-slate-200 truncate max-w-[180px]">
-                              {tx.productName}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono font-bold">{formatCurrency(tx.amount)}</td>
-                            <td className="py-2.5 pl-3">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                  tx.status === 'PAID'
-                                    ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
-                                    : tx.status === 'PENDING'
-                                    ? 'bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400'
-                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                                }`}
-                              >
-                                {tx.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+        {activeTab === 'overview' && (
+          <AdminAnalyticsDashboard
+            getHeaders={getHeaders}
+            language={language === 'vi' ? 'vi' : 'en'}
+            formatCurrency={formatCurrency}
+            onOpenTab={(tab) => setActiveTab(tab as AdminTabId)}
+          />
         )}
 
         {/* ============================================================ */}

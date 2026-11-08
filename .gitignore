@@ -47,6 +47,8 @@ data/course-media/
 data/*.corrupt-*
 data/*.tmp
 data/removed_users_archive.json
+# Admin analytics activity (hashed user ids per day)
+data/activity_days.json
 
 # Vercel link and build output
 .vercel

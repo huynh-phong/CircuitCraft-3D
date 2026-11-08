@@ -38,6 +38,7 @@ import {
 import { validateProjectDocument } from './domain/validation/engine';
 import { ValidationIssue } from './domain/validation/types';
 import { simulateBehavior } from './domain/simulation/engine';
+import { trackUsageEvent } from './services/usageEvents';
 import { SimulationResult } from './domain/simulation/types';
 import { projectRepositoryManager } from './persistence/repositoryManager';
 import { localProjectRepository } from './persistence/localRepository';
@@ -458,11 +459,27 @@ export const App: React.FC = () => {
     }
   }, [project]);
 
+  // Usage analytics: one simulation_run per start of the simulator, one simulation_error per run that
+  // ends in an error state (counted for signed-in users only, no circuit data is sent)
+  const simulationRunRef = useRef({ active: false, errorReported: false });
+  useEffect(() => {
+    if (isSimulating && !simulationRunRef.current.active) {
+      simulationRunRef.current = { active: true, errorReported: false };
+      trackUsageEvent('simulation_run');
+    } else if (!isSimulating) {
+      simulationRunRef.current.active = false;
+    }
+  }, [isSimulating]);
+
   // Run or Update Simulation when simulating
   useEffect(() => {
     if (isSimulating) {
       const result = simulateBehavior(project, switchStates);
       setSimulationResult(result);
+      if (result.status === 'error' && !simulationRunRef.current.errorReported) {
+        simulationRunRef.current.errorReported = true;
+        trackUsageEvent('simulation_error');
+      }
 
       if (result.issues.some((i) => i.toLowerCase().includes('đoản mạch'))) {
         setMinibotState('warning');
