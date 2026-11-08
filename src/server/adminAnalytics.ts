@@ -48,6 +48,7 @@ export interface AOrder {
   createdAt?: string;
   paidAt?: string;
   creatorId?: string;
+  author?: string;
 }
 export interface AEntitlement {
   userId: string;
@@ -423,16 +424,16 @@ export function computeAdminAnalytics(s: AnalyticsSnapshot, query: AnalyticsQuer
 
   const revenue = {
     kpis: {
-      confirmedRealRevenue: metric(realRevenue, 'vnd', 'Tổng tiền các đơn thanh toán thật (paymentMode = real) đang ở trạng thái paid, theo thời điểm thanh toán trong kỳ.', realRevenuePrev),
-      simulatedValue: metric(mockValue, 'vnd', 'Tổng giá trị các đơn mô phỏng (mock) đã bấm "thanh toán thành công". Không phải doanh thu.', mockValuePrev),
-      grossPaymentVolume: metric(realRevenue + refunded, 'vnd', 'Tiền thật đã thu trong kỳ trước hoàn tiền: đơn thật paid + đơn thật đã hoàn (theo thời điểm thanh toán).'),
-      refundedAmount: metric(refunded, 'vnd', 'Đơn thật đang ở trạng thái refunded, theo thời điểm thanh toán ban đầu (hệ thống chưa lưu thời điểm hoàn tiền).'),
-      netRevenue: metric(realRevenue, 'vnd', 'Doanh thu ròng = Gross − Hoàn tiền = doanh thu thật đã xác nhận. Phí cổng thanh toán chưa được ghi nhận nên không trừ.'),
+      confirmedRealRevenue: metric(realRevenue, 'vnd', 'Tổng tiền các đơn thanh toán thật (không phải mô phỏng) đã được xác nhận, tính theo thời điểm thanh toán trong kỳ.', realRevenuePrev),
+      simulatedValue: metric(mockValue, 'vnd', 'Tổng giá trị các đơn thanh toán mô phỏng (bản demo) đã bấm "thanh toán thành công". Không phải doanh thu.', mockValuePrev),
+      grossPaymentVolume: metric(realRevenue + refunded, 'vnd', 'Tiền thật đã thu trong kỳ, chưa trừ hoàn tiền: đơn thật đã thanh toán cộng đơn thật đã hoàn (theo thời điểm thanh toán).'),
+      refundedAmount: metric(refunded, 'vnd', 'Tổng tiền các đơn thật đã hoàn, xếp theo thời điểm thanh toán ban đầu (hệ thống chưa lưu thời điểm hoàn tiền).'),
+      netRevenue: metric(realRevenue, 'vnd', 'Doanh thu ròng = tổng tiền đã thu − hoàn tiền = doanh thu thật đã xác nhận. Phí cổng thanh toán chưa được ghi nhận nên chưa trừ.'),
       pendingAmount: metric(pendingNow.reduce((s2, o) => s2 + (orderAmountVnd(o) ?? 0), 0), 'vnd', 'Tổng tiền các đơn có giá > 0 đang chờ thanh toán ở thời điểm hiện tại (không phụ thuộc kỳ).'),
       pendingCount: metric(pendingNow.length, 'count', 'Số đơn có giá > 0 đang chờ thanh toán ở thời điểm hiện tại.'),
-      transactions: metric(createdInRange.length, 'count', 'Số đơn được tạo trong kỳ (mọi trạng thái, kể cả đơn miễn phí), theo bộ lọc môi trường.', createdPrev.length),
-      successRate: metric(pct(succeeded.length, decided.length), 'percent', 'Đơn có giá tạo trong kỳ: (paid + refunded) / (paid + refunded + failed + expired + cancelled). Đơn đang chờ chưa được tính.'),
-      failureRate: metric(pct(failedLike.length, decided.length), 'percent', 'Đơn có giá tạo trong kỳ: (failed + expired + cancelled) / số đơn đã có kết quả.'),
+      transactions: metric(createdInRange.length, 'count', 'Số đơn được tạo trong kỳ (mọi trạng thái, kể cả đơn 0đ), theo bộ lọc môi trường thanh toán.', createdPrev.length),
+      successRate: metric(pct(succeeded.length, decided.length), 'percent', 'Trong các đơn có giá tạo trong kỳ đã có kết quả: (đã thanh toán + đã hoàn) chia cho (đã thanh toán + đã hoàn + thất bại + hết hạn + đã hủy). Đơn đang chờ chưa tính.'),
+      failureRate: metric(pct(failedLike.length, decided.length), 'percent', 'Trong các đơn có giá tạo trong kỳ đã có kết quả: (thất bại + hết hạn + đã hủy) chia cho số đơn đã có kết quả.'),
       averageOrderValue: metric(realPaidOrders.length ? Math.round(realRevenue / realPaidOrders.length) : null, 'vnd', 'Doanh thu thật / số đơn thật có giá đã thanh toán trong kỳ.'),
       freeOrders: metric(createdInRange.filter((o) => orderAmountVnd(o) === 0).length, 'count', 'Đơn giá 0đ (nhận sản phẩm miễn phí) tạo trong kỳ.'),
     },
@@ -488,12 +489,12 @@ export function computeAdminAnalytics(s: AnalyticsSnapshot, query: AnalyticsQuer
 
   const usersSection = {
     kpis: {
-      totalUsers: metric(users.length, 'count', 'Mọi tài khoản trong kho người dùng (kể cả quản trị viên, tài khoản bị khóa và chưa xác minh) tại thời điểm hiện tại.'),
-      newUsers: metric(createdUsers.length, 'count', 'Tài khoản có createdAt trong kỳ.', createdUsersPrev.length),
+      totalUsers: metric(users.length, 'count', 'Mọi tài khoản hiện có (kể cả quản trị viên, tài khoản bị khóa và chưa xác minh).'),
+      newUsers: metric(createdUsers.length, 'count', 'Tài khoản được tạo trong kỳ.', createdUsersPrev.length),
       growthRate: metric(pct(createdUsers.length, usersBefore), 'percent', 'Tài khoản mới trong kỳ / số tài khoản có trước kỳ.'),
-      dau: metric(activeWithin(1), 'count', 'Số tài khoản có lastActiveAt trong 24 giờ qua (lastActiveAt cập nhật tối đa 5 phút/lần khi gọi API đã đăng nhập).'),
-      wau: metric(activeWithin(7), 'count', 'Số tài khoản có lastActiveAt trong 7 ngày qua.'),
-      mau: metric(activeWithin(30), 'count', 'Số tài khoản có lastActiveAt trong 30 ngày qua.'),
+      dau: metric(activeWithin(1), 'count', 'Số tài khoản có lần hoạt động gần nhất trong 24 giờ qua (được cập nhật tối đa 5 phút một lần khi người dùng đã đăng nhập dùng website).'),
+      wau: metric(activeWithin(7), 'count', 'Số tài khoản có lần hoạt động gần nhất trong 7 ngày qua.'),
+      mau: metric(activeWithin(30), 'count', 'Số tài khoản có lần hoạt động gần nhất trong 30 ngày qua.'),
       activeInRange: trackingCoversRange
         ? metric(daysPerUser.size, 'count', 'Số người dùng khác nhau có hoạt động đã đăng nhập trong kỳ (sự kiện hoạt động theo ngày).')
         : { ...notTracked('count', 'Số người dùng hoạt động trong kỳ cần sự kiện hoạt động theo ngày, chỉ có từ ngày bắt đầu ghi nhận.'), trackedSince },
@@ -530,9 +531,9 @@ export function computeAdminAnalytics(s: AnalyticsSnapshot, query: AnalyticsQuer
   const memberships = {
     distribution,
     kpis: {
-      paidMembersReal: metric(distribution.reduce((a, d) => a + d.viaRealOrAdmin, 0), 'count', 'Tài khoản đang ở gói Student/Creator không do thanh toán mô phỏng cấp (thanh toán thật hoặc quản trị viên gán).'),
-      paidMembersSimulated: metric(distribution.reduce((a, d) => a + d.viaSimulatedPayment, 0), 'count', 'Tài khoản đang ở gói trả phí nhờ thanh toán mô phỏng (tierGrantedByMock).'),
-      freeUsers: metric(distribution[0].total, 'count', 'Tài khoản đang ở gói Free.'),
+      paidMembersReal: metric(distribution.reduce((a, d) => a + d.viaRealOrAdmin, 0), 'count', 'Tài khoản đang ở gói Học viên hoặc Nhà sáng tạo nhờ thanh toán thật hoặc do quản trị viên gán (không tính gói có từ thanh toán mô phỏng).'),
+      paidMembersSimulated: metric(distribution.reduce((a, d) => a + d.viaSimulatedPayment, 0), 'count', 'Tài khoản đang ở gói trả phí nhờ thanh toán mô phỏng.'),
+      freeUsers: metric(distribution[0].total, 'count', 'Tài khoản đang ở gói Miễn phí.'),
       newSubscriptionsReal: metric(planOrders.filter((o) => !isMock(o)).length, 'count', 'Đơn gói thành viên thật đã thanh toán trong kỳ.'),
       newSubscriptionsSimulated: metric(planOrders.filter(isMock).length, 'count', 'Đơn gói thành viên mô phỏng đã thanh toán trong kỳ.'),
       expired: notTracked('count', 'Gói thành viên không có ngày hết hạn trong dữ liệu nên không xác định được gói hết hạn.'),
@@ -554,10 +555,10 @@ export function computeAdminAnalytics(s: AnalyticsSnapshot, query: AnalyticsQuer
   }
   const creatorIds = new Set([...s.courses, ...s.products].map((x) => x.creatorId).filter((id): id is string => Boolean(id) && id !== 'system'));
   const activeCreatorIds = new Set([...s.courses, ...s.products].filter((x) => published(x) && x.creatorId && x.creatorId !== 'system').map((x) => x.creatorId!));
-  const salesByCreator = new Map<string, { creatorId: string; real: number; mock: number; paidCount: number }>();
+  const salesByCreator = new Map<string, { creatorId: string; name: string; real: number; mock: number; paidCount: number }>();
   for (const o of s.orders) {
     if (!o.creatorId || o.creatorId === 'system' || orderStatus(o) !== 'paid' || !inRange(paidTime(o), r.startMs, r.endMs)) continue;
-    const row = salesByCreator.get(o.creatorId) || { creatorId: o.creatorId, real: 0, mock: 0, paidCount: 0 };
+    const row = salesByCreator.get(o.creatorId) || { creatorId: o.creatorId, name: o.author || o.creatorId, real: 0, mock: 0, paidCount: 0 };
     row[isMock(o) ? 'mock' : 'real'] += orderAmountVnd(o) ?? 0;
     row.paidCount += 1;
     salesByCreator.set(o.creatorId, row);
@@ -574,19 +575,19 @@ export function computeAdminAnalytics(s: AnalyticsSnapshot, query: AnalyticsQuer
   }
   const learning = {
     kpis: {
-      totalCourses: metric(s.courses.length, 'count', 'Khóa học trong danh mục hợp nhất (khóa hệ thống + khóa của Creator), mọi trạng thái.'),
-      publishedCourses: metric(s.courses.filter(published).length, 'count', 'Khóa học ở trạng thái PUBLISHED.'),
-      enrollments: metric(enrollIn.length, 'count', 'Lượt ghi danh có enrolledAt trong kỳ.'),
+      totalCourses: metric(s.courses.length, 'count', 'Khóa học trong danh mục (khóa của hệ thống và của nhà sáng tạo), mọi trạng thái.'),
+      publishedCourses: metric(s.courses.filter(published).length, 'count', 'Khóa học đang được xuất bản.'),
+      enrollments: metric(enrollIn.length, 'count', 'Lượt ghi danh khóa học trong kỳ.'),
       totalEnrollments: metric(s.enrollments.length, 'count', 'Tổng lượt ghi danh hiện có.'),
       completions: metric(s.enrollments.filter((e) => (e.progressPercent ?? 0) >= 100).length, 'count', 'Lượt ghi danh có tiến độ 100 % (tiến độ do trình duyệt của học viên báo về).'),
-      totalCreators: metric(creatorIds.size, 'count', 'Creator (khác "system") sở hữu ít nhất một khóa học hoặc sản phẩm trong danh mục.'),
-      activeCreators: metric(activeCreatorIds.size, 'count', 'Creator có ít nhất một khóa học/sản phẩm đang PUBLISHED.'),
-      creatorProfiles: metric(s.creatorProfilesCount, 'count', 'Hồ sơ Creator đã tạo trong Creator Studio.'),
-      creatorPlanUsers: metric(users.filter((u) => u.tier === 'creator').length, 'count', 'Tài khoản đang ở gói Creator Pro (gói thành viên, khác với vai trò).'),
-      totalProducts: metric(s.products.length, 'count', 'Sản phẩm mạch trong Cửa hàng (danh mục hệ thống + Creator), mọi trạng thái.'),
-      publishedProducts: metric(s.products.filter(published).length, 'count', 'Sản phẩm ở trạng thái PUBLISHED.'),
+      totalCreators: metric(creatorIds.size, 'count', 'Nhà sáng tạo (không tính nội dung của hệ thống) có ít nhất một khóa học hoặc sản phẩm.'),
+      activeCreators: metric(activeCreatorIds.size, 'count', 'Nhà sáng tạo có ít nhất một khóa học hoặc sản phẩm đang xuất bản.'),
+      creatorProfiles: metric(s.creatorProfilesCount, 'count', 'Hồ sơ nhà sáng tạo đã tạo trong Creator Studio.'),
+      creatorPlanUsers: metric(users.filter((u) => u.tier === 'creator').length, 'count', 'Tài khoản đang ở gói Nhà sáng tạo (Creator Pro). Đây là gói thành viên, khác với vai trò tài khoản.'),
+      totalProducts: metric(s.products.length, 'count', 'Sản phẩm mạch trong Cửa hàng (của hệ thống và của nhà sáng tạo), mọi trạng thái.'),
+      publishedProducts: metric(s.products.filter(published).length, 'count', 'Sản phẩm đang được xuất bản.'),
       pendingReview: metric([...s.courses, ...s.products].filter((x) => String(x.status).toUpperCase() === 'PENDING').length, 'count', 'Khóa học và sản phẩm đang chờ duyệt.'),
-      payouts: notTracked('vnd', 'Hệ thống chưa có chức năng chi trả cho Creator.'),
+      payouts: notTracked('vnd', 'Hệ thống chưa có chức năng chi trả cho nhà sáng tạo.'),
       courseViews: notTracked('count', 'Lượt xem khóa học không được ghi nhận.'),
     },
     topCourses: Array.from(learnersPerCourse.values())
@@ -627,17 +628,17 @@ export function computeAdminAnalytics(s: AnalyticsSnapshot, query: AnalyticsQuer
   const projects = {
     kpis: {
       totalProjects: metric(s.projects.length, 'count', 'Dự án cá nhân đã lưu lên máy chủ (mọi trạng thái).'),
-      newProjects: metric(projectsIn.length, 'count', 'Dự án có createdAt trong kỳ.', projectsPrev.length),
-      updatedProjects: metric(updatedIn, 'count', 'Dự án có lần lưu gần nhất (updatedAt) trong kỳ.'),
+      newProjects: metric(projectsIn.length, 'count', 'Dự án được tạo trong kỳ.', projectsPrev.length),
+      updatedProjects: metric(updatedIn, 'count', 'Dự án có lần lưu gần nhất trong kỳ.'),
       projectVersions: metric(s.projectVersionsCount, 'count', 'Phiên bản (revision) dự án đã lưu.'),
       owners: metric(ownerIds.size, 'count', 'Người dùng có ít nhất một dự án.'),
       projectsPerOwner: metric(ownerIds.size ? Math.round((s.projects.length / ownerIds.size) * 100) / 100 : null, 'count', 'Số dự án / số người có dự án.'),
-      avgComponents: metric(s.projects.length ? Math.round((totalComponents / s.projects.length) * 10) / 10 : null, 'count', 'Số linh kiện trung bình mỗi dự án (theo componentCount lưu cùng dự án).'),
+      avgComponents: metric(s.projects.length ? Math.round((totalComponents / s.projects.length) * 10) / 10 : null, 'count', 'Số linh kiện trung bình mỗi dự án.'),
       publicProjects: metric(s.projects.filter((p) => p.isPublic).length, 'count', 'Dự án được đánh dấu công khai.'),
       archivedProjects: metric(s.projects.filter((p) => p.status === 'archived').length, 'count', 'Dự án đã lưu trữ.'),
       simulationRuns: trackingCoversRange
-        ? metric(simEvents, 'count', 'Số lần người dùng đã đăng nhập bấm Mô phỏng trong kỳ (sự kiện simulation_run).')
-        : { ...notTracked('count', 'Lượt mô phỏng chỉ được ghi nhận từ ngày bật sự kiện simulation_run; lượt lưu dự án không phải lượt mô phỏng.'), trackedSince },
+        ? metric(simEvents, 'count', 'Số lần người dùng đã đăng nhập bấm Mô phỏng trong kỳ.')
+        : { ...notTracked('count', 'Lượt mô phỏng chỉ được ghi nhận từ ngày bật tính năng đếm; lượt lưu dự án không được tính là lượt mô phỏng.'), trackedSince },
       simulationErrors: trackingCoversRange
         ? metric(simErrors, 'count', 'Lần mô phỏng kết thúc với trạng thái lỗi (đoản mạch, không giải được).')
         : { ...notTracked('count', 'Ghi nhận cùng sự kiện mô phỏng.'), trackedSince },
@@ -666,7 +667,7 @@ export function computeAdminAnalytics(s: AnalyticsSnapshot, query: AnalyticsQuer
       .map((l) => ({ timestamp: l.timestamp, level: l.level, category: l.category, action: l.action, details: l.details || '' })),
     instance: s.instance
       ? {
-          scope: 'Chỉ instance máy chủ đang trả lời, tính từ lúc khởi động (trên Vercel mỗi instance có bộ đếm riêng).',
+          scope: 'Chỉ tính trên phiên bản máy chủ đang trả lời, từ lúc nó khởi động (trên Vercel mỗi phiên bản có bộ đếm riêng).',
           startedAt: s.instance.startedAt,
           requests: s.instance.requests,
           status4xx: s.instance.status4xx,
@@ -725,11 +726,11 @@ export function computeDataQuality(s: AnalyticsSnapshot): DataQualityFinding[] {
     out.push({ id, severity, title, count: items.length, sampleIds: items.slice(0, 5), note });
   };
   const paid = s.orders.filter((o) => orderStatus(o) === 'paid');
-  add('order-orphan-user', 'warning', 'Đơn hàng không có tài khoản tương ứng', s.orders.filter((o) => !o.userId || !userIds.has(o.userId)).map((o) => o.orderId), 'userId của đơn không còn trong kho người dùng.');
+  add('order-orphan-user', 'warning', 'Đơn hàng không có tài khoản tương ứng', s.orders.filter((o) => !o.userId || !userIds.has(o.userId)).map((o) => o.orderId), 'Người mua của đơn không còn trong danh sách tài khoản.');
   add('order-missing-created', 'warning', 'Đơn hàng thiếu thời điểm tạo', s.orders.filter((o) => ts(o.createdAt) === null).map((o) => o.orderId), 'Không xếp được vào kỳ báo cáo.');
-  add('order-unknown-status', 'warning', 'Đơn hàng có trạng thái lạ', s.orders.filter((o) => !KNOWN_STATUSES.includes(orderStatus(o))).map((o) => o.orderId), `Trạng thái hợp lệ: ${KNOWN_STATUSES.join(', ')}.`);
+  add('order-unknown-status', 'warning', 'Đơn hàng có trạng thái lạ', s.orders.filter((o) => !KNOWN_STATUSES.includes(orderStatus(o))).map((o) => o.orderId), 'Trạng thái hợp lệ: chờ thanh toán, đã thanh toán, thất bại, hết hạn, đã hủy, đã hoàn tiền.');
   add('order-bad-amount', 'critical', 'Đơn hàng có số tiền/tiền tệ không cộng được', s.orders.filter((o) => orderAmountVnd(o) === null).map((o) => o.orderId), 'Số tiền âm, không phải số, hoặc tiền tệ khác VND: bị loại khỏi mọi tổng doanh thu.');
-  add('order-paid-no-paidat', 'info', 'Đơn đã thanh toán thiếu paidAt', paid.filter((o) => !o.paidAt).map((o) => o.orderId), 'Dùng createdAt làm thời điểm thanh toán.');
+  add('order-paid-no-paidat', 'info', 'Đơn đã thanh toán thiếu paidAt', paid.filter((o) => !o.paidAt).map((o) => o.orderId), 'Dùng thời điểm tạo đơn làm thời điểm thanh toán.');
   const entKeys = new Set(s.entitlements.map((e) => `${e.userId}_${e.productId}`));
   add('order-paid-no-entitlement', 'critical', 'Đơn đã thanh toán nhưng chưa cấp quyền sở hữu', paid.filter((o) => !String(o.productId || '').startsWith('plan-') && !entKeys.has(`${o.userId}_${o.productId}`)).map((o) => o.orderId), 'Người mua có thể không mở được sản phẩm đã trả tiền.');
   const paidKeys = new Map<string, string[]>();
@@ -743,7 +744,7 @@ export function computeDataQuality(s: AnalyticsSnapshot): DataQualityFinding[] {
   add('entitlement-orphan-user', 'warning', 'Quyền sở hữu của tài khoản không tồn tại', s.entitlements.filter((e) => !userIds.has(e.userId)).map((e) => `${e.userId}_${e.productId}`), '');
   const planPaid = new Set(paid.filter((o) => String(o.productId || '').startsWith('plan-')).map((o) => `${o.userId}_${String(o.productId).replace('plan-', '')}`));
   add('tier-without-order', 'info', 'Tài khoản có gói trả phí nhưng không có đơn gói đã thanh toán', s.users.filter((u) => (u.tier === 'student' || u.tier === 'creator') && !planPaid.has(`${u.id}_${u.tier}`)).map((u) => u.id), 'Gói có thể do quản trị viên gán thủ công.');
-  add('refunded-tier-kept', 'warning', 'Đơn gói đã hoàn tiền nhưng tài khoản vẫn giữ gói', s.orders.filter((o) => orderStatus(o) === 'refunded' && String(o.productId || '').startsWith('plan-') && s.users.find((u) => u.id === o.userId)?.tier === String(o.productId).replace('plan-', '')).map((o) => o.orderId), 'Đổi trạng thái đơn sang refunded không tự hạ gói.');
+  add('refunded-tier-kept', 'warning', 'Đơn gói đã hoàn tiền nhưng tài khoản vẫn giữ gói', s.orders.filter((o) => orderStatus(o) === 'refunded' && String(o.productId || '').startsWith('plan-') && s.users.find((u) => u.id === o.userId)?.tier === String(o.productId).replace('plan-', '')).map((o) => o.orderId), 'Đổi trạng thái đơn sang "đã hoàn tiền" không tự hạ gói của tài khoản.');
   add('project-orphan-owner', 'warning', 'Dự án của tài khoản không tồn tại', s.projects.filter((p) => !p.ownerId || !userIds.has(p.ownerId)).map((p) => p.id), '');
   const courseIds = new Set(s.courses.map((c) => c.id));
   add('enrollment-orphan', 'warning', 'Ghi danh trỏ tới tài khoản hoặc khóa học không tồn tại', s.enrollments.filter((e) => !userIds.has(e.userId) || !courseIds.has(e.courseId)).map((e) => e.id), 'Khóa học có thể chỉ tồn tại trong danh mục phía trình duyệt.');

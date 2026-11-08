@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { motion, MotionConfig } from 'motion/react';
 import {
   Activity,
   AlertTriangle,
@@ -17,6 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 import { BarChart, CHART_COLORS, Donut, Funnel, HBarList, Legend, Sparkline, TrendChart, compactNumber } from './charts';
+import { databaseStateLabel, logLevelLabel, planLabel, productCategoryLabel, roleLabel, severityLabel } from './adminLabels';
 
 /** Shape of one metric from GET /api/admin/analytics (see src/server/adminAnalytics.ts). */
 export interface ApiMetric {
@@ -57,7 +59,6 @@ const STATUS_LABEL: Record<string, string> = {
   unknown: 'Trạng thái lạ',
 };
 const KIND_LABEL: Record<string, string> = { membership: 'Gói thành viên', course: 'Khóa học', store: 'Cửa hàng' };
-const PLAN_LABEL: Record<string, string> = { free: 'Starter (Free)', student: 'Student Pro', creator: 'Creator Pro' };
 
 function todayVn(): string {
   return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
@@ -119,7 +120,7 @@ export const AdminAnalyticsDashboard: React.FC<Props> = ({ getHeaders, language,
       a.click();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      setError(t('Xuất CSV thất bại: ', 'CSV export failed: ') + (e?.message || ''));
+      setError(t('Xuất file thất bại: ', 'CSV export failed: ') + (e?.message || ''));
     }
   };
 
@@ -147,6 +148,7 @@ export const AdminAnalyticsDashboard: React.FC<Props> = ({ getHeaders, language,
   const prevText = data ? `${fmtDay(data.range.previous.from)} – ${fmtDay(data.range.previous.to)}` : '';
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="space-y-5">
       {/* Header + global filters */}
       <div className="rounded-[24px] border border-[#cbe6f7] dark:border-cyan-900/40 bg-white/90 dark:bg-[#071426]/90 p-4 sm:p-5 space-y-4 shadow-sm">
@@ -172,7 +174,7 @@ export const AdminAnalyticsDashboard: React.FC<Props> = ({ getHeaders, language,
             </button>
             <button onClick={exportCsv} disabled={!data} className="inline-flex items-center gap-1.5 rounded-full border border-[#cbe6f7] dark:border-cyan-800/40 bg-white dark:bg-[#0c1a2e] px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-cyan-400 disabled:opacity-60 min-h-9">
               <Download className="w-3.5 h-3.5 text-cyan-500" />
-              CSV
+              {t('Xuất CSV', 'Export CSV')}
             </button>
           </div>
         </div>
@@ -193,11 +195,12 @@ export const AdminAnalyticsDashboard: React.FC<Props> = ({ getHeaders, language,
                 role="radio"
                 aria-checked={preset === id}
                 onClick={() => setPreset(id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors duration-150 motion-reduce:transition-none ${
-                  preset === id ? 'bg-white dark:bg-[#0c233f] text-cyan-700 dark:text-cyan-200 shadow-sm border border-[#bae6fd] dark:border-cyan-500/50' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 border border-transparent'
+                className={`relative px-3 py-1.5 rounded-full text-xs font-semibold transition-colors duration-150 active:scale-[0.97] motion-reduce:transition-none ${
+                  preset === id ? 'text-cyan-700 dark:text-cyan-200' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                {label}
+                {preset === id && <motion.span layoutId="analytics-range-pill" aria-hidden className="absolute inset-0 rounded-full bg-white dark:bg-[#0c233f] border border-[#bae6fd] dark:border-cyan-500/50 shadow-[0_2px_8px_rgba(6,182,212,0.18)] dark:shadow-[0_4px_16px_rgba(6,182,212,0.3)]" transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.9 }} />}
+                <span className="relative z-10">{label}</span>
               </button>
             ))}
           </div>
@@ -234,12 +237,13 @@ export const AdminAnalyticsDashboard: React.FC<Props> = ({ getHeaders, language,
                 role="tab"
                 aria-selected={active}
                 onClick={() => setSection(s.id)}
-                className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold border transition-colors duration-150 motion-reduce:transition-none ${
-                  active ? 'bg-cyan-50 dark:bg-[#0c233f] border-[#bae6fd] dark:border-cyan-500/50 text-cyan-700 dark:text-cyan-200' : 'border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                className={`relative shrink-0 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors duration-150 active:scale-[0.97] motion-reduce:transition-none ${
+                  active ? 'text-cyan-700 dark:text-cyan-200' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                {s.label}
+                {active && <motion.span layoutId="analytics-section-pill" aria-hidden className="absolute inset-0 rounded-full bg-cyan-50 dark:bg-[#0c233f] border border-[#bae6fd] dark:border-cyan-500/50 shadow-[0_2px_8px_rgba(6,182,212,0.18)] dark:shadow-[0_4px_16px_rgba(6,182,212,0.3)]" transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.9 }} />}
+                <Icon className="relative z-10 w-3.5 h-3.5" />
+                <span className="relative z-10">{s.label}</span>
               </button>
             );
           })}
@@ -259,7 +263,14 @@ export const AdminAnalyticsDashboard: React.FC<Props> = ({ getHeaders, language,
       {!data && loading && <SkeletonGrid />}
 
       {data && (
-        <div className={`space-y-5 transition-opacity duration-200 motion-reduce:transition-none ${loading ? 'opacity-60' : ''}`} aria-busy={loading}>
+        <motion.div
+          key={section}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: loading ? 0.6 : 1, y: 0 }}
+          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          className="space-y-5"
+          aria-busy={loading}
+        >
           {env !== 'real' && data.revenue.kpis.simulatedValue.value > 0 && (
             <div className="flex items-start gap-2 rounded-2xl border border-violet-200 dark:border-violet-900/50 bg-violet-50/80 dark:bg-violet-950/30 p-3 text-xs text-violet-800 dark:text-violet-200">
               <Info className="w-4 h-4 shrink-0 mt-0.5" />
@@ -276,9 +287,10 @@ export const AdminAnalyticsDashboard: React.FC<Props> = ({ getHeaders, language,
           {section === 'learning' && <LearningSection d={data} fmt={fmt} vnd={vnd} vndCompact={vndCompact} onOpenTab={onOpenTab} t={t} />}
           {section === 'projects' && <ProjectsSection d={data} fmt={fmt} labels={labels} onOpenTab={onOpenTab} t={t} />}
           {section === 'health' && <HealthSection d={data} fmt={fmt} t={t} onOpenTab={onOpenTab} />}
-        </div>
+        </motion.div>
       )}
     </div>
+    </MotionConfig>
   );
 };
 
@@ -392,7 +404,7 @@ function DataQualityPanel({ d, t }: { d: any; t: T }) {
           {issues.map((f) => (
             <li key={f.id} className="rounded-xl border border-slate-200 dark:border-slate-800 p-2.5 text-xs">
               <div className="flex items-center gap-2">
-                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase ${tone(f.severity)}`}>{f.severity}</span>
+                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase ${tone(f.severity)}`}>{severityLabel(f.severity, t('vi', 'en') as 'vi' | 'en')}</span>
                 <span className="font-semibold text-slate-800 dark:text-slate-100">{f.title}</span>
                 <span className="ml-auto font-mono font-bold">{f.count}</span>
               </div>
@@ -467,7 +479,7 @@ function OverviewSection({ d, fmt, labels, vnd, vndCompact, onOpenTab, setSectio
         <Kpi t={t} fmt={fmt} icon={Users} label={t('Người dùng mới', 'New users')} metric={u.newUsers} spark={d.users.series.newUsers} onClick={() => setSection('users')} />
         <Kpi t={t} fmt={fmt} icon={Cpu} accent="text-indigo-500" label={t('Dự án mới', 'New projects')} metric={p.newProjects} spark={d.projects.series.newProjects} sparkColor={CHART_COLORS.indigo} onClick={() => setSection('projects')} />
         <Kpi t={t} fmt={fmt} icon={Users} label={t('Tổng người dùng', 'Total users')} metric={u.totalUsers} onClick={() => onOpenTab('users')} />
-        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label={t('Hoạt động 30 ngày (MAU)', 'Active 30 days (MAU)')} metric={u.mau} />
+        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label={t('Người dùng hoạt động 30 ngày qua', 'Active 30 days (MAU)')} metric={u.mau} />
         <Kpi t={t} fmt={fmt} icon={ShieldCheck} accent="text-purple-500" label={t('Thành viên trả phí (thật)', 'Paid members (real)')} metric={m.paidMembersReal} onClick={() => onOpenTab('memberships')} />
         <Kpi t={t} fmt={fmt} icon={AlertTriangle} accent="text-amber-500" label={t('Đơn đang chờ thanh toán', 'Pending payments')} metric={r.pendingCount} onClick={() => onOpenTab('transactions')} />
       </div>
@@ -509,7 +521,7 @@ function OverviewSection({ d, fmt, labels, vnd, vndCompact, onOpenTab, setSectio
             {[
               [t('Khóa học xuất bản', 'Published courses'), l.publishedCourses, 'courses'],
               [t('Sản phẩm xuất bản', 'Published products'), l.publishedProducts, 'marketplace'],
-              [t('Creator hoạt động', 'Active creators'), l.activeCreators, 'marketplace'],
+              [t('Nhà sáng tạo đang bán', 'Active creators'), l.activeCreators, 'marketplace'],
               [t('Chờ duyệt', 'Pending review'), l.pendingReview, 'courses'],
               [t('Ghi danh trong kỳ', 'Enrollments'), l.enrollments, 'courses'],
               [t('Lượt mô phỏng', 'Simulation runs'), p.simulationRuns, 'projects'],
@@ -552,7 +564,7 @@ function MembershipBars({ d, t }: { d: any; t: T }) {
       {dist.map((x) => (
         <li key={x.plan} className="text-xs">
           <div className="flex justify-between mb-1">
-            <span className="font-semibold text-slate-700 dark:text-slate-200">{PLAN_LABEL[x.plan]}</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-200">{planLabel(x.plan, t('vi', 'en') as 'vi' | 'en')}</span>
             <span className="font-mono text-slate-500">
               {x.total} ({Math.round((x.total / total) * 100)}%)
             </span>
@@ -578,8 +590,8 @@ function RevenueSection({ d, fmt, labels, vnd, vndCompact, onOpenTab, t }: any) 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 min-[420px]:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-        <Kpi t={t} fmt={fmt} accent="text-emerald-500" icon={Receipt} label={t('Doanh thu thật (net)', 'Real revenue (net)')} metric={r.netRevenue} />
-        <Kpi t={t} fmt={fmt} icon={Receipt} label={t('Tổng tiền thu (gross)', 'Gross payment volume')} metric={r.grossPaymentVolume} />
+        <Kpi t={t} fmt={fmt} accent="text-emerald-500" icon={Receipt} label={t('Doanh thu ròng (thật)', 'Real revenue (net)')} metric={r.netRevenue} />
+        <Kpi t={t} fmt={fmt} icon={Receipt} label={t('Tổng tiền đã thu (trước hoàn tiền)', 'Gross payment volume')} metric={r.grossPaymentVolume} />
         <Kpi t={t} fmt={fmt} accent="text-indigo-500" icon={Receipt} label={t('Hoàn tiền', 'Refunded')} metric={r.refundedAmount} />
         <Kpi t={t} fmt={fmt} accent="text-violet-400" icon={Receipt} label={t('Giá trị mô phỏng (không phải doanh thu)', 'Simulated value (not revenue)')} metric={r.simulatedValue} />
         <Kpi t={t} fmt={fmt} accent="text-emerald-500" icon={Activity} label={t('Tỉ lệ thanh toán thành công', 'Payment success rate')} metric={r.successRate} />
@@ -628,9 +640,9 @@ function UsersSection({ d, fmt, labels, t }: any) {
         <Kpi t={t} fmt={fmt} icon={Users} label={t('Người dùng mới', 'New users')} metric={u.newUsers} spark={d.users.series.newUsers} />
         <Kpi t={t} fmt={fmt} icon={Activity} label={t('Tốc độ tăng trưởng', 'Growth rate')} metric={u.growthRate} />
         <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label={t('Hoạt động trong kỳ', 'Active in period')} metric={u.activeInRange} />
-        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label="DAU (24h)" metric={u.dau} />
-        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label="WAU (7 ngày)" metric={u.wau} />
-        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label="MAU (30 ngày)" metric={u.mau} />
+        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label={t('Hoạt động 24 giờ qua', 'DAU (24h)')} metric={u.dau} />
+        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label={t('Hoạt động 7 ngày qua', 'WAU (7 days)')} metric={u.wau} />
+        <Kpi t={t} fmt={fmt} icon={Activity} accent="text-sky-500" label={t('Hoạt động 30 ngày qua', 'MAU (30 days)')} metric={u.mau} />
         <Kpi t={t} fmt={fmt} icon={Users} accent="text-emerald-500" label={t('Quay lại ≥ 2 ngày', 'Returning users')} metric={u.returningUsers} />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -659,7 +671,7 @@ function UsersSection({ d, fmt, labels, t }: any) {
               [t('Gói mới (thật) trong kỳ', 'New plans (real)'), m.newSubscriptionsReal],
               [t('Gói mới (mô phỏng)', 'New plans (simulated)'), m.newSubscriptionsSimulated],
               [t('Hết hạn', 'Expired'), m.expired],
-              ['Churn', m.churnRate],
+              [t('Tỉ lệ rời bỏ', 'Churn'), m.churnRate],
             ].map(([label, metric]: any) => (
               <div key={label} className="rounded-lg bg-slate-50 dark:bg-slate-900/60 p-2" title={metric.definition}>
                 <dt className="text-slate-500 dark:text-slate-400">{label}</dt>
@@ -673,7 +685,7 @@ function UsersSection({ d, fmt, labels, t }: any) {
             centerLabel={t('tài khoản', 'accounts')}
             centerValue={fmt(u.totalUsers)}
             emptyText={t('Chưa có tài khoản.', 'No accounts.')}
-            segments={Object.entries(d.users.byRole as Record<string, number>).map(([role, n], i) => ({ name: role, value: n, color: [CHART_COLORS.primary, '#a855f7', CHART_COLORS.amber, CHART_COLORS.slate][i % 4] }))}
+            segments={Object.entries(d.users.byRole as Record<string, number>).map(([role, n], i) => ({ name: roleLabel(role, t('vi', 'en') as 'vi' | 'en'), value: n, color: [CHART_COLORS.primary, '#a855f7', CHART_COLORS.amber, CHART_COLORS.slate][i % 4] }))}
           />
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             {t('Đã xác minh', 'Verified')}: <b>{fmt(u.verified)}</b> · {t('Bị khóa', 'Suspended')}: <b>{fmt(u.suspended)}</b>
@@ -695,23 +707,23 @@ function LearningSection({ d, fmt, vndCompact, onOpenTab, t }: any) {
         <Kpi t={t} fmt={fmt} icon={GraduationCap} label={t('Ghi danh trong kỳ', 'Enrollments')} metric={l.enrollments} />
         <Kpi t={t} fmt={fmt} icon={GraduationCap} accent="text-emerald-500" label={t('Hoàn thành 100%', 'Completions')} metric={l.completions} />
         <Kpi t={t} fmt={fmt} icon={Cpu} accent="text-indigo-500" label={t('Sản phẩm xuất bản', 'Published products')} metric={l.publishedProducts} onClick={() => onOpenTab('marketplace')} />
-        <Kpi t={t} fmt={fmt} icon={Users} accent="text-purple-500" label={t('Creator có nội dung', 'Creators with content')} metric={l.totalCreators} />
-        <Kpi t={t} fmt={fmt} icon={Users} accent="text-purple-500" label={t('Creator đang hoạt động', 'Active creators')} metric={l.activeCreators} />
+        <Kpi t={t} fmt={fmt} icon={Users} accent="text-purple-500" label={t('Nhà sáng tạo có nội dung', 'Creators with content')} metric={l.totalCreators} />
+        <Kpi t={t} fmt={fmt} icon={Users} accent="text-purple-500" label={t('Nhà sáng tạo đang bán', 'Active creators')} metric={l.activeCreators} />
         <Kpi t={t} fmt={fmt} icon={AlertTriangle} accent="text-amber-500" label={t('Đang chờ duyệt', 'Pending review')} metric={l.pendingReview} onClick={() => onOpenTab('courses')} />
-        <Kpi t={t} fmt={fmt} icon={Receipt} label={t('Chi trả cho Creator', 'Creator payouts')} metric={l.payouts} />
+        <Kpi t={t} fmt={fmt} icon={Receipt} label={t('Chi trả cho nhà sáng tạo', 'Creator payouts')} metric={l.payouts} />
       </div>
       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-        {t('Tổng khóa học', 'All courses')}: <b>{fmt(l.totalCourses)}</b> · {t('Tổng sản phẩm', 'All products')}: <b>{fmt(l.totalProducts)}</b> · {t('Hồ sơ Creator', 'Creator profiles')}: <b>{fmt(l.creatorProfiles)}</b> · {t('Tài khoản gói Creator Pro', 'Creator Pro accounts')}: <b>{fmt(l.creatorPlanUsers)}</b>
+        {t('Tổng khóa học', 'All courses')}: <b>{fmt(l.totalCourses)}</b> · {t('Tổng sản phẩm', 'All products')}: <b>{fmt(l.totalProducts)}</b> · {t('Hồ sơ nhà sáng tạo', 'Creator profiles')}: <b>{fmt(l.creatorProfiles)}</b> · {t('Tài khoản gói Nhà sáng tạo', 'Creator Pro accounts')}: <b>{fmt(l.creatorPlanUsers)}</b>
       </p>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <Card title={t('Khóa học nhiều học viên nhất', 'Courses by learners')} subtitle={t('Học viên khác nhau trên toàn bộ ghi danh.', 'Distinct learners over all enrollments.')}>
           <HBarList emptyText={t('Chưa có ghi danh.', 'No enrollments.')} format={(v) => String(v)} rows={(d.learning.topCourses as any[]).map((c) => ({ label: c.title, value: c.learners, sub: `${c.completed} ${t('hoàn thành', 'completed')}`, color: CHART_COLORS.blue }))} />
         </Card>
-        <Card title={t('Doanh số theo Creator', 'Sales by creator')} subtitle={t('Đơn đã thanh toán trong kỳ. Xanh: thật · Tím: mô phỏng.', 'Paid orders in the period.')}>
-          <HBarList emptyText={t('Chưa có đơn của Creator trong kỳ.', 'No creator sales.')} format={vndCompact} rows={(d.learning.salesByCreator as any[]).map((c) => ({ label: c.creatorId, value: c.real, secondary: c.mock, color: CHART_COLORS.real, sub: `${c.paidCount} ${t('đơn', 'orders')}` }))} />
+        <Card title={t('Doanh số theo nhà sáng tạo', 'Sales by creator')} subtitle={t('Đơn đã thanh toán trong kỳ. Xanh: thật · Tím: mô phỏng.', 'Paid orders in the period.')}>
+          <HBarList emptyText={t('Chưa có đơn của nhà sáng tạo trong kỳ.', 'No creator sales.')} format={vndCompact} rows={(d.learning.salesByCreator as any[]).map((c) => ({ label: c.name || c.creatorId, value: c.real, secondary: c.mock, color: CHART_COLORS.real, sub: `${c.paidCount} ${t('đơn', 'orders')}` }))} />
         </Card>
         <Card title={t('Sản phẩm theo danh mục', 'Products by category')}>
-          <Donut centerLabel={t('sản phẩm', 'products')} centerValue={fmt(l.totalProducts)} emptyText={t('Chưa có sản phẩm.', 'No products.')} segments={cats.map(([c, n], i) => ({ name: c, value: n, color: [CHART_COLORS.primary, CHART_COLORS.blue, '#a855f7', CHART_COLORS.amber, CHART_COLORS.real, CHART_COLORS.rose, CHART_COLORS.slate][i % 7] }))} />
+          <Donut centerLabel={t('sản phẩm', 'products')} centerValue={fmt(l.totalProducts)} emptyText={t('Chưa có sản phẩm.', 'No products.')} segments={cats.map(([c, n], i) => ({ name: productCategoryLabel(c, t('vi', 'en') as 'vi' | 'en'), value: n, color: [CHART_COLORS.primary, CHART_COLORS.blue, '#a855f7', CHART_COLORS.amber, CHART_COLORS.real, CHART_COLORS.rose, CHART_COLORS.slate][i % 7] }))} />
         </Card>
       </div>
     </div>
@@ -782,7 +794,7 @@ function HealthSection({ d, fmt, t, onOpenTab }: any) {
           <ul className="space-y-2 text-xs">
             <li className="flex justify-between gap-2">
               <span>{t('Cơ sở dữ liệu', 'Database')}</span>
-              {env.database === 'not_used' ? <span className="text-slate-500">{t('File cục bộ (không dùng Supabase)', 'Local files')}</span> : badge(env.database === 'ok', t('Đọc được (đồng bộ ngay trước khi trả lời)', 'Reachable'), env.database)}
+              {env.database === 'not_used' ? <span className="text-slate-500">{t('File cục bộ (không dùng Supabase)', 'Local files')}</span> : badge(env.database === 'ok', databaseStateLabel('ok', t('vi', 'en') as 'vi' | 'en'), databaseStateLabel(env.database, t('vi', 'en') as 'vi' | 'en'))}
             </li>
             <li className="flex justify-between gap-2">
               <span>{t('Chế độ thanh toán', 'Payment mode')}</span>
@@ -793,22 +805,22 @@ function HealthSection({ d, fmt, t, onOpenTab }: any) {
               {badge(env.aiConfigured, t('Đã cấu hình khóa', 'Key configured'), t('Chưa cấu hình', 'Not configured'))}
             </li>
             <li className="flex justify-between gap-2">
-              <span>{t('Email (SMTP)', 'Email (SMTP)')}</span>
+              <span>{t('Gửi email (SMTP)', 'Email (SMTP)')}</span>
               {badge(env.emailConfigured, t('Đã cấu hình', 'Configured'), t('Chưa cấu hình', 'Not configured'))}
             </li>
           </ul>
           <p className="text-[11px] text-slate-400">{t('Chỉ kiểm tra cấu hình có tồn tại; không gọi thử dịch vụ bên ngoài.', 'Only checks that configuration exists; external services are not called.')}</p>
         </Card>
-        <Card title={t('Request API của instance này', 'API requests on this instance')} subtitle={s.instance?.scope}>
+        <Card title={t('Yêu cầu API trên máy chủ đang trả lời', 'API requests on this instance')} subtitle={s.instance?.scope}>
           {s.instance ? (
             <dl className="grid grid-cols-2 gap-2 text-xs">
               {[
-                [t('Số request', 'Requests'), s.instance.requests],
-                ['HTTP 4xx', s.instance.status4xx],
-                ['HTTP 5xx', s.instance.status5xx],
-                [t('Tỉ lệ lỗi 5xx', '5xx rate'), s.instance.errorRate === null ? '—' : `${s.instance.errorRate}%`],
-                ['p50', s.instance.latencyP50 === null ? '—' : `${s.instance.latencyP50.toFixed(1)} ms`],
-                ['p95', s.instance.latencyP95 === null ? '—' : `${s.instance.latencyP95.toFixed(1)} ms`],
+                [t('Số yêu cầu', 'Requests'), s.instance.requests],
+                [t('Lỗi phía người gọi (4xx)', 'HTTP 4xx'), s.instance.status4xx],
+                [t('Lỗi máy chủ (5xx)', 'HTTP 5xx'), s.instance.status5xx],
+                [t('Tỉ lệ lỗi máy chủ', '5xx rate'), s.instance.errorRate === null ? '—' : `${s.instance.errorRate}%`],
+                [t('Độ trễ trung vị (p50)', 'p50'), s.instance.latencyP50 === null ? '—' : `${s.instance.latencyP50.toFixed(1)} ms`],
+                [t('Độ trễ p95 (95% yêu cầu nhanh hơn)', 'p95'), s.instance.latencyP95 === null ? '—' : `${s.instance.latencyP95.toFixed(1)} ms`],
               ].map(([label, v]: any) => (
                 <div key={label} className="rounded-lg bg-slate-50 dark:bg-slate-900/60 p-2">
                   <dt className="text-[10.5px] text-slate-500 dark:text-slate-400">{label}</dt>
@@ -816,7 +828,7 @@ function HealthSection({ d, fmt, t, onOpenTab }: any) {
                 </div>
               ))}
               <p className="col-span-2 text-[10.5px] text-slate-400">
-                {t('Khởi động lúc', 'Started')} {new Date(s.instance.startedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} · {t('độ trễ tính trên', 'latency from')} {s.instance.sampleSize} {t('request gần nhất', 'latest requests')}
+                {t('Khởi động lúc', 'Started')} {new Date(s.instance.startedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} · {t('độ trễ tính trên', 'latency from')} {s.instance.sampleSize} {t('yêu cầu gần nhất', 'latest requests')}
               </p>
             </dl>
           ) : (
@@ -835,7 +847,7 @@ function HealthSection({ d, fmt, t, onOpenTab }: any) {
               ['info', CHART_COLORS.primary],
             ]
               .filter(([k]) => levels[k as string])
-              .map(([k, c]) => ({ name: k as string, value: levels[k as string], color: c as string }))}
+              .map(([k, c]) => ({ name: logLevelLabel(k, t('vi', 'en') as 'vi' | 'en'), value: levels[k as string], color: c as string }))}
           />
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             {t('Cảnh báo đăng nhập', 'Auth warnings')}: <b>{s.authFailures}</b> · {t('Cảnh báo thanh toán', 'Payment warnings')}: <b>{s.paymentWarnings}</b>
@@ -851,7 +863,7 @@ function HealthSection({ d, fmt, t, onOpenTab }: any) {
               {s.recentProblems.map((l: any, i: number) => (
                 <li key={i} className="text-xs rounded-xl border border-slate-200 dark:border-slate-800 p-2.5">
                   <div className="flex items-center gap-2">
-                    <span className={`px-1.5 rounded text-[10px] font-bold uppercase ${l.level === 'error' ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300' : 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'}`}>{l.level}</span>
+                    <span className={`px-1.5 rounded text-[10px] font-bold uppercase ${l.level === 'error' ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300' : 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300'}`}>{logLevelLabel(l.level, t('vi', 'en') as 'vi' | 'en')}</span>
                     <span className="font-mono text-[11px] text-slate-500">{l.action}</span>
                     <span className="ml-auto text-[10.5px] text-slate-400">{new Date(l.timestamp).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</span>
                   </div>

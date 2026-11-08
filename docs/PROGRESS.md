@@ -245,6 +245,12 @@ Status: kiểm thử bằng giả lập trình duyệt; **chưa kiểm thử tr�
 | Website thật sau deploy | NOT RUN (cần push) |
 
 
+## A1b — Admin: sidebar gọn, hiệu ứng chuyển, Việt hóa (2026-11-08)
+- Sidebar chỉ cao vừa nội dung và ghim ở đầu khi cuộn: thẻ gốc của trang không còn `overflow-hidden` (chặn `sticky`), sidebar `self-start sticky top-3`, tối đa bằng chiều cao màn hình.
+- Hiệu ứng như navbar: mục đang chọn là pill trượt (`motion` `layoutId`, cùng thông số lò xo với navbar), áp dụng cho sidebar, drawer điện thoại, tab và bộ lọc kỳ của dashboard; nội dung mờ dần/trượt nhẹ khi đổi mục; tôn trọng "giảm chuyển động".
+- Việt hóa: file nhãn dùng chung `src/components/admin/adminLabels.ts` (vai trò, gói, trạng thái đơn/nội dung/tài khoản, mức và loại nhật ký, mức độ, danh mục, cơ sở dữ liệu); khoảng 60 chữ tiếng Anh viết cứng trong trang quản trị và dashboard; định nghĩa chỉ số trả từ server viết lại bằng tiếng Việt, không dùng tên trường; ngày giờ theo định dạng `vi-VN`; tên/mô tả gói trong `/api/admin/memberships` (chỉ chữ, không đổi giá hay quyền lợi). Mã trạng thái lưu trong dữ liệu không đổi.
+- **Kiểm tra:** server cách ly + trình duyệt: sidebar cao 695 px, vẫn ở đầu khi trang cuộn 890 px; pill chuyển sang mục mới; quét chữ 10 trang quản trị + 6 phần dashboard: không còn từ tiếng Anh (trừ tên riêng như Student Pro, Creator Studio, CSV, SMTP); điện thoại không tràn ngang. `npm run lint`, `npm run build`, `npm test` (15 bộ): PASS. Nội dung chữ trong các bản ghi nhật ký cũ là dữ liệu đã lưu nên giữ nguyên.
+
 ## H7 — Màn hình trắng sau mỗi lần deploy (2026-11-08)
 - **Hiện tượng (người dùng báo sau deploy 08321cd):** https://circuitcraft-3d.vercel.app hiện trang trắng. Kiểm tra: `/api/health` 200, trang mở mới vẫn hiển thị bình thường, `index.html` có `max-age=0`, file JS cũ trả 404.
 - **Nguyên nhân:** mỗi trang được tải theo chunk (`React.lazy`). Tab mở trước khi deploy xin chunk cũ đã bị xóa → lỗi import → không có error boundary nên React gỡ cả giao diện. Lỗi có từ trước, xảy ra ở mọi lần deploy.

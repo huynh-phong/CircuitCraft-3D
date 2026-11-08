@@ -34,11 +34,22 @@ import {
   Save,
   X,
 } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
 import { authService } from '../persistence/authService';
 import { useI18n } from '../i18n/context';
 import { Product3DViewerModal } from '../components/Product3DViewerModal';
 import { ProjectDocument } from '../domain/project/types';
 import { AdminSidebar, type AdminNavGroup } from '../components/admin/AdminSidebar';
+import {
+  accountStatusLabel,
+  contentStatusLabel,
+  logCategoryLabel,
+  logLevelLabel,
+  orderKindLabel,
+  orderStatusLabel,
+  planLabel,
+  roleLabel,
+} from '../components/admin/adminLabels';
 import { AdminAnalyticsDashboard } from '../components/admin/AdminAnalyticsDashboard';
 
 const SIDEBAR_STORAGE_KEY = 'cc3d:admin:sidebar-collapsed';
@@ -68,6 +79,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 }) => {
   const { language, formatCurrency } = useI18n();
   const [activeTab, setActiveTab] = useState<AdminTabId>('overview');
+  const reduceMotion = useReducedMotion();
+  const lang: 'vi' | 'en' = language === 'vi' ? 'vi' : 'en';
+  const L = (vi: string, en: string) => (lang === 'vi' ? vi : en);
+  const dateLocale = lang === 'vi' ? 'vi-VN' : 'en-US';
   // Tablets in portrait start with the icon-only sidebar so tables keep their width
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -353,10 +368,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         showToast(language === 'vi' ? `Đã thực hiện: ${action.toUpperCase()}` : `Course action: ${action.toUpperCase()}`);
         loadTabData();
       } else {
-        showToast(data.error || 'Action failed');
+        showToast(data.error || L('Thao tác thất bại', 'Action failed'));
       }
     } catch (err: any) {
-      showToast(err?.message || 'Action failed');
+      showToast(err?.message || L('Thao tác thất bại', 'Action failed'));
     }
   };
 
@@ -373,10 +388,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         showToast(language === 'vi' ? `Đã cập nhật trạng thái sản phẩm: ${action.toUpperCase()}` : `Updated product status: ${action.toUpperCase()}`);
         loadTabData();
       } else {
-        showToast(data.error || 'Action failed');
+        showToast(data.error || L('Thao tác thất bại', 'Action failed'));
       }
     } catch (err: any) {
-      showToast(err?.message || 'Action failed');
+      showToast(err?.message || L('Thao tác thất bại', 'Action failed'));
     }
   };
 
@@ -397,7 +412,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
         showToast(language === 'vi' ? 'Đã lưu cài đặt hệ thống' : 'System settings saved');
       }
     } catch (err: any) {
-      showToast(err?.message || 'Save failed');
+      showToast(err?.message || L('Lưu thất bại', 'Save failed'));
     } finally {
       setSavingSettings(false);
     }
@@ -483,7 +498,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
   );
 
   return (
-    <div className="flex-1 flex flex-col md:flex-row overflow-hidden bg-transparent text-slate-900 dark:text-slate-100 select-none transition-colors">
+    <div className="flex-1 flex flex-col md:flex-row md:items-start overflow-x-clip bg-transparent text-slate-900 dark:text-slate-100 select-none transition-colors">
       {/* Toast Notification */}
       {actionToast && (
         <div className="fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-cyan-950 border border-cyan-500/40 text-white text-xs font-semibold shadow-xl flex items-center gap-2">
@@ -506,14 +521,20 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
       />
 
       {/* Main Dashboard Content Area */}
-      <main className="flex-1 min-w-0 overflow-y-auto p-3 sm:p-5 md:p-7 space-y-6 pb-24 md:pb-7">
+      <motion.main
+        key={activeTab}
+        initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="flex-1 min-w-0 p-3 sm:p-5 md:p-7 space-y-6 pb-24 md:pb-7"
+      >
         {/* Top Bar with Active Section Title & Refresh */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-semibold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider">
-              <span>CircuitCraft 3D Administration</span>
+              <span>{L('Quản trị CircuitCraft 3D', 'CircuitCraft 3D Administration')}</span>
               <span>•</span>
-              <span>{language === 'vi' ? 'Dữ liệu thời gian thực' : 'Real-Time System Data'}</span>
+              <span>{L('Dữ liệu lấy trực tiếp từ máy chủ', 'Live server data')}</span>
             </div>
             <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 dark:text-white mt-0.5">
               {language === 'vi'
@@ -563,7 +584,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     setUserPage(1);
                   }}
                   placeholder={
-                    language === 'vi' ? 'Tìm theo Email, Tên hiển thị, User ID...' : 'Search by Email, Name, User ID...'
+                    language === 'vi' ? 'Tìm theo email, tên hiển thị, mã người dùng...' : 'Search by Email, Name, User ID...'
                   }
                   className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs focus:outline-none focus:border-cyan-500"
                 />
@@ -578,11 +599,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   }}
                   className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
                 >
-                  <option value="all">{language === 'vi' ? 'Tất cả Role' : 'All Roles'}</option>
-                  <option value="admin">Admin</option>
-                  <option value="creator">Creator</option>
-                  <option value="pro">Student / Pro</option>
-                  <option value="user">User</option>
+                  <option value="all">{language === 'vi' ? 'Tất cả vai trò' : 'All Roles'}</option>
+                  <option value="admin">{L('Quản trị viên', 'Admin')}</option>
+                  <option value="creator">{L('Nhà sáng tạo', 'Creator')}</option>
+                  <option value="pro">{L('Học viên Pro', 'Student / Pro')}</option>
+                  <option value="user">{L('Người dùng', 'User')}</option>
                 </select>
 
                 <select
@@ -594,9 +615,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
                 >
                   <option value="all">{language === 'vi' ? 'Tất cả Gói' : 'All Plans'}</option>
-                  <option value="free">Free</option>
-                  <option value="student">Student</option>
-                  <option value="creator">Creator</option>
+                  <option value="free">{L('Miễn phí', 'Free')}</option>
+                  <option value="student">{L('Học viên (Student Pro)', 'Student')}</option>
+                  <option value="creator">{L('Nhà sáng tạo', 'Creator')}</option>
                 </select>
 
                 <select
@@ -608,8 +629,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
                 >
                   <option value="all">{language === 'vi' ? 'Tất cả Trạng thái' : 'All Status'}</option>
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
+                  <option value="active">{L('Đang hoạt động', 'Active')}</option>
+                  <option value="suspended">{L('Tạm khóa', 'Suspended')}</option>
                 </select>
               </div>
             </div>
@@ -628,9 +649,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
-                        <th className="py-3 px-4">User</th>
-                        <th className="py-3 px-3">Role</th>
-                        <th className="py-3 px-3">{language === 'vi' ? 'Gói (Plan)' : 'Plan'}</th>
+                        <th className="py-3 px-4">{L('Người dùng', 'User')}</th>
+                        <th className="py-3 px-3">{L('Vai trò', 'Role')}</th>
+                        <th className="py-3 px-3">{language === 'vi' ? 'Gói thành viên' : 'Plan'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Dự án' : 'Projects'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Khóa học' : 'Courses'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Ngày tạo' : 'Created'}</th>
@@ -645,7 +666,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           <td className="py-3 px-4">
                             <div className="font-bold text-slate-900 dark:text-white">{u.displayName}</div>
                             <div className="text-[11px] text-slate-500 font-mono">{u.email}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">ID: {u.id}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">{L('Mã', 'ID')}: {u.id}</div>
                           </td>
                           <td className="py-3 px-3">
                             <span
@@ -657,19 +678,19 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
                               }`}
                             >
-                              {u.role}
+                              {roleLabel(u.role, lang)}
                             </span>
                           </td>
                           <td className="py-3 px-3 uppercase font-mono font-bold text-cyan-600 dark:text-cyan-400">
-                            {u.plan}
+                            {planLabel(u.plan, lang)}
                           </td>
                           <td className="py-3 px-3 font-mono">{u.projectsCount}</td>
                           <td className="py-3 px-3 font-mono">{u.coursesCount}</td>
                           <td className="py-3 px-3 text-slate-500">
-                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}
+                            {u.createdAt ? new Date(u.createdAt).toLocaleDateString(dateLocale) : '—'}
                           </td>
                           <td className="py-3 px-3 text-slate-500">
-                            {u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString() : '—'}
+                            {u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleString(dateLocale) : '—'}
                           </td>
                           <td className="py-3 px-3">
                             <span
@@ -679,7 +700,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400'
                               }`}
                             >
-                              {u.status}
+                              {accountStatusLabel(u.status, lang)}
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right">
@@ -746,7 +767,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
                     }`}
                   >
-                    {st}
+                    {orderStatusLabel(st, lang)}
                   </button>
                 ))}
               </div>
@@ -757,7 +778,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   type="text"
                   value={txSearch}
                   onChange={(e) => setTxSearch(e.target.value)}
-                  placeholder={language === 'vi' ? 'Tìm mã đơn, sản phẩm, user...' : 'Search order code, user...'}
+                  placeholder={language === 'vi' ? 'Tìm mã đơn, sản phẩm, người mua...' : 'Search order code, user...'}
                   className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs focus:outline-none focus:border-cyan-500"
                 />
               </div>
@@ -777,8 +798,8 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400">
-                        <th className="py-3 px-4">Order Code</th>
-                        <th className="py-3 px-3">User</th>
+                        <th className="py-3 px-4">{L('Mã đơn', 'Order Code')}</th>
+                        <th className="py-3 px-3">{L('Người dùng', 'User')}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Sản phẩm' : 'Product'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Loại' : 'Type'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Số tiền' : 'Amount'}</th>
@@ -796,11 +817,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           </td>
                           <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-300">{tx.userId}</td>
                           <td className="py-3 px-3 font-medium text-slate-900 dark:text-white">{tx.productName}</td>
-                          <td className="py-3 px-3 uppercase font-mono text-[10px] text-slate-500">{tx.type}</td>
+                          <td className="py-3 px-3 uppercase font-mono text-[10px] text-slate-500">{orderKindLabel(tx.type, lang)}</td>
                           <td className="py-3 px-3 font-mono font-bold">
                             {formatCurrency(tx.amount)} <span className="text-[10px] text-slate-400">{tx.currency}</span>
                           </td>
-                          <td className="py-3 px-3 text-slate-500">{tx.paymentMethod}</td>
+                          <td className="py-3 px-3 text-slate-500">{tx.paymentMethod === 'Free' ? L('Miễn phí', 'Free') : tx.paymentMethod}</td>
                           <td className="py-3 px-3">
                             <span
                               className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -811,14 +832,14 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   : 'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400'
                               }`}
                             >
-                              {tx.status}
+                              {orderStatusLabel(tx.status, lang)}
                             </span>
                           </td>
                           <td className="py-3 px-3 text-[11px] text-slate-500">
-                            <div>{tx.createdAt ? new Date(tx.createdAt).toLocaleString() : '—'}</div>
+                            <div>{tx.createdAt ? new Date(tx.createdAt).toLocaleString(dateLocale) : '—'}</div>
                             {tx.paidAt && (
                               <div className="text-emerald-600 dark:text-emerald-400 font-mono text-[10px]">
-                                ✓ {new Date(tx.paidAt).toLocaleString()}
+                                ✓ {new Date(tx.paidAt).toLocaleString(dateLocale)}
                               </div>
                             )}
                           </td>
@@ -861,7 +882,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   </div>
 
                   <div>
-                    <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">{plan.name}</h3>
+                    <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">{lang === 'vi' ? plan.nameVi || plan.name : plan.name}</h3>
                     <div className="text-2xl font-black text-cyan-600 dark:text-cyan-400 mt-1">
                       {formatCurrency(plan.price)}
                       <span className="text-xs font-normal text-slate-500"> / {plan.billingCycle}</span>
@@ -884,16 +905,16 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       {language === 'vi' ? 'Định mức & Quyền hạn (Quotas):' : 'Plan Quotas & Entitlements:'}
                     </div>
                     <div className="text-slate-600 dark:text-slate-400 font-mono text-[11px]">
-                      • Max Projects: {plan.quotas?.maxProjects}
+                      • {L('Số dự án tối đa', 'Max projects')}: {plan.quotas?.maxProjects}
                     </div>
                     <div className="text-slate-600 dark:text-slate-400 font-mono text-[11px]">
-                      • AI Queries/Day: {plan.quotas?.aiQueriesPerDay}
+                      • {L('Lượt hỏi AI mỗi ngày', 'AI queries/day')}: {plan.quotas?.aiQueriesPerDay}
                     </div>
                     <div className="text-slate-600 dark:text-slate-400 font-mono text-[11px]">
-                      • Cloud Sync: {plan.quotas?.cloudSync ? 'Enabled' : 'Local Only'}
+                      • {L('Đồng bộ đám mây', 'Cloud sync')}: {plan.quotas?.cloudSync ? L('Có', 'Enabled') : L('Chỉ trên máy', 'Local only')}
                     </div>
                     <div className="text-slate-600 dark:text-slate-400 font-mono text-[11px]">
-                      • Creator Studio: {plan.quotas?.creatorStudioAccess ? 'Enabled' : 'No'}
+                      • Creator Studio: {plan.quotas?.creatorStudioAccess ? L('Có', 'Enabled') : L('Không', 'No')}
                     </div>
                   </div>
 
@@ -945,13 +966,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         <td className="py-3 px-4">
                           <div className="font-bold text-slate-900 dark:text-white">{c.title}</div>
                           <div className="text-[10px] font-mono text-slate-400">
-                            {c.source === 'system' ? 'System Curriculum' : 'Creator Course'} • ID: {c.id}
+                            {c.source === 'system' ? L('Giáo trình hệ thống', 'System curriculum') : L('Khóa học của nhà sáng tạo', 'Creator course')} • {L('Mã', 'ID')}: {c.id}
                           </div>
                         </td>
                         <td className="py-3 px-3 text-slate-700 dark:text-slate-300">{c.author}</td>
                         <td className="py-3 px-3 font-mono font-bold">
                           {c.price === 0 ? (
-                            <span className="text-emerald-600 dark:text-emerald-400">Free</span>
+                            <span className="text-emerald-600 dark:text-emerald-400">{L('Miễn phí', 'Free')}</span>
                           ) : (
                             formatCurrency(c.price)
                           )}
@@ -976,7 +997,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                 : 'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400'
                             }`}
                           >
-                            {c.status}
+                            {contentStatusLabel(c.status, lang)}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
@@ -985,27 +1006,27 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                               <button
                                 onClick={() => handleCourseAction(c.id, 'approve')}
                                 className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
-                                title="Approve & Publish"
+                                title={L('Duyệt và xuất bản', 'Approve & Publish')}
                               >
-                                Approve
+                                {L('Duyệt', 'Approve')}
                               </button>
                               <button
                                 onClick={() => handleCourseAction(c.id, 'reject')}
                                 className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold"
-                                title="Reject"
+                                title={L('Từ chối', 'Reject')}
                               >
-                                Reject
+                                {L('Từ chối', 'Reject')}
                               </button>
                               <button
                                 onClick={() => handleCourseAction(c.id, 'unpublish')}
                                 className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold"
-                                title="Unpublish to Draft"
+                                title={L('Gỡ xuất bản, chuyển về bản nháp', 'Unpublish to Draft')}
                               >
-                                Unpublish
+                                {L('Gỡ xuất bản', 'Unpublish')}
                               </button>
                             </div>
                           ) : (
-                            <span className="text-[10px] font-mono text-slate-400">Official Built-in</span>
+                            <span className="text-[10px] font-mono text-slate-400">{L('Hệ thống (chính thức)', 'Official Built-in')}</span>
                           )}
                         </td>
                       </tr>
@@ -1071,7 +1092,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         <tr className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-slate-500">
                           <th className="py-3 px-4">{language === 'vi' ? 'Tên dự án' : 'Project Title'}</th>
                           <th className="py-3 px-3">{language === 'vi' ? 'Chủ sở hữu' : 'Owner'}</th>
-                          <th className="py-3 px-3">Revision</th>
+                          <th className="py-3 px-3">{L('Phiên bản', 'Revision')}</th>
                           <th className="py-3 px-3">{language === 'vi' ? 'Số linh kiện' : 'Components'}</th>
                           <th className="py-3 px-3">{language === 'vi' ? 'Loại bo mạch' : 'Board Type'}</th>
                           <th className="py-3 px-3">{language === 'vi' ? 'Trạng thái' : 'Status'}</th>
@@ -1083,7 +1104,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                           <tr key={p.projectId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                             <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                               <div>{p.title}</div>
-                              <div className="text-[10px] font-mono text-slate-400">ID: {p.projectId}</div>
+                              <div className="text-[10px] font-mono text-slate-400">{L('Mã', 'ID')}: {p.projectId}</div>
                             </td>
                             <td className="py-3 px-3 font-mono text-slate-600 dark:text-slate-300">
                               {p.ownerEmail || p.ownerId}
@@ -1093,11 +1114,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             <td className="py-3 px-3 font-mono">{p.boardType}</td>
                             <td className="py-3 px-3">
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                                {p.status}
+                                {contentStatusLabel(p.status, lang)}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-slate-500">
-                              {p.updatedAt ? new Date(p.updatedAt).toLocaleString() : '—'}
+                              {p.updatedAt ? new Date(p.updatedAt).toLocaleString(dateLocale) : '—'}
                             </td>
                           </tr>
                         ))}
@@ -1116,7 +1137,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       <tr className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-slate-500">
                         <th className="py-3 px-4">{language === 'vi' ? 'Tên mạch' : 'Circuit Title'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Tác giả' : 'Owner'}</th>
-                        <th className="py-3 px-3">Version</th>
+                        <th className="py-3 px-3">{L('Phiên bản', 'Version')}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Số linh kiện' : 'Components'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Loại bo mạch' : 'Board Type'}</th>
                         <th className="py-3 px-3">{language === 'vi' ? 'Trạng thái' : 'Status'}</th>
@@ -1128,7 +1149,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         <tr key={mp.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                           <td className="py-3 px-4 font-bold text-slate-900 dark:text-white">
                             <div>{mp.title}</div>
-                            <div className="text-[10px] font-mono text-slate-400">ID: {mp.id}</div>
+                            <div className="text-[10px] font-mono text-slate-400">{L('Mã', 'ID')}: {mp.id}</div>
                           </td>
                           <td className="py-3 px-3">{mp.ownerName}</td>
                           <td className="py-3 px-3 font-mono">v{mp.version}</td>
@@ -1176,10 +1197,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-slate-500">
-                          <th className="py-3 px-4">Version ID</th>
-                          <th className="py-3 px-3">Target ID</th>
-                          <th className="py-3 px-3">Revision / SemVer</th>
-                          <th className="py-3 px-3">Changelog / Note</th>
+                          <th className="py-3 px-4">{L('Mã phiên bản', 'Version ID')}</th>
+                          <th className="py-3 px-3">{L('Mã đối tượng', 'Target ID')}</th>
+                          <th className="py-3 px-3">{L('Số phiên bản', 'Revision / SemVer')}</th>
+                          <th className="py-3 px-3">{L('Ghi chú thay đổi', 'Changelog / Note')}</th>
                           <th className="py-3 px-4">{language === 'vi' ? 'Thời gian' : 'Created At'}</th>
                         </tr>
                       </thead>
@@ -1191,7 +1212,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             <td className="py-3 px-3 font-mono font-bold">{ver.versionNumber || `r${ver.revision}`}</td>
                             <td className="py-3 px-3 text-slate-600 dark:text-slate-300">{ver.note || '—'}</td>
                             <td className="py-3 px-4 text-slate-500">
-                              {ver.createdAt ? new Date(ver.createdAt).toLocaleString() : '—'}
+                              {ver.createdAt ? new Date(ver.createdAt).toLocaleString(dateLocale) : '—'}
                             </td>
                           </tr>
                         ))}
@@ -1215,10 +1236,10 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 { id: 'all' as const, label: language === 'vi' ? 'Tất cả' : 'All' },
                 { id: 'free' as const, label: language === 'vi' ? 'Miễn phí' : 'Free' },
                 { id: 'paid' as const, label: language === 'vi' ? 'Trả phí' : 'Paid' },
-                { id: 'pending' as const, label: 'Pending Review' },
-                { id: 'published' as const, label: 'Published' },
-                { id: 'rejected' as const, label: 'Rejected' },
-                { id: 'archived' as const, label: 'Archived' },
+                { id: 'pending' as const, label: L('Chờ duyệt', 'Pending review') },
+                { id: 'published' as const, label: L('Đã xuất bản', 'Published') },
+                { id: 'rejected' as const, label: L('Bị từ chối', 'Rejected') },
+                { id: 'archived' as const, label: L('Đã lưu trữ', 'Archived') },
               ].map((f) => (
                 <button
                   key={f.id}
@@ -1262,7 +1283,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-slate-500">
                           <th className="py-3 px-4">{language === 'vi' ? 'Sản phẩm mạch' : 'Product Listing'}</th>
-                          <th className="py-3 px-3">Creator</th>
+                          <th className="py-3 px-3">{L('Nhà sáng tạo', 'Creator')}</th>
                           <th className="py-3 px-3">{language === 'vi' ? 'Giá bán' : 'Price'}</th>
                           <th className="py-3 px-3">{language === 'vi' ? 'Lượt mua / Doanh thu' : 'Sales / Revenue'}</th>
                           <th className="py-3 px-3">{language === 'vi' ? 'Trạng thái' : 'Status'}</th>
@@ -1275,13 +1296,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                             <td className="py-3 px-4">
                               <div className="font-bold text-slate-900 dark:text-white">{item.title}</div>
                               <div className="text-[10px] font-mono text-slate-400">
-                                {item.source === 'system' ? 'Official Catalog' : 'Creator Listing'} • v{item.version}
+                                {item.source === 'system' ? L('Danh mục chính thức', 'Official catalog') : L('Sản phẩm của nhà sáng tạo', 'Creator listing')} • v{item.version}
                               </div>
                             </td>
                             <td className="py-3 px-3">{item.creatorName}</td>
                             <td className="py-3 px-3 font-mono font-bold">
                               {item.isFree ? (
-                                <span className="text-emerald-600 dark:text-emerald-400">Free</span>
+                                <span className="text-emerald-600 dark:text-emerald-400">{L('Miễn phí', 'Free')}</span>
                               ) : (
                                 formatCurrency(item.price)
                               )}
@@ -1302,7 +1323,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                     : 'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400'
                                 }`}
                               >
-                                {item.status}
+                                {contentStatusLabel(item.status, lang)}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-right">
@@ -1317,7 +1338,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                   }
                                   className="px-2 py-1 rounded bg-cyan-50 dark:bg-cyan-950 text-cyan-700 dark:text-cyan-300 text-[10px] font-bold"
                                 >
-                                  3D View
+                                  {L('Xem 3D', '3D View')}
                                 </button>
                                 {item.source === 'creator' && (
                                   <>
@@ -1325,19 +1346,19 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                                       onClick={() => handleMarketplaceAction(item.id, 'approve')}
                                       className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold"
                                     >
-                                      Approve
+                                      {L('Duyệt', 'Approve')}
                                     </button>
                                     <button
                                       onClick={() => handleMarketplaceAction(item.id, 'reject')}
                                       className="px-2 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold"
                                     >
-                                      Reject
+                                      {L('Từ chối', 'Reject')}
                                     </button>
                                     <button
                                       onClick={() => handleMarketplaceAction(item.id, 'unpublish')}
                                       className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold"
                                     >
-                                      Unpublish
+                                      {L('Gỡ xuất bản', 'Unpublish')}
                                     </button>
                                   </>
                                 )}
@@ -1445,7 +1466,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       <thead>
                         <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
                           <th className="py-2.5 pr-3">{language === 'vi' ? 'Ngày' : 'Date'}</th>
-                          <th className="py-2.5 px-3">{language === 'vi' ? 'User mới' : 'New Users'}</th>
+                          <th className="py-2.5 px-3">{language === 'vi' ? 'Người dùng mới' : 'New Users'}</th>
                           <th className="py-2.5 px-3">{language === 'vi' ? 'Giao dịch' : 'Transactions'}</th>
                           <th className="py-2.5 px-3">{language === 'vi' ? 'Doanh thu' : 'Revenue'}</th>
                           <th className="py-2.5 px-3">{language === 'vi' ? 'Ghi danh' : 'Enrollments'}</th>
@@ -1489,13 +1510,13 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
                 >
                   <option value="all">{language === 'vi' ? 'Tất cả Phân loại' : 'All Categories'}</option>
-                  <option value="auth">Auth</option>
-                  <option value="payment">Payment</option>
-                  <option value="admin">Admin</option>
-                  <option value="project">Project</option>
-                  <option value="course">Course</option>
-                  <option value="marketplace">Marketplace</option>
-                  <option value="system">System</option>
+                  <option value="auth">{L('Đăng nhập', 'Auth')}</option>
+                  <option value="payment">{L('Thanh toán', 'Payment')}</option>
+                  <option value="admin">{L('Quản trị', 'Admin')}</option>
+                  <option value="project">{L('Dự án', 'Project')}</option>
+                  <option value="course">{L('Khóa học', 'Course')}</option>
+                  <option value="marketplace">{L('Cửa hàng', 'Marketplace')}</option>
+                  <option value="system">{L('Hệ thống', 'System')}</option>
                 </select>
 
                 <select
@@ -1504,9 +1525,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                   className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
                 >
                   <option value="all">{language === 'vi' ? 'Tất cả Mức độ' : 'All Severities'}</option>
-                  <option value="info">Info</option>
-                  <option value="warning">Warning</option>
-                  <option value="error">Error</option>
+                  <option value="info">{L('Thông tin', 'Info')}</option>
+                  <option value="warning">{L('Cảnh báo', 'Warning')}</option>
+                  <option value="error">{L('Lỗi', 'Error')}</option>
                 </select>
               </div>
               <span className="text-xs font-mono text-slate-500">
@@ -1528,9 +1549,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                     <thead>
                       <tr className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-slate-500">
                         <th className="py-3 px-4">{language === 'vi' ? 'Thời gian' : 'Timestamp'}</th>
-                        <th className="py-3 px-3">Category</th>
-                        <th className="py-3 px-3">Action</th>
-                        <th className="py-3 px-3">Actor</th>
+                        <th className="py-3 px-3">{L('Danh mục', 'Category')}</th>
+                        <th className="py-3 px-3">{L('Hành động', 'Action')}</th>
+                        <th className="py-3 px-3">{L('Người thực hiện', 'Actor')}</th>
                         <th className="py-3 px-4">{language === 'vi' ? 'Chi tiết' : 'Details'}</th>
                       </tr>
                     </thead>
@@ -1538,11 +1559,11 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                       {logsData.map((log: any) => (
                         <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                           <td className="py-2.5 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                            {new Date(log.timestamp).toLocaleString()}
+                            {new Date(log.timestamp).toLocaleString(dateLocale)}
                           </td>
                           <td className="py-2.5 px-3">
                             <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-slate-100 dark:bg-slate-800 text-cyan-600 dark:text-cyan-400">
-                              {log.category}
+                              {logCategoryLabel(log.category, lang)}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 font-mono font-bold text-slate-800 dark:text-slate-200">
@@ -1576,7 +1597,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">Platform Name</label>
+                <label className="font-semibold text-slate-700 dark:text-slate-300">{L('Tên nền tảng', 'Platform Name')}</label>
                 <input
                   type="text"
                   value={settingsData.platformName || ''}
@@ -1586,7 +1607,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
               </div>
 
               <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 dark:text-slate-300">Support Email</label>
+                <label className="font-semibold text-slate-700 dark:text-slate-300">{L('Email hỗ trợ', 'Support Email')}</label>
                 <input
                   type="email"
                   value={settingsData.supportEmail || ''}
@@ -1610,12 +1631,12 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                 },
                 {
                   key: 'autoApproveCreatorProducts',
-                  labelVi: 'Tự động duyệt mạch mới từ Creator',
+                  labelVi: 'Tự động duyệt mạch mới từ nhà sáng tạo',
                   labelEn: 'Auto-Approve Creator Circuit Listings',
                 },
                 {
                   key: 'autoApproveCreatorCourses',
-                  labelVi: 'Tự động duyệt khóa học mới từ Creator',
+                  labelVi: 'Tự động duyệt khóa học mới từ nhà sáng tạo',
                   labelEn: 'Auto-Approve Creator Courses',
                 },
                 {
@@ -1644,7 +1665,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             <div className="pt-3 flex items-center justify-between border-t border-slate-200 dark:border-slate-800">
               <span className="text-[11px] text-slate-500 font-mono">
                 {settingsData.updatedAt
-                  ? `Updated: ${new Date(settingsData.updatedAt).toLocaleString()} (${settingsData.updatedBy || 'admin'})`
+                  ? `${L('Cập nhật', 'Updated')}: ${new Date(settingsData.updatedAt).toLocaleString(dateLocale)} (${settingsData.updatedBy || L('quản trị viên', 'admin')})`
                   : ''}
               </span>
               <button
@@ -1658,7 +1679,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
             </div>
           </form>
         )}
-      </main>
+      </motion.main>
 
       {/* ============================================================ */}
       {/* USER DETAIL MODAL (Section IX: Safe Account Inspection)      */}
@@ -1687,35 +1708,35 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
               {/* Account & Server Role/Plan Controls */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Account Info</span>
-                  <div className="font-mono text-[11px]">ID: {selectedUserDetail.user.id}</div>
-                  <div>Verified: {selectedUserDetail.user.isVerified ? 'Yes' : 'No'}</div>
-                  <div>Role: <strong className="uppercase">{selectedUserDetail.user.role}</strong></div>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">{L('Thông tin tài khoản', 'Account Info')}</span>
+                  <div className="font-mono text-[11px]">{L('Mã', 'ID')}: {selectedUserDetail.user.id}</div>
+                  <div>{L('Đã xác minh', 'Verified')}: {selectedUserDetail.user.isVerified ? L('Có', 'Yes') : L('Chưa', 'No')}</div>
+                  <div>{L('Vai trò', 'Role')}: <strong className="uppercase">{roleLabel(selectedUserDetail.user.role, lang)}</strong></div>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Membership Plan</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">{L('Gói thành viên', 'Membership Plan')}</span>
                   <select
                     value={selectedUserDetail.user.plan}
                     onChange={(e) => handleUpdateUser(selectedUserDetail.user.id, { tier: e.target.value })}
                     className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold"
                   >
-                    <option value="free">Free</option>
+                    <option value="free">{L('Miễn phí', 'Free')}</option>
                     <option value="student">Student (49,000đ)</option>
                     <option value="creator">Creator (120,000đ)</option>
                   </select>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Account Status</span>
+                  <span className="text-[10px] text-slate-400 uppercase font-bold">{L('Trạng thái tài khoản', 'Account Status')}</span>
                   <select
                     value={selectedUserDetail.user.status}
                     onChange={(e) => handleUpdateUser(selectedUserDetail.user.id, { status: e.target.value })}
                     disabled={selectedUserDetail.user.role === 'admin'}
                     className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-bold disabled:opacity-50"
                   >
-                    <option value="active">Active</option>
-                    <option value="suspended">Suspended</option>
+                    <option value="active">{L('Đang hoạt động', 'Active')}</option>
+                    <option value="suspended">{L('Tạm khóa', 'Suspended')}</option>
                   </select>
                 </div>
               </div>
@@ -1723,28 +1744,28 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
               {/* Projects, Courses, Orders, Entitlements Summary */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <div className="text-slate-400 text-[10px]">Projects</div>
+                  <div className="text-slate-400 text-[10px]">{L('Dự án', 'Projects')}</div>
                   <div className="text-base font-black font-mono">{(selectedUserDetail.projects || []).length}</div>
                 </div>
                 <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <div className="text-slate-400 text-[10px]">Enrolled Courses</div>
+                  <div className="text-slate-400 text-[10px]">{L('Khóa học đã ghi danh', 'Enrolled Courses')}</div>
                   <div className="text-base font-black font-mono">{(selectedUserDetail.courses || []).length}</div>
                 </div>
                 <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <div className="text-slate-400 text-[10px]">Orders</div>
+                  <div className="text-slate-400 text-[10px]">{L('Đơn hàng', 'Orders')}</div>
                   <div className="text-base font-black font-mono">{(selectedUserDetail.orders || []).length}</div>
                 </div>
                 <div className="p-3 rounded-xl border border-slate-200 dark:border-slate-800">
-                  <div className="text-slate-400 text-[10px]">Entitlements</div>
+                  <div className="text-slate-400 text-[10px]">{L('Quyền sở hữu', 'Entitlements')}</div>
                   <div className="text-base font-black font-mono">{(selectedUserDetail.entitlements || []).length}</div>
                 </div>
               </div>
 
               {/* Entitlements List */}
               <div className="space-y-1.5">
-                <div className="font-bold text-slate-700 dark:text-slate-300">Entitlements</div>
+                <div className="font-bold text-slate-700 dark:text-slate-300">{L('Quyền sở hữu', 'Entitlements')}</div>
                 {(selectedUserDetail.entitlements || []).length === 0 ? (
-                  <div className="text-slate-400 italic">None</div>
+                  <div className="text-slate-400 italic">{L('Không có', 'None')}</div>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
                     {selectedUserDetail.entitlements.map((ent: any, idx: number) => {
@@ -1764,9 +1785,9 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
 
               {/* Recent Activity */}
               <div className="space-y-1.5">
-                <div className="font-bold text-slate-700 dark:text-slate-300">Recent User Activity</div>
+                <div className="font-bold text-slate-700 dark:text-slate-300">{L('Hoạt động gần đây', 'Recent User Activity')}</div>
                 {(selectedUserDetail.activity || []).length === 0 ? (
-                  <div className="text-slate-400 italic">No recorded events</div>
+                  <div className="text-slate-400 italic">{L('Chưa có sự kiện nào', 'No recorded events')}</div>
                 ) : (
                   <div className="space-y-1 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl p-2.5">
                     {selectedUserDetail.activity.map((act: any) => (
@@ -1774,7 +1795,7 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
                         <span className="font-mono font-semibold text-cyan-600 dark:text-cyan-400">{act.action}</span>
                         <span className="text-slate-600 dark:text-slate-300 truncate max-w-xs">{act.details}</span>
                         <span className="text-slate-400 font-mono text-[10px]">
-                          {new Date(act.timestamp).toLocaleString()}
+                          {new Date(act.timestamp).toLocaleString(dateLocale)}
                         </span>
                       </div>
                     ))}
@@ -1825,20 +1846,20 @@ export const AdminDashboardPage: React.FC<AdminDashboardPageProps> = ({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Status:</span>
-                <span className="font-mono font-bold uppercase">{selectedOrderDetail.status}</span>
+                <span className="font-mono font-bold uppercase">{orderStatusLabel(selectedOrderDetail.status, lang)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Payment Method:</span>
-                <span>{selectedOrderDetail.paymentMethod}</span>
+                <span>{selectedOrderDetail.paymentMethod === 'Free' ? L('Miễn phí', 'Free') : selectedOrderDetail.paymentMethod}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Created At:</span>
-                <span>{new Date(selectedOrderDetail.createdAt).toLocaleString()}</span>
+                <span>{new Date(selectedOrderDetail.createdAt).toLocaleString(dateLocale)}</span>
               </div>
               {selectedOrderDetail.paidAt && (
                 <div className="flex justify-between text-emerald-500">
                   <span>Paid At:</span>
-                  <span>{new Date(selectedOrderDetail.paidAt).toLocaleString()}</span>
+                  <span>{new Date(selectedOrderDetail.paidAt).toLocaleString(dateLocale)}</span>
                 </div>
               )}
             </div>

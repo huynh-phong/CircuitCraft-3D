@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { motion, MotionConfig } from 'motion/react';
 import { ChevronsLeft, ChevronsRight, ShieldCheck, X, Menu } from 'lucide-react';
 
 export interface AdminNavItem {
@@ -72,7 +73,7 @@ export const AdminSidebar: React.FC<Props> = ({
     };
   }, [mobileOpen, onMobileOpenChange]);
 
-  const renderNav = (rail: boolean) => (
+  const renderNav = (rail: boolean, surface: 'panel' | 'drawer') => (
     // The icon rail must not clip its tooltips, so only the full panel scrolls
     <nav aria-label={t('Điều hướng quản trị', 'Admin navigation')} className={`flex-1 px-2.5 py-3 space-y-4 ${rail ? 'overflow-visible' : 'overflow-y-auto overflow-x-hidden'}`}>
       {groups.map((group) => (
@@ -97,17 +98,27 @@ export const AdminSidebar: React.FC<Props> = ({
                     }}
                     aria-current={active ? 'page' : undefined}
                     aria-label={rail ? item.label : undefined}
-                    className={`relative w-full flex items-center gap-3 rounded-full text-[13px] font-semibold transition-[background-color,color,box-shadow] duration-200 ease-out motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 coarse:min-h-11 ${
+                    className={`relative w-full flex items-center gap-3 rounded-full text-[13px] font-semibold transition-colors duration-150 active:scale-[0.98] motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 coarse:min-h-11 ${
                       rail ? 'justify-center h-11 w-11 mx-auto' : 'px-3.5 py-2.5'
                     } ${
                       active
-                        ? 'bg-[#e0f2fe] text-cyan-800 border border-[#bae6fd] shadow-[0_2px_10px_rgba(6,182,212,0.18)] dark:bg-gradient-to-r dark:from-[#0c2a48] dark:to-[#0b2140] dark:text-cyan-200 dark:border-cyan-500/40 dark:shadow-[0_0_18px_rgba(6,182,212,0.22),inset_0_1px_0_rgba(255,255,255,0.05)]'
-                        : 'border border-transparent text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#0c1a2e] hover:text-slate-900 dark:hover:text-slate-100'
+                        ? 'text-cyan-800 dark:text-cyan-200'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#0c1a2e] hover:text-slate-900 dark:hover:text-slate-100'
                     }`}
                   >
-                    {active && !rail && <span className="absolute left-1 top-1/2 -translate-y-1/2 h-4 w-1 rounded-full bg-cyan-500 dark:bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.7)]" aria-hidden />}
-                    <Icon className={`w-[18px] h-[18px] shrink-0 ${active ? 'text-cyan-600 dark:text-cyan-300' : ''}`} />
-                    {!rail && <span className="truncate">{item.label}</span>}
+                    {/* Same sliding pill as the navbar: it glides to the newly selected item */}
+                    {active && (
+                      <motion.span
+                        layoutId={`admin-nav-pill-${surface}-${rail ? 'rail' : 'full'}`}
+                        aria-hidden
+                        className="absolute inset-0 rounded-full bg-[#e0f2fe] border border-[#bae6fd] shadow-[0_2px_10px_rgba(6,182,212,0.18)] dark:bg-gradient-to-r dark:from-[#0c2a48] dark:to-[#0b2140] dark:border-cyan-500/40 dark:shadow-[0_0_18px_rgba(6,182,212,0.22),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                        transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.9 }}
+                      >
+                        {!rail && <span className="absolute left-1 top-1/2 -translate-y-1/2 h-4 w-1 rounded-full bg-cyan-500 dark:bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.7)]" />}
+                      </motion.span>
+                    )}
+                    <Icon className={`relative z-10 w-[18px] h-[18px] shrink-0 transition-transform duration-150 ${active ? 'text-cyan-600 dark:text-cyan-300 scale-105' : ''}`} />
+                    {!rail && <span className="relative z-10 truncate">{item.label}</span>}
                   </button>
                   {rail && (
                     <span
@@ -135,7 +146,7 @@ export const AdminSidebar: React.FC<Props> = ({
       </div>
       {!rail && (
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-extrabold tracking-tight text-slate-900 dark:text-white truncate">Admin Console</div>
+          <div className="text-[13px] font-extrabold tracking-tight text-slate-900 dark:text-white truncate">{t('Bảng quản trị', 'Admin Console')}</div>
           <div className="flex items-center gap-1.5 text-[10.5px] text-slate-500 dark:text-slate-400 truncate" title={adminEmail}>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" aria-hidden />
             <span className="truncate">{t('Đã xác thực phía máy chủ', 'Verified by the server')}</span>
@@ -147,7 +158,7 @@ export const AdminSidebar: React.FC<Props> = ({
   );
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       {/* Phone / small tablet: menu button + drawer */}
       <div className="md:hidden px-3 pt-3">
         <button
@@ -191,19 +202,19 @@ export const AdminSidebar: React.FC<Props> = ({
                 <X className="w-4 h-4" />
               </button>
             )}
-            {renderNav(false)}
+            {renderNav(false, 'drawer')}
           </div>
         </div>
       )}
 
       {/* Tablet / desktop: floating panel that folds into an icon rail */}
       <aside
-        className={`hidden md:flex flex-col shrink-0 my-3 ml-3 rounded-[28px] border border-[#cbe6f7] dark:border-cyan-800/40 bg-white/95 dark:bg-[#061224]/95 backdrop-blur-xl shadow-[0_12px_36px_rgba(6,182,212,0.10)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(6,182,212,0.10)] transition-[width] duration-200 ease-out motion-reduce:transition-none ${
+        className={`hidden md:flex flex-col shrink-0 self-start sticky top-3 my-3 ml-3 max-h-[calc(var(--app-height,100dvh)-7.5rem)] rounded-[28px] border border-[#cbe6f7] dark:border-cyan-800/40 bg-white/95 dark:bg-[#061224]/95 backdrop-blur-xl shadow-[0_12px_36px_rgba(6,182,212,0.10)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6),0_0_25px_rgba(6,182,212,0.10)] transition-[width] duration-200 ease-out motion-reduce:transition-none ${
           collapsed ? 'w-[76px]' : 'w-[248px]'
         }`}
       >
         {header(collapsed)}
-        {renderNav(collapsed)}
+        {renderNav(collapsed, 'panel')}
         <div className="p-2.5 border-t border-slate-200/80 dark:border-cyan-900/40">
           <button
             type="button"
@@ -219,6 +230,6 @@ export const AdminSidebar: React.FC<Props> = ({
           </button>
         </div>
       </aside>
-    </>
+    </MotionConfig>
   );
 };
