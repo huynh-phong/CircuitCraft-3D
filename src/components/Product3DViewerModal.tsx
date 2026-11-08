@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useRef } from 'react';
+import { lazyWithReload } from '../appRecovery';
 import {
   X,
   Eye,
@@ -23,7 +24,7 @@ import { paymentService } from '../billing/paymentService';
 import { projectRepositoryManager } from '../persistence/repositoryManager';
 import { Portal } from './ui/Portal';
 
-const ThreeScene = lazy(() => import('../scene/ThreeScene').then((m) => ({ default: m.ThreeScene })));
+const ThreeScene = lazyWithReload(() => import('../scene/ThreeScene').then((m) => ({ default: m.ThreeScene })));
 
 interface Product3DViewerModalProps {
   productId: string;

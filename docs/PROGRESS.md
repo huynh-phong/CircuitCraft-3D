@@ -245,6 +245,12 @@ Status: kiểm thử bằng giả lập trình duyệt; **chưa kiểm thử tr�
 | Website thật sau deploy | NOT RUN (cần push) |
 
 
+## H7 — Màn hình trắng sau mỗi lần deploy (2026-11-08)
+- **Hiện tượng (người dùng báo sau deploy 08321cd):** https://circuitcraft-3d.vercel.app hiện trang trắng. Kiểm tra: `/api/health` 200, trang mở mới vẫn hiển thị bình thường, `index.html` có `max-age=0`, file JS cũ trả 404.
+- **Nguyên nhân:** mỗi trang được tải theo chunk (`React.lazy`). Tab mở trước khi deploy xin chunk cũ đã bị xóa → lỗi import → không có error boundary nên React gỡ cả giao diện. Lỗi có từ trước, xảy ra ở mọi lần deploy.
+- **Sửa:** `src/appRecovery.tsx` — `lazyWithReload` (mọi `lazy` trong `App.tsx`, `Product3DViewerModal`, `ChatMarkdown`), sự kiện `vite:preloadError`: tự tải lại trang một lần (chặn lặp 30 giây); `AppErrorBoundary` bọc toàn ứng dụng: lỗi còn lại hiện thông báo + nút "Tải lại trang" thay vì trang trắng.
+- **Kiểm tra:** bản build thật chạy `vite preview`, xóa chunk trang Khóa học sau khi trang đã mở rồi chuyển trang → trang tự tải lại; vì chunk vẫn thiếu nên hiện thông báo, không lặp, không trắng: PASS. `npm run lint`, `npm run build`, `npm test` (15 bộ): PASS. Trên website thật: NOT RUN (cần deploy).
+
 ## A1 — Admin Console: kiểm toán dữ liệu & dashboard phân tích (2026-11-08)
 - **Status:** [PASS] cho phạm vi đã nêu; giới hạn ở báo cáo.
 - **Báo cáo:** `docs/ADMIN_ANALYTICS_DATA_AUDIT.md` (kiểm toán, công thức, số liệu không tính được, bảo mật) và `docs/ADMIN_DASHBOARD_IMPLEMENTATION_REPORT.md` (kiến trúc, file, API, kiểm thử).

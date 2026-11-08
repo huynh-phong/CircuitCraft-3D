@@ -1,6 +1,7 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense } from 'react';
+import { lazyWithReload } from '../../appRecovery';
 
-const Renderer = lazy(() => import('./ChatMarkdownRenderer'));
+const Renderer = lazyWithReload(() => import('./ChatMarkdownRenderer'));
 
 /**
  * Formatted AI answer (Markdown, tables, LaTeX formulas). The renderer and KaTeX load the first time

@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import { lazyWithReload } from './appRecovery';
 import confetti from 'canvas-confetti';
 import {
   ProjectDocument,
@@ -73,27 +74,27 @@ import { LandscapeGate } from './components/layout/LandscapeGate';
 import { useDeviceProfile } from './hooks/useDeviceProfile';
 
 // Route-level code splitting: each page and the 3D editor load on demand
-const AuthModal = lazy(() => import('./components/AuthModal').then((m) => ({ default: m.AuthModal })));
-const LandingPage = lazy(() => import('./pages/LandingPage').then((m) => ({ default: m.LandingPage })));
-const ProjectsPage = lazy(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
-const CoursesPage = lazy(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
-const LessonsPage = lazy(() => import('./pages/LessonsPage').then((m) => ({ default: m.LessonsPage })));
-const MarketplacePage = lazy(() => import('./pages/MarketplacePage').then((m) => ({ default: m.MarketplacePage })));
-const MembershipPage = lazy(() => import('./pages/MembershipPage').then((m) => ({ default: m.MembershipPage })));
-const AccountPage = lazy(() => import('./pages/AccountPage').then((m) => ({ default: m.AccountPage })));
-const CreatorDashboardPage = lazy(() => import('./pages/CreatorDashboardPage').then((m) => ({ default: m.CreatorDashboardPage })));
-const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
-const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
-const MyCoursesPage = lazy(() => import('./pages/MyCoursesPage').then((m) => ({ default: m.MyCoursesPage })));
-const TheoryLearningPage = lazy(() => import('./pages/TheoryLearningPage').then((m) => ({ default: m.TheoryLearningPage })));
-const Toolbar = lazy(() => import('./components/Toolbar').then((m) => ({ default: m.Toolbar })));
-const ComponentLibrary = lazy(() => import('./components/ComponentLibrary').then((m) => ({ default: m.ComponentLibrary })));
-const PropertyPanel = lazy(() => import('./components/PropertyPanel').then((m) => ({ default: m.PropertyPanel })));
-const ValidationPanel = lazy(() => import('./components/ValidationPanel').then((m) => ({ default: m.ValidationPanel })));
-const MinibotWidget = lazy(() => import('./components/MinibotWidget').then((m) => ({ default: m.MinibotWidget })));
-const AIProposalModal = lazy(() => import('./components/AIProposalModal').then((m) => ({ default: m.AIProposalModal })));
-const PresentationControls = lazy(() => import('./components/PresentationControls').then((m) => ({ default: m.PresentationControls })));
-const ThreeScene = lazy(() => import('./scene/ThreeScene').then((m) => ({ default: m.ThreeScene })));
+const AuthModal = lazyWithReload(() => import('./components/AuthModal').then((m) => ({ default: m.AuthModal })));
+const LandingPage = lazyWithReload(() => import('./pages/LandingPage').then((m) => ({ default: m.LandingPage })));
+const ProjectsPage = lazyWithReload(() => import('./pages/ProjectsPage').then((m) => ({ default: m.ProjectsPage })));
+const CoursesPage = lazyWithReload(() => import('./pages/CoursesPage').then((m) => ({ default: m.CoursesPage })));
+const LessonsPage = lazyWithReload(() => import('./pages/LessonsPage').then((m) => ({ default: m.LessonsPage })));
+const MarketplacePage = lazyWithReload(() => import('./pages/MarketplacePage').then((m) => ({ default: m.MarketplacePage })));
+const MembershipPage = lazyWithReload(() => import('./pages/MembershipPage').then((m) => ({ default: m.MembershipPage })));
+const AccountPage = lazyWithReload(() => import('./pages/AccountPage').then((m) => ({ default: m.AccountPage })));
+const CreatorDashboardPage = lazyWithReload(() => import('./pages/CreatorDashboardPage').then((m) => ({ default: m.CreatorDashboardPage })));
+const AdminDashboardPage = lazyWithReload(() => import('./pages/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
+const NotFoundPage = lazyWithReload(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage })));
+const MyCoursesPage = lazyWithReload(() => import('./pages/MyCoursesPage').then((m) => ({ default: m.MyCoursesPage })));
+const TheoryLearningPage = lazyWithReload(() => import('./pages/TheoryLearningPage').then((m) => ({ default: m.TheoryLearningPage })));
+const Toolbar = lazyWithReload(() => import('./components/Toolbar').then((m) => ({ default: m.Toolbar })));
+const ComponentLibrary = lazyWithReload(() => import('./components/ComponentLibrary').then((m) => ({ default: m.ComponentLibrary })));
+const PropertyPanel = lazyWithReload(() => import('./components/PropertyPanel').then((m) => ({ default: m.PropertyPanel })));
+const ValidationPanel = lazyWithReload(() => import('./components/ValidationPanel').then((m) => ({ default: m.ValidationPanel })));
+const MinibotWidget = lazyWithReload(() => import('./components/MinibotWidget').then((m) => ({ default: m.MinibotWidget })));
+const AIProposalModal = lazyWithReload(() => import('./components/AIProposalModal').then((m) => ({ default: m.AIProposalModal })));
+const PresentationControls = lazyWithReload(() => import('./components/PresentationControls').then((m) => ({ default: m.PresentationControls })));
+const ThreeScene = lazyWithReload(() => import('./scene/ThreeScene').then((m) => ({ default: m.ThreeScene })));
 
 export const App: React.FC = () => {
   const { language, t } = useI18n();
