@@ -286,7 +286,6 @@ export const Product3DViewerModal: React.FC<Product3DViewerModalProps> = ({
               isPresentationMode={true}
               isExplodedView={isExploded}
               qualityPreset="balanced"
-              showGrid={true}
             />
             </Suspense>
             </>

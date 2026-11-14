@@ -125,3 +125,12 @@ Depends on: R1-SECRETS
 Mô tả: chuyển lưu trữ sang Supabase, OTP/rate limit/phiên dùng chung, Express trên Vercel Function, media trên Storage, bảo vệ nội dung trả phí, giữ Mock Payment.
 Acceptance: deploy thành công trên Vercel với URL hoạt động; các mục kiểm tra trong `docs/DEPLOYMENT.md` (bước 10, 12, 13) đạt trên Preview và Production.
 Hiện trạng: toàn bộ code, migration, script di trú, tài liệu và test mô phỏng đã xong và đạt (xem `docs/PROGRESS.md`). Blocker: chưa có quyền Vercel/Supabase để chạy migration, chép dữ liệu, deploy và kiểm thử online; `vercel build` chưa chạy được trên máy này.
+
+## Task ID: VISUAL-1 — Bàn làm việc điện tử 3D, model linh kiện v2, thư viện tài nguyên 3D
+Status: [BLOCKED]
+Depends on: R6-3D, C1
+Mô tả: thảm ESD + dụng cụ trang trí (chỉ trong scene), gỡ lưới hiển thị, model linh kiện chi tiết dựng từ thư viện `src/scene/assets`, giữ bộ model cũ (`modelSet: 'legacy' | 'v2'`), marker chân khi nối dây.
+Acceptance: không đổi ID linh kiện / pin / anchor; dự án cũ mở đúng; trang trí không vào ProjectDocument, không bắt raycast; tài nguyên GPU dùng chung và được giải phóng; tôn trọng mức Chất lượng; so sánh draw call / tam giác / FPS trước-sau; lint/build/test PASS; báo cáo `docs/reports/VISUAL-1_2026-11-14.md`.
+Hiện trạng (2026-11-14): toàn bộ code đã xong và đã kiểm chứng: Giai đoạn 0–4, 23 spec v2 (Đợt 1 + Đợt 2), bàn làm việc, marker chân + làm mờ khi nối dây, script `npm run export:models`; `test/visual_assets.test.ts` 197/197; lint/build/test PASS.
+Blocker: chưa đo được FPS (khung trình duyệt của công cụ bị ẩn, không tự tạo số liệu); chưa kiểm tra trên Workspace thật sau đăng nhập và thiết bị thật / iOS / Android. Draw call tăng so với baseline (196 → 247 có trang trí), cần số FPS thật để đánh giá.
+Chưa làm (task sau): chỉnh riêng material trong GLB Arduino/Breadboard; LOD theo khoảng cách camera; kiểm tra hình ảnh mô phỏng Đợt 2 trên trình duyệt. Bộ legacy chỉ gỡ khi chủ dự án xác nhận.

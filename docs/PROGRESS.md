@@ -1,5 +1,39 @@
 # CircuitCraft 3D — Nhật ký thực thi (PROGRESS)
 
+
+## VISUAL-1 — Bàn làm việc 3D, model linh kiện v2, thư viện tài nguyên 3D (2026-11-14)
+- **Status:** BLOCKED. Toàn bộ code đã xong và đã kiểm chứng; blocker là số đo FPS và kiểm tra trên Workspace thật / thiết bị thật. Báo cáo đầy đủ: `docs/reports/VISUAL-1_2026-11-14.md`.
+- **Đã hoàn thành:**
+  - Kiểm kê: anchor chân chỉ có một nguồn là `definitions.ts`; chấm vàng và nút lưới chỉ là hiển thị; snapping dùng `board.gridSpacing` (giữ nguyên).
+  - Model cũ chuyển nguyên trạng sang `src/scene/models/legacy/`; registry `src/scene/models/index.ts` chọn `modelSet: 'legacy' | 'v2'` (mặc định `v2`; đổi bằng `?modelSet=legacy`, `localStorage['cc3d.modelSet']`, `VITE_MODEL_SET`).
+  - Thư viện `src/scene/assets/` (units, quality, cache, materials, primitives, builders, pins, specs, registry, README).
+  - Gỡ nút lưới và chấm vàng (bộ v2); board v2 có lỗ bắt vít 4 góc và chữ "CircuitCraft".
+  - Bàn làm việc `src/scene/workbench/`: thảm ESD, mặt bàn, nút + dây tiếp đất, 10 món trang trí, phông nền gradient + sương, environment map nhẹ; giảm theo Chất lượng; nút bật/tắt trên Toolbar (lưu `localStorage['cc3d.workbenchDecor']`).
+  - Model v2: **23 spec** cho 23/25 linh kiện thư viện. Đợt 1: nguồn DC, điện trở, LED 5mm, công tắc, biến trở, cọc đấu dây. Đợt 2: tụ hóa, nút nhấn, diode, còi, LDR, rơ-le, NE555, 74HC08, LM35, transistor, LED RGB, LED 7 đoạn, OLED, HC-SR04, servo SG90, động cơ DC, 7805. Arduino Uno và Breadboard giữ GLB.
+  - Marker chân khi nối dây (một InstancedMesh, 5 trạng thái màu), cảnh tối đi khi nối dây, nhãn tên chân khi chạm.
+  - `npm run export:models`: xuất 23 model ra `.glb`.
+- **File / hợp đồng thay đổi:** xem mục 4 của báo cáo. Không đổi `src/domain/**`, `src/persistence/**`, `src/server/**`. Prop `showGrid` của `ThreeScene`/`Toolbar` bị thay bằng `showWorkbenchDecor`; khóa i18n `editor.grid` → `editor.workbenchDecor`.
+
+| Kiểm tra (lệnh thực tế) | Kết quả |
+|---|---|
+| `npm run lint` | PASS |
+| `npm run build` | PASS |
+| `npm test` (15 bộ cũ + `visual_assets`) | PASS, exit 0 |
+| `npx tsx test/visual_assets.test.ts` | PASS 197/197 |
+| `npm run export:models` | PASS 23/23 |
+| Trang thử `test/harness/scene.html` (ThreeScene thật, StrictMode): mở 2 dự án mẫu, nối dây mới, Undo/Redo, Mô phỏng (LED sáng), marker chân, 23 model v2, mức Thấp/Cao, viewport mobile ngang 812×375, nhãn chân khi chạm | PASS |
+| `renderer.info` sau các vòng bật/tắt trang trí, thêm/xóa linh kiện, đổi legacy ↔ v2 | PASS — geometry / texture quay về giá trị cũ |
+| Draw call / tam giác trước → sau (dự án mẫu, Chuẩn) | 196 / 50.312 → 247 / 60.058 có trang trí; 208 / 43.032 tắt trang trí; Thấp 187 / 27.874 |
+| FPS trước/sau | BLOCKED — khung trình duyệt của công cụ bị ẩn, rAF gần như không chạy |
+| Nhãn chân khi hover chuột; preset Đặt lại; hình ảnh mô phỏng Đợt 2 trên trình duyệt; đổi Chất lượng nhiều vòng trên trình duyệt | NOT RUN |
+| Workspace thật sau đăng nhập; thiết bị thật; iOS / Android | NOT RUN |
+
+- **Lỗi đã sửa trong lúc kiểm tra:** lớp marker chân bị null khi React StrictMode chạy lại effect (cảnh lỗi ở lần mount thứ hai trong dev).
+- **Lỗi / rủi ro còn mở:** draw call tăng so với baseline (chưa có FPS để đánh giá); hộp pin không phải cỡ AA thật vì phải vừa footprint 30×20 mm của definition; material trong GLB Arduino/Breadboard chưa chỉnh riêng (chỉ nhận environment map).
+- **Cấu hình / quyền còn thiếu:** tài khoản thử trên backend để kiểm tra Workspace thật; thiết bị thật để đo hiệu năng.
+- **Bước nhỏ tiếp theo:** chạy `npm run dev`, đăng nhập, mở một dự án cũ và đo FPS ở 3 mức Chất lượng trên máy thật và một điện thoại; nếu đạt thì chuyển VISUAL-1 sang PASS.
+- **Commit:** chưa có.
+
 ## 2026-11-05 — Đợt HARDENING-2026-11 (H1–H6)
 
 Commit/checkpoint: **chưa commit**. Điểm khôi phục: `.backups/src-20261105-*/` (`worktree.tar` không chứa `.env`, và bản sao `data/`), cùng tag `pre-repair-checkpoint-20261101-171612`.

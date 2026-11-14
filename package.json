@@ -11,7 +11,8 @@
     "build:vercel": "node scripts/build-vercel.mjs",
     "migrate:supabase": "tsx scripts/migrate-to-supabase.ts",
     "lint": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
-    "test": "tsx test/verify.ts && tsx test/task_2_1.test.ts && tsx test/task_2_2.test.ts && tsx test/task_2_3.test.ts && tsx test/task_3_1.test.ts && tsx test/e2e_isolation.test.ts && tsx test/domain_simulation_ai.test.ts && tsx test/components_simulation.test.ts && tsx test/scene_incremental.test.ts && tsx test/ai_chat.test.ts && tsx test/admin_analytics.test.ts && tsx test/security_payment.integration.test.ts && tsx test/deploy_hardening.integration.test.ts && tsx test/serverless_persistence.integration.test.ts && tsx test/vercel_output.test.ts",
+    "test": "tsx test/verify.ts && tsx test/task_2_1.test.ts && tsx test/task_2_2.test.ts && tsx test/task_2_3.test.ts && tsx test/task_3_1.test.ts && tsx test/e2e_isolation.test.ts && tsx test/domain_simulation_ai.test.ts && tsx test/components_simulation.test.ts && tsx test/scene_incremental.test.ts && tsx test/visual_assets.test.ts && tsx test/ai_chat.test.ts && tsx test/admin_analytics.test.ts && tsx test/security_payment.integration.test.ts && tsx test/deploy_hardening.integration.test.ts && tsx test/serverless_persistence.integration.test.ts && tsx test/vercel_output.test.ts",
+    "export:models": "tsx scripts/export-models.ts",
     "test:supabase-live": "tsx test/user_data_isolation.test.ts"
   },
   "dependencies": {

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="vi" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CircuitCraft 3D — Scene harness (dev only)</title>
+    <style>
+      html, body, #root { margin: 0; width: 100%; height: 100%; background: #090d16; }
+    </style>
+  </head>
+  <body>
+    <!--
+      Trang thử cảnh 3D, CHỈ dùng khi phát triển: `npx vite --port 5179` rồi mở /test/harness/scene.html.
+      Không nằm trong bản build (vite build chỉ lấy index.html), không gọi API, không cần đăng nhập.
+    -->
+    <div id="root"></div>
+    <script type="module" src="./sceneHarness.tsx"></script>
+  </body>
+</html>

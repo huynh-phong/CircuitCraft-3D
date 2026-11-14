@@ -1,17 +1,22 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { clearGroup, disposeObjectTree } from './disposal';
 import { ReconcileStats, reconcileChildren } from './sceneReconciler';
 import { ProjectDocument, ComponentInstance, Connection, Vector3D, BoardDefinition } from '../domain/project/types';
 import { COMPONENT_DEFINITION_MAP } from '../domain/components/definitions';
 import { SceneMaterialRegistry } from './materials';
-import { applyComponentTransform, componentVisualSignature, createComponentMesh } from './proceduralModels';
+import { applyComponentTransform, componentVisualSignature, createComponentMesh, getModelSet, setModelSet, subscribeModelSet } from './models';
 import { componentLayoutHash, createPreviewWireMesh, createWireMesh, wireVisualSignature } from './wires';
 import { Minibot3D, MinibotState } from './minibot3D';
 import { snapToGrid, calculatePinWorldPosition } from '../domain/project/coordinates';
 import { SimulationResult } from '../domain/simulation/types';
 import { isSwitchClosed } from '../domain/simulation/engine';
 import { useI18n } from '../i18n/context';
+import { PinMarkerItem, PinMarkerLayer, PinMarkerState } from './assets/pins/markers';
+import { addBoardDetails } from './assets/builders/boardDetails';
+import { buildWorkbench, workbenchKeepOut, workbenchSignature } from './workbench/workbench';
+import { backdropStyle, createBackdropTexture } from './workbench/backdrop';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   getBoardPerimeter,
   getClosestPointOnPerimeter,
@@ -45,7 +50,8 @@ export interface ThreeSceneProps {
   qualityPreset?: 'low' | 'balanced' | 'high';
   /** Touch / pen: press and hold a part (opens its properties). */
   onLongPressComponent?: (componentId: string) => void;
-  showGrid?: boolean;
+  /** Decorative tools around the workbench (scene only, never part of the project). Default on. */
+  showWorkbenchDecor?: boolean;
   activeWireColor?: string;
   isRightInspectorCollapsed?: boolean;
   onToggleRightInspector?: () => void;
@@ -92,7 +98,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   minibotTargetCompId,
   minibotState = 'idle',
   qualityPreset = 'balanced',
-  showGrid = true,
+  showWorkbenchDecor = true,
   activeWireColor = '#06b6d4',
   isRightInspectorCollapsed = false,
   onToggleRightInspector,
@@ -101,6 +107,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   onLongPressComponent,
 }) => {
   const { effectiveTheme, language } = useI18n();
+  // Which component models are drawn ('v2' | 'legacy'): a rendering preference, never project data
+  const modelSet = useSyncExternalStore(subscribeModelSet, getModelSet, getModelSet);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // The render loop outlives individual renders: it reads the latest props through this ref
@@ -121,6 +129,17 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   const resizeHandlesGroupRef = useRef<THREE.Group>(new THREE.Group());
   const componentsGroupRef = useRef<THREE.Group>(new THREE.Group());
   const wiresGroupRef = useRef<THREE.Group>(new THREE.Group());
+  // Scene-only layers: the workbench (mat, desk, decoration) and the wiring pin markers
+  const workbenchGroupRef = useRef<THREE.Group>(new THREE.Group());
+  const pinMarkersRef = useRef<PinMarkerLayer | null>(null);
+  if (!pinMarkersRef.current) pinMarkersRef.current = new PinMarkerLayer();
+  const backdropTextureRef = useRef<THREE.Texture | null>(null);
+  /** Scene lights with their normal intensities, so the wiring tool can dim the scene. */
+  const sceneLightsRef = useRef<Array<{ light: THREE.Light; base: number }>>([]);
+  const environmentBaseRef = useRef(0);
+  /** A pin label shown after a touch stays up until this time (ms). */
+  const touchLabelUntilRef = useRef(0);
+  const touchLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewWireRef = useRef<THREE.Mesh | null>(null);
   const selectionOutlineRef = useRef<THREE.BoxHelper | null>(null);
 
@@ -329,6 +348,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     [flyCameraTo, document.board, document.components]
   );
 
+  // Backdrop: soft gradient wall + fog that dissolves the far edge of the desk
+  const applyBackdrop = useCallback((scene: THREE.Scene, theme: 'light' | 'dark', presentation: boolean) => {
+    const style = backdropStyle(theme, presentation);
+    backdropTextureRef.current?.dispose();
+    backdropTextureRef.current = createBackdropTexture(style);
+    scene.background = backdropTextureRef.current ?? new THREE.Color(style.fog);
+    scene.fog = new THREE.Fog(style.fog, style.fogNear, style.fogFar);
+  }, []);
+
   // Initialize Scene, Camera, Renderer, Lights, Board
   useEffect(() => {
     const container = containerRef.current;
@@ -340,10 +368,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     // 1. Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    const bgHex = effectiveTheme === 'light'
-      ? (isPresentationMode ? 0xf8fafc : 0xf1f5f9)
-      : (isPresentationMode ? 0x111827 : 0x090d16);
-    scene.background = new THREE.Color(bgHex);
+    applyBackdrop(scene, effectiveTheme === 'light' ? 'light' : 'dark', isPresentationMode);
 
     // 2. Camera
     const camera = new THREE.PerspectiveCamera(40, width / height, 1, 1000);
@@ -367,6 +392,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     renderer.toneMappingExposure = 1.15;
 
     container.appendChild(renderer.domElement);
+    // Development aid: draw calls / triangles / GPU object counts via renderer.info
+    if (import.meta.env.DEV) {
+      (window as any).__cc3dRenderer = renderer;
+      // Compare / roll back the component models from the console: __cc3dSetModelSet('legacy' | 'v2')
+      (window as any).__cc3dSetModelSet = setModelSet;
+      // Repeatable camera positions for before / after screenshots
+      (window as any).__cc3dFlyCameraTo = (o: { x?: number; y?: number; z?: number; radius?: number; theta?: number; phi?: number }) =>
+        flyCameraTo({ target: new THREE.Vector3(o.x ?? 0, o.y ?? 0, o.z ?? 0), radius: o.radius, theta: o.theta, phi: o.phi, duration: 50 });
+    }
 
     const handleContextLost = (event: Event) => {
       // Ask the browser to give the context back; nothing in the project depends on the GPU
@@ -381,7 +415,19 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     renderer.domElement.addEventListener('webglcontextrestored', handleContextRestored, false);
 
     // 4. Lighting Setup
-    const ambientLight = new THREE.AmbientLight(0xffffff, isPresentationMode ? 0.9 : 0.7);
+    // A light environment map gives metal leads and tools something to reflect (not at Low quality)
+    let environmentTexture: THREE.Texture | null = null;
+    if (qualityPreset !== 'low') {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const room = new RoomEnvironment();
+      environmentTexture = pmrem.fromScene(room, 0.04).texture;
+      scene.environment = environmentTexture;
+      scene.environmentIntensity = 0.4;
+      disposeObjectTree(room);
+      pmrem.dispose();
+    }
+    const ambientBase = isPresentationMode ? 0.9 : 0.7;
+    const ambientLight = new THREE.AmbientLight(0xffffff, environmentTexture ? ambientBase - 0.2 : ambientBase);
     scene.add(ambientLight);
 
     const mainLight = new THREE.DirectionalLight(0xffffff, 1.4);
@@ -408,8 +454,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     const rimLight = new THREE.DirectionalLight(0xffffff, 0.5);
     rimLight.position.set(0, -30, -60);
     scene.add(rimLight);
+    sceneLightsRef.current = [ambientLight, mainLight, fillLight, rimLight].map((light) => ({ light, base: light.intensity }));
+    environmentBaseRef.current = environmentTexture ? scene.environmentIntensity : 0;
 
     // 5. Add Group Hierarchies
+    scene.add(workbenchGroupRef.current);
+    // Disposed on unmount; React may mount again without re-rendering (StrictMode), so ensure it here
+    if (!pinMarkersRef.current) pinMarkersRef.current = new PinMarkerLayer();
+    scene.add(pinMarkersRef.current.object);
     scene.add(boardGroupRef.current);
     scene.add(resizeHandlesGroupRef.current);
     scene.add(componentsGroupRef.current);
@@ -603,6 +655,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       // The Minibot is re-created with the scene: release its GPU resources
       scene.remove(minibot.group);
       disposeObjectTree(minibot.group);
+      environmentTexture?.dispose();
       if (rendererRef.current && rendererRef.current.domElement) {
         rendererRef.current.domElement.remove();
         rendererRef.current.dispose();
@@ -617,6 +670,12 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       clearGroup(resizeHandlesGroupRef.current);
       clearGroup(componentsGroupRef.current);
       clearGroup(wiresGroupRef.current);
+      clearGroup(workbenchGroupRef.current);
+      pinMarkersRef.current?.dispose();
+      pinMarkersRef.current = null;
+      backdropTextureRef.current?.dispose();
+      backdropTextureRef.current = null;
+      if (touchLabelTimerRef.current) clearTimeout(touchLabelTimerRef.current);
       disposeObjectTree(previewWireRef.current);
       disposeObjectTree(cutLineMeshRef.current);
       disposeObjectTree(selectionOutlineRef.current);
@@ -626,11 +685,30 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
   // Reactively update scene background and workbench without re-creating scene or resetting camera
   useEffect(() => {
     if (!sceneRef.current) return;
-    const bgHex = effectiveTheme === 'light'
-      ? (isPresentationMode ? 0xf8fafc : 0xf1f5f9)
-      : (isPresentationMode ? 0x111827 : 0x090d16);
-    sceneRef.current.background = new THREE.Color(bgHex);
-  }, [effectiveTheme, isPresentationMode]);
+    applyBackdrop(sceneRef.current, effectiveTheme === 'light' ? 'light' : 'dark', isPresentationMode);
+  }, [effectiveTheme, isPresentationMode, applyBackdrop]);
+
+  // Workbench: ESD mat, desk and decorative tools. Scene only: built from the board SIZE (to keep
+  // the work area free), never stored in the project and never passed to the raycaster.
+  const keepOut = workbenchKeepOut(document.board);
+  const workbenchOptions = {
+    keepX: keepOut.keepX,
+    keepZ: keepOut.keepZ,
+    detail: qualityPreset,
+    decor: showWorkbenchDecor,
+    theme: (effectiveTheme === 'light' ? 'light' : 'dark') as 'light' | 'dark',
+  };
+  const workbenchKey = workbenchSignature(workbenchOptions);
+  useEffect(() => {
+    const holder = workbenchGroupRef.current;
+    clearGroup(holder);
+    holder.add(buildWorkbench(workbenchOptions));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workbenchKey]);
+  useEffect(() => {
+    // The mat lies just under the board, whatever its thickness
+    workbenchGroupRef.current.position.y = -document.board.thickness - 0.05;
+  }, [document.board.thickness]);
 
   // Build / Update Board PCB Mesh
   useEffect(() => {
@@ -729,8 +807,19 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       boardGroup.add(borderLine);
     }
 
-    // 4. PCB Grid Dots / Metallic Pad Grid (2.54mm pitch)
-    if (showGrid && shape !== 'circle' && shape !== 'triangle' && shape !== 'polygon') {
+    const isRectangular = shape !== 'circle' && shape !== 'triangle' && shape !== 'polygon';
+    if (modelSet === 'v2' && isRectangular) {
+      // v2: plain solder mask with mounting holes and a small silkscreen mark (no pad grid)
+      addBoardDetails(
+        boardGroup,
+        shape === 'square' ? Math.max(width, depth) : width,
+        shape === 'square' ? Math.max(width, depth) : depth,
+        qualityPreset
+      );
+    }
+
+    // 4. Legacy model set only: PCB pad dots (2.54mm pitch). Display only; snapping uses board.gridSpacing.
+    if (modelSet === 'legacy' && isRectangular) {
       const w = shape === 'square' ? Math.max(width, depth) : width;
       const d = shape === 'square' ? Math.max(width, depth) : depth;
       const padGeom = new THREE.CircleGeometry(0.48, 12);
@@ -767,7 +856,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         boardGroup.add(instancedPads);
       }
     }
-  }, [document.board, showGrid]);
+  }, [document.board, modelSet, qualityPreset]);
 
   // Build / Update Board Resize Handles (Corner handles in Select Mode)
   useEffect(() => {
@@ -852,61 +941,56 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     };
   }, [isCutMode, cutPointsState]);
 
-  // Pin Highlights (Zero-clutter: only hovered pin or active wire start pin lights up)
+  // While wiring, the scene is dimmed a little so the (unlit, always bright) pin markers stand out.
+  // Only light intensities change: no material or mesh is touched.
   useEffect(() => {
-    componentsGroupRef.current.traverse((child) => {
-      if (child.name?.startsWith('pin-') && (child as any).isGroup && child.userData?.isPin) {
-        let beacon = child.getObjectByName('pin-beacon') as THREE.Mesh;
-        const pinY = child.userData.localOffset?.y ?? 1.0;
-        if (!beacon) {
-          const ringGeom = new THREE.RingGeometry(0.35, 1.05, 20);
-          ringGeom.rotateX(-Math.PI / 2);
-          const ringMat = new THREE.MeshStandardMaterial({
-            color: 0x38bdf8,
-            emissive: 0x38bdf8,
-            emissiveIntensity: 1.6,
-            roughness: 0.1,
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.95,
-          });
-          beacon = new THREE.Mesh(ringGeom, ringMat);
-          beacon.name = 'pin-beacon';
-          beacon.position.set(0, pinY + 0.15, 0);
-          child.add(beacon);
-        }
+    const k = isWiringMode ? 0.62 : 1;
+    for (const { light, base } of sceneLightsRef.current) light.intensity = base * k;
+    if (sceneRef.current) sceneRef.current.environmentIntensity = environmentBaseRef.current * k;
+  }, [isWiringMode, isPresentationMode, qualityPreset, contextEpoch]);
 
-        const { componentId, pinId } = child.userData;
-        const isStartPin = Boolean(
-          wiringStartPin && wiringStartPin.componentId === componentId && wiringStartPin.pinId === pinId
-        );
-        const isHovered = Boolean(
-          hoveredPinInfo &&
-            hoveredPinInfo.componentId === componentId &&
-            hoveredPinInfo.pinId === pinId
-        );
-
-        // Only show indicator if hovered OR if it is the currently active start pin
-        if (isStartPin || isHovered) {
-          beacon.visible = true;
-          const mat = beacon.material as THREE.MeshStandardMaterial;
-          if (isStartPin) {
-            mat.color.setHex(0xf59e0b); // Pulsing Gold
-            mat.emissive.setHex(0xf59e0b);
-            mat.emissiveIntensity = 2.2;
-            beacon.scale.set(1.2, 1.2, 1.2);
-          } else {
-            mat.color.setHex(0x38bdf8); // Bright Luminous Cyan
-            mat.emissive.setHex(0x38bdf8);
-            mat.emissiveIntensity = 1.8;
-            beacon.scale.set(1.0, 1.0, 1.0);
-          }
-        } else {
-          beacon.visible = false;
-        }
+  // Pin markers. While the wiring tool is active every pin shows a marker coloured by state:
+  // free / already connected / valid end for the wire being drawn / hovered / start of the wire.
+  // Positions come from the pin anchors of the component definitions (the same single source that
+  // wires and the solver use). Leaving the wiring tool hides all markers.
+  useEffect(() => {
+    const layer = pinMarkersRef.current;
+    if (!layer) return;
+    if (!isWiringMode) {
+      layer.update([]);
+      return;
+    }
+    const pinKey = (componentId: string, pinId: string) => `${componentId}:${pinId}`;
+    const connected = new Set<string>();
+    const linkedToStart = new Set<string>();
+    const startKey = wiringStartPin ? pinKey(wiringStartPin.componentId, wiringStartPin.pinId) : null;
+    for (const c of document.connections) {
+      const from = pinKey(c.fromComponentId, c.fromPinId);
+      const to = pinKey(c.toComponentId, c.toPinId);
+      connected.add(from);
+      connected.add(to);
+      if (from === startKey) linkedToStart.add(to);
+      if (to === startKey) linkedToStart.add(from);
+    }
+    const hoverKey = hoveredPinInfo ? pinKey(hoveredPinInfo.componentId, hoveredPinInfo.pinId) : null;
+    const items: PinMarkerItem[] = [];
+    for (const comp of document.components) {
+      const def = COMPONENT_DEFINITION_MAP.get(comp.definitionId);
+      if (!def) continue;
+      // Dense pin fields (breadboard tie points, pin headers at 2.54 mm) get smaller markers
+      const scale = def.pins.length > 60 ? 0.5 : def.pins.length > 16 ? 0.75 : 1;
+      for (const pin of def.pins) {
+        const key = pinKey(comp.instanceId, pin.id);
+        let state: PinMarkerState;
+        if (key === startKey) state = 'start';
+        else if (key === hoverKey) state = 'hover';
+        else if (startKey) state = linkedToStart.has(key) ? 'connected' : 'valid';
+        else state = connected.has(key) ? 'connected' : 'free';
+        items.push({ position: calculatePinWorldPosition(comp, pin.localOffset), state, scale });
       }
-    });
-  }, [isWiringMode, wiringStartPin, hoveredPinInfo, document.components]);
+    }
+    layer.update(items);
+  }, [isWiringMode, wiringStartPin, hoveredPinInfo, document.components, document.connections]);
 
   // Build / Update Component Meshes
   useEffect(() => {
@@ -923,16 +1007,17 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
     instancesByMeshNameRef.current = new Map(document.components.map((c) => [`comp-${c.instanceId}`, c]));
 
+    const settings = { modelSet, detail: qualityPreset };
     const items = document.components.flatMap((inst) => {
       const def = COMPONENT_DEFINITION_MAP.get(inst.definitionId);
       if (!def) return [];
-      return [{ key: inst.instanceId, signature: componentVisualSignature(inst, def, meshOptions(inst)), data: inst }];
+      return [{ key: inst.instanceId, signature: componentVisualSignature(inst, def, meshOptions(inst), settings), data: inst }];
     });
 
     const stats = reconcileChildren(
       componentsGroupRef.current,
       items,
-      (inst) => createComponentMesh(inst, COMPONENT_DEFINITION_MAP.get(inst.definitionId)!, meshOptions(inst)),
+      (inst) => createComponentMesh(inst, COMPONENT_DEFINITION_MAP.get(inst.definitionId)!, meshOptions(inst), settings),
       (group, inst) => applyComponentTransform(group, inst)
     );
     reportSceneStats('components', stats, started);
@@ -944,7 +1029,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       if (obj.userData?.spinRpm) spin.push(obj);
     });
     simAnimatedRef.current = { blink, spin };
-  }, [document.components, simulationResult, switchStates]);
+  }, [document.components, simulationResult, switchStates, modelSet, qualityPreset]);
 
   // Selection outline: selecting a component never touches its mesh
   useEffect(() => {
@@ -962,7 +1047,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
       selectionOutlineRef.current = box;
       sceneRef.current.add(box);
     }
-  }, [selectedComponentId, document.components, simulationResult, switchStates, isPresentationMode, qualityPreset]);
+  }, [selectedComponentId, document.components, simulationResult, switchStates, isPresentationMode, qualityPreset, modelSet]);
 
   // Build / Update Wires
   useEffect(() => {
@@ -1065,6 +1150,30 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     window.addEventListener('pointermove', handleWindowPointerMove);
     return () => window.removeEventListener('pointermove', handleWindowPointerMove);
   }, [placingComponentId, document.components, document.board.gridSpacing]);
+
+  /** Tooltip content of a pin: name and designator from the component definition. */
+  const describePin = (componentId: string, pinId: string, fallbackName?: string) => {
+    const comp = document.components.find((c) => c.instanceId === componentId);
+    const pin = comp ? COMPONENT_DEFINITION_MAP.get(comp.definitionId)?.pins.find((p) => p.id === pinId) : undefined;
+    return { name: pin?.name || fallbackName || 'Chân linh kiện', designator: pin?.designator };
+  };
+
+  /** Touch / pen have no hover: show the label of the touched pin for a moment. */
+  const flashPinLabel = (componentId: string, pinId: string, worldPos: Vector3D, rect: DOMRect) => {
+    const camera = cameraRef.current;
+    if (!camera) return;
+    const projected = new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z).project(camera);
+    setHoveredPinInfo({
+      componentId,
+      pinId,
+      ...describePin(componentId, pinId),
+      x: ((projected.x + 1) / 2) * rect.width,
+      y: ((1 - projected.y) / 2) * rect.height - 28,
+    });
+    touchLabelUntilRef.current = Date.now() + 1800;
+    if (touchLabelTimerRef.current) clearTimeout(touchLabelTimerRef.current);
+    touchLabelTimerRef.current = setTimeout(() => setHoveredPinInfo(null), 1800);
+  };
 
   /** Nearest pin to a screen point, in pixels, among all placed parts. */
   const findNearestPin = (clientX: number, clientY: number, rect: DOMRect, maxDistancePx: number) => {
@@ -1343,6 +1452,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         : hitPin
         ? { x: hitPin.point.x, y: hitPin.point.y, z: hitPin.point.z }
         : nearPin!.worldPos;
+
+      if (e.pointerType !== 'mouse') flashPinLabel(componentId, pinId, worldPos, rect);
 
       if (wiringStartPin) {
         // Second pin clicked
@@ -1639,15 +1750,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     const pinIntersects = raycasterRef.current.intersectObjects(componentsGroupRef.current.children, true);
     const hoveredPin = pinIntersects.find((hit) => hit.object.userData?.isPin);
     if (hoveredPin) {
+      const { componentId: hoverCompId, pinId: hoverPinId } = hoveredPin.object.userData;
       setHoveredPinInfo({
-        componentId: hoveredPin.object.userData.componentId,
-        pinId: hoveredPin.object.userData.pinId,
-        name: hoveredPin.object.userData.name || 'Chân linh kiện',
-        designator: hoveredPin.object.userData.designator,
+        componentId: hoverCompId,
+        pinId: hoverPinId,
+        ...describePin(hoverCompId, hoverPinId, hoveredPin.object.userData.name),
         x: clientX - rect.left,
         y: clientY - rect.top - 24,
       });
-    } else {
+    } else if (Date.now() > touchLabelUntilRef.current) {
       setHoveredPinInfo(null);
     }
 

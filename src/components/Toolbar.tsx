@@ -12,7 +12,7 @@ import {
   Download,
   Upload,
   Layers,
-  Grid,
+  Wrench,
   Trash2,
   ArrowLeft,
   PanelLeft,
@@ -44,8 +44,8 @@ export interface ToolbarProps {
   onTogglePresentation: () => void;
   qualityPreset: 'low' | 'balanced' | 'high';
   onChangeQuality: (q: 'low' | 'balanced' | 'high') => void;
-  showGrid: boolean;
-  onToggleGrid: () => void;
+  showWorkbenchDecor: boolean;
+  onToggleWorkbenchDecor: () => void;
   projectName: string;
   onRenameProject: () => void;
   onBackToProjectSelect?: () => void;
@@ -79,8 +79,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onTogglePresentation,
   qualityPreset,
   onChangeQuality,
-  showGrid,
-  onToggleGrid,
+  showWorkbenchDecor,
+  onToggleWorkbenchDecor,
   projectName,
   onRenameProject,
   onBackToProjectSelect,
@@ -244,19 +244,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </button>
       </div>
 
-      {/* Right: File Ops, Grid, Quality */}
+      {/* Right: File Ops, Workbench decoration, Quality */}
       <div className="flex items-center gap-2 compact:gap-1 shrink-0">
         <button
-          onClick={onToggleGrid}
+          onClick={onToggleWorkbenchDecor}
           className={`tech-btn-control p-1.5 ${
-            showGrid
+            showWorkbenchDecor
               ? 'border-cyan-400 text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60'
               : ''
           }`}
-          title={t('editor.grid')}
-          aria-label={t('editor.grid')}
+          title={t('editor.workbenchDecor')}
+          aria-label={t('editor.workbenchDecor')}
+          aria-pressed={showWorkbenchDecor}
         >
-          <Grid className="w-3.5 h-3.5" />
+          <Wrench className="w-3.5 h-3.5" />
         </button>
 
         <select

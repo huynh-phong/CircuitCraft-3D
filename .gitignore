@@ -52,3 +52,6 @@ data/activity_days.json
 
 # Vercel link and build output
 .vercel
+
+# Models exported by `npm run export:models`
+exports/

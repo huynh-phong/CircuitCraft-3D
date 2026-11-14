@@ -271,13 +271,29 @@ export const App: React.FC = () => {
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isExplodedView, setIsExplodedView] = useState(false);
 
-  // 7. Graphics Quality & Grid
+  // 7. Graphics Quality & workbench decoration (rendering preferences, never project data)
   // Phones with little memory start at Low (no shadows, no antialiasing); everything else as before
   const [qualityPreset, setQualityPreset] = useState<'low' | 'balanced' | 'high'>(() => {
     const memory = (navigator as any).deviceMemory as number | undefined;
     return deviceProfile.device === 'phone' && memory !== undefined && memory <= 3 ? 'low' : 'balanced';
   });
-  const [showGrid, setShowGrid] = useState(true);
+  const [showWorkbenchDecor, setShowWorkbenchDecor] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('cc3d.workbenchDecor') !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const toggleWorkbenchDecor = () => {
+    setShowWorkbenchDecor((on) => {
+      try {
+        window.localStorage.setItem('cc3d.workbenchDecor', on ? 'off' : 'on');
+      } catch {
+        // not persisted: still applies to this session
+      }
+      return !on;
+    });
+  };
 
   // 8. AI Assistant & Minibot 3D
   const [minibotTargetCompId, setMinibotTargetCompId] = useState<string | null>(null);
@@ -1681,8 +1697,8 @@ export const App: React.FC = () => {
             onTogglePresentation={() => setIsPresentationMode(!isPresentationMode)}
             qualityPreset={qualityPreset}
             onChangeQuality={setQualityPreset}
-            showGrid={showGrid}
-            onToggleGrid={() => setShowGrid(!showGrid)}
+            showWorkbenchDecor={showWorkbenchDecor}
+            onToggleWorkbenchDecor={toggleWorkbenchDecor}
             projectName={project.name}
             onRenameProject={() => {
               setRenameInput(project.name);
@@ -1747,7 +1763,7 @@ export const App: React.FC = () => {
                 minibotTargetCompId={minibotTargetCompId}
                 minibotState={minibotState}
                 qualityPreset={qualityPreset}
-                showGrid={showGrid}
+                showWorkbenchDecor={showWorkbenchDecor}
                 activeWireColor={activeWireColor}
                 isRightInspectorCollapsed={isRightInspectorCollapsed}
                 onToggleRightInspector={() => (isRightInspectorCollapsed ? openInspectorPanel() : setIsRightInspectorCollapsed(true))}
