@@ -32,7 +32,7 @@
 - **Lỗi / rủi ro còn mở:** draw call tăng so với baseline (chưa có FPS để đánh giá); hộp pin không phải cỡ AA thật vì phải vừa footprint 30×20 mm của definition; material trong GLB Arduino/Breadboard chưa chỉnh riêng (chỉ nhận environment map).
 - **Cấu hình / quyền còn thiếu:** tài khoản thử trên backend để kiểm tra Workspace thật; thiết bị thật để đo hiệu năng.
 - **Bước nhỏ tiếp theo:** chạy `npm run dev`, đăng nhập, mở một dự án cũ và đo FPS ở 3 mức Chất lượng trên máy thật và một điện thoại; nếu đạt thì chuyển VISUAL-1 sang PASS.
-- **Commit:** `e510f8c` trên nhánh `visual-1-workbench-v2-models` (đã push, chưa merge vào `main`).
+- **Commit:** `e510f8c` trên nhánh `visual-1-workbench-v2-models` (đã merge fast-forward vào `main` và push ngày 2026-11-15).
 
 ## 2026-11-05 — Đợt HARDENING-2026-11 (H1–H6)
 
